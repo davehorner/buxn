@@ -326,7 +326,11 @@
 	{ \
 		a = BUXN_POLY_POP(K_, R_, 0)(); \
 		BUXN_SAVE_STATE(); \
-		b = buxn_vm_dei(vm, a); \
+		if (buxn_device_id(a) == 0) { \
+			b = buxn_system_dei(vm, buxn_device_port(a)); \
+		} else { \
+			b = buxn_vm_dei(vm, a); \
+		} \
 		BUXN_LOAD_STATE(); \
 		BUXN_POLY_PUSH(R_, S_)(b); \
 	}
@@ -337,7 +341,11 @@
 		a = BUXN_POLY_POP(K_, R_, 0)(); \
 		b = BUXN_POLY_POP(K_, R_, S_)(); \
 		BUXN_SAVE_STATE(); \
-		buxn_vm_deo(vm, a, b); \
+		if (buxn_device_id(a) == 0) { \
+			buxn_system_deo(vm, buxn_device_port(a), b); \
+		} else { \
+			buxn_vm_deo(vm, a, b); \
+		} \
 		BUXN_LOAD_STATE(); \
 		if (a == 0x0f && b != 0 && S_ == 0) { \
 			return -(int)(b & 0x7f); \
@@ -390,12 +398,88 @@
 
 void
 buxn_vm_reset(buxn_vm_t* vm) {
+	vm->color_r = 0x000;
+	vm->color_g = 0x7db;
+	vm->color_b = 0xf62;
+	vm->state = 0;
+	vm->metadata_addr = 0;
+
 	vm->pc = BUXN_RESET_VECTOR;
 	vm->wsp = 0;
 	vm->rsp = 0;
 	memset(vm->ws, 0, sizeof(vm->ws));
 	memset(vm->rs, 0, sizeof(vm->rs));
 	memset(vm->memory, 0, BUXN_RESET_VECTOR);
+}
+
+uint16_t
+buxn_system_dei(struct buxn_vm_s* vm, uint8_t port) {
+	switch (port) {
+		case 0x04: return vm->wsp;
+		case 0x05: return vm->rsp;
+		case 0x06: return vm->metadata_addr;
+		case 0x08: return vm->color_r;
+		case 0x0a: return vm->color_g;
+		case 0x0c: return vm->color_b;
+		case 0x0f: return vm->state;
+		default: return 0;
+	}
+}
+
+void
+buxn_system_deo(struct buxn_vm_s* vm, uint8_t port, uint16_t value) {
+	switch (port) {
+		case 0x02: {
+			uint8_t op = vm->memory[value];
+			uint32_t memory_size = vm->memory_size;
+			uint32_t length = buxn_vm_load2(vm, value + 1);
+			switch (op) {
+				case 0x00: {
+					uint32_t bank = buxn_vm_load2(vm, value + 3);
+					uint32_t addr = buxn_vm_load2(vm, value + 5);
+					uint32_t start = bank * (uint32_t)UINT16_MAX + addr;
+					start = start < memory_size ? start : memory_size;
+
+					uint32_t end = start + length;
+					end = end < memory_size ? end : memory_size;
+
+					uint8_t fill_value = vm->memory[value + 7];
+					memset(vm->memory + start, fill_value, end - start);
+				} break;
+				case 0x01:
+				case 0x02: {
+					uint32_t src_bank = buxn_vm_load2(vm, value + 3);
+					uint32_t src_addr = buxn_vm_load2(vm, value + 5);
+					uint32_t src = src_bank * UINT16_MAX + src_addr;
+					src = src < memory_size ? src : memory_size;
+
+					uint32_t dst_bank = buxn_vm_load2(vm, value + 7);
+					uint32_t dst_addr = buxn_vm_load2(vm, value + 9);
+					uint32_t dst = dst_bank * UINT16_MAX + dst_addr;
+					dst = dst < memory_size ? dst : memory_size;
+
+					uint32_t max = src > dst ? src : dst;
+					uint32_t end = max + length;
+					end = end < memory_size ? end : memory_size;
+					length = end - max;
+
+					if (op == 0x01) {
+						memcpy(vm->memory + dst, vm->memory + src, length);
+					} else {
+						memmove(vm->memory + dst, vm->memory + src, length);
+					}
+				} break;
+			}
+		} break;
+		case 0x04: vm->wsp = value; break;
+		case 0x05: vm->rsp = value; break;
+		case 0x06: vm->metadata_addr = value; break;
+		case 0x08: vm->color_r = value; break;
+		case 0x0a: vm->color_g = value; break;
+		case 0x0c: vm->color_b = value; break;
+		case 0x0e: if (vm->debug_hook) { vm->debug_hook(vm, value & 0x0f); } break;
+		case 0x0f: vm->state = value & 0x0f; break;
+	}
 }
 
 BUXN_WARNING_PUSH()
