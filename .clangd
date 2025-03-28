@@ -1,0 +1,9 @@
+---
+CompileFlags:
+  Add:
+    - -xc
+    - -Wall
+    - -Wextra
+    - -Werror
+    - -pedantic
+    - -std=c11
