@@ -1,17 +1,15 @@
 #include "vm.h"
-#include <string.h>
 #include <stdbool.h>
+#include <string.h>
 
 #define BUXN_LOAD_STATE() \
 	do { \
-		pc = vm->pc; \
 		wsp = vm->wsp; \
 		rsp = vm->rsp; \
 	} while (0)
 
 #define BUXN_SAVE_STATE() \
 	do { \
-		vm->pc = pc; \
 		vm->wsp = wsp; \
 		vm->rsp = rsp; \
 	} while (0)
@@ -85,6 +83,8 @@
 	BUXN_IMPL_MONO_OPCODE(BUXN_OPCODE_NAME(BASE, 1, 0, 1), kwsp = wsp; BUXN_CONCAT(BUXN_POLY_OP_, BASE)(1, 0, 1)) \
 	BUXN_IMPL_MONO_OPCODE(BUXN_OPCODE_NAME(BASE, 1, 1, 0), krsp = rsp; BUXN_CONCAT(BUXN_POLY_OP_, BASE)(1, 1, 0)) \
 	BUXN_IMPL_MONO_OPCODE(BUXN_OPCODE_NAME(BASE, 1, 1, 1), krsp = rsp; BUXN_CONCAT(BUXN_POLY_OP_, BASE)(1, 1, 1))
+#define BUXN_STRINGIFY(X) BUXN_STRINGIFY_1(X)
+#define BUXN_STRINGIFY_1(X) #X
 
 // Implement all variants of POP
 #define BUXN_POLY_POP(K_, R_, S_) \
@@ -102,8 +102,9 @@
 #define BUXN_UOP_POP2K()  BUXN_UOP_POP2X(ws, kwsp)
 #define BUXN_UOP_POPKR()  BUXN_UOP_POP1X(rs, krsp)
 #define BUXN_UOP_POP2KR() BUXN_UOP_POP2X(rs, krsp)
-#define BUXN_UOP_POP1X(STACK, PTR) (STACK[--PTR])
-#define BUXN_UOP_POP2X(STACK, PTR) (PTR -= 2, ((uint16_t)STACK[PTR] << 8) | ((uint16_t)STACK[PTR + 1]))
+#define BUXN_UOP_POP1X(STACK, PTR) (STACK[(uint8_t)(--PTR)])
+#define BUXN_UOP_POP2X(STACK, PTR) \
+	(PTR -= 2, ((uint16_t)STACK[PTR] << 8) | ((uint16_t)STACK[(uint8_t)(PTR + 1)]))
 
 // Implement all variants of PUSH
 #define BUXN_POLY_PUSH(R_, S_) \
@@ -119,8 +120,8 @@
 #define BUXN_UOP_PUSH1X(STACK, PTR, VALUE) STACK[PTR++] = (uint8_t)(VALUE & 0xff)
 #define BUXN_UOP_PUSH2X(STACK, PTR, VALUE) \
 	do { \
-		STACK[PTR]     = (uint8_t)(((VALUE) >> 8) & 0xff); \
-		STACK[PTR + 1] = (uint8_t)((VALUE)        & 0xff); \
+		STACK[PTR]                = (uint8_t)(((VALUE) >> 8) & 0xff); \
+		STACK[(uint8_t)(PTR + 1)] = (uint8_t)((VALUE)        & 0xff); \
 		PTR += 2; \
 	} while (0)
 
@@ -136,17 +137,56 @@
 #define BUXN_UOP_JMP_ABS(POSITION) pc = POSITION
 #define BUXN_PC_REL(OFFSET) ((uint16_t)((int32_t)pc + (int32_t)(int8_t)OFFSET))
 
-// Memory load/store
-#define BUXN_POLY_LOAD(S_) BUXN_SELECT(S_, BUXN_UOP_LOAD, BUXN_UOP_LOAD2)
-#define BUXN_UOP_LOAD(ADDR) mem[ADDR]
-#define BUXN_UOP_LOAD2(ADDR) (((uint16_t)mem[ADDR] << 8) | (uint16_t)mem[ADDR + 1])
+// Full memory load/store
+#define BUXN_POLY_LOAD(S_) BUXN_SELECT(S_, BUXN_UOP_LOAD1, BUXN_UOP_LOAD2)
+#define BUXN_UOP_LOAD1(ADDR) BUXN_UOP_LOAD1_GEN(mem, ADDR, 0xffff)
+#define BUXN_UOP_LOAD2(ADDR) BUXN_UOP_LOAD2_GEN(mem, ADDR, 0xffff)
 
-#define BUXN_POLY_STORE(S_) BUXN_SELECT(S_, BUXN_UOP_STORE, BUXN_UOP_STORE2)
-#define BUXN_UOP_STORE(ADDR, VALUE) mem[ADDR] = (uint8_t)(VALUE & 0xff)
-#define BUXN_UOP_STORE2(ADDR, VALUE) \
+#define BUXN_POLY_STORE(S_) BUXN_SELECT(S_, BUXN_UOP_STORE1, BUXN_UOP_STORE2)
+#define BUXN_UOP_STORE1(ADDR, VALUE) BUXN_UOP_STORE1_GEN(mem, ADDR, 0xffff, VALUE)
+#define BUXN_UOP_STORE2(ADDR, VALUE) BUXN_UOP_STORE2_GEN(mem, ADDR, 0xffff, VALUE)
+
+// Zero page load/store
+#define BUXN_POLY_LOADZ(S_) BUXN_SELECT(S_, BUXN_UOP_LOADZ1, BUXN_UOP_LOADZ2)
+#define BUXN_UOP_LOADZ1(ADDR) BUXN_UOP_LOAD1_GEN(mem, ADDR, 0xff)
+#define BUXN_UOP_LOADZ2(ADDR) BUXN_UOP_LOAD2_GEN(mem, ADDR, 0xff)
+
+#define BUXN_POLY_STOREZ(S_) BUXN_SELECT(S_, BUXN_UOP_STOREZ1, BUXN_UOP_STOREZ2)
+#define BUXN_UOP_STOREZ1(ADDR, VALUE) BUXN_UOP_STORE1_GEN(mem, ADDR, 0xff, VALUE)
+#define BUXN_UOP_STOREZ2(ADDR, VALUE) BUXN_UOP_STORE2_GEN(mem, ADDR, 0xff, VALUE)
+
+// Wrap-around generic load/store
+#define BUXN_UOP_LOAD1_GEN(SRC, ADDR, ADDR_MASK) (SRC[(ADDR) & ADDR_MASK])
+#define BUXN_UOP_LOAD2_GEN(SRC, ADDR, ADDR_MASK) \
+	(((uint16_t)BUXN_UOP_LOAD1_GEN(SRC, ADDR    , ADDR_MASK) << 8) \
+	|((uint16_t)BUXN_UOP_LOAD1_GEN(SRC, ADDR + 1, ADDR_MASK)     ))
+#define BUXN_UOP_STORE1_GEN(DST, ADDR, ADDR_MASK, VALUE) \
+	DST[(ADDR) & ADDR_MASK] = VALUE
+#define BUXN_UOP_STORE2_GEN(DST, ADDR, ADDR_MASK, VALUE) \
 	do { \
-		mem[ADDR]     = (uint8_t)(VALUE >> 8); \
-		mem[ADDR + 1] = (uint8_t)(VALUE & 0xff); \
+		BUXN_UOP_STORE1_GEN(DST, ADDR    , ADDR_MASK, (uint8_t)((VALUE >> 8) & 0xff)); \
+		BUXN_UOP_STORE1_GEN(DST, ADDR + 1, ADDR_MASK, (uint8_t)((VALUE     ) & 0xff)); \
+	} while (0)
+
+// Device I/O
+#define BUXN_POLY_DEV_IN(S_) BUXN_SELECT(S_, BUXN_UOP_DEV_IN1, BUXN_UOP_DEV_IN2)
+#define BUXN_UOP_DEV_IN1(ADDR) buxn_vm_dei(vm, ADDR)
+#define BUXN_UOP_DEV_IN2(ADDR) \
+	((uint16_t)(BUXN_UOP_DEV_IN1(ADDR    ) << 8) \
+	|(uint16_t)(BUXN_UOP_DEV_IN1(ADDR + 1)     ))
+
+#define BUXN_POLY_DEV_OUT(S_) BUXN_SELECT(S_, BUXN_UOP_DEV_OUT1, BUXN_UOP_DEV_OUT2)
+#define BUXN_UOP_DEV_OUT1(ADDR, VALUE) \
+	do { \
+		dev[(ADDR) & 0xff] = VALUE; \
+		buxn_vm_deo(vm, ADDR); \
+	} while (0)
+#define BUXN_UOP_DEV_OUT2(ADDR, VALUE) \
+	do { \
+		dev[(ADDR    ) & 0xff] = (uint8_t)(VALUE >> 8); \
+		dev[(ADDR + 1) & 0xff] = (uint8_t)VALUE; \
+		buxn_vm_deo(vm, ADDR); \
+		buxn_vm_deo(vm, ADDR + 1); \
 	} while (0)
 
 // Polymorphic opcodes parameterized over polymorphic uops
@@ -277,7 +317,7 @@
 #define BUXN_POLY_OP_LDZ(K_, R_, S_) \
 	{ \
 		a = BUXN_POLY_POP(K_, R_, 0)(); \
-		b = BUXN_POLY_LOAD(S_)(a); \
+		b = BUXN_POLY_LOADZ(S_)(a); \
 		BUXN_POLY_PUSH(R_, S_)(b); \
 	}
 
@@ -286,7 +326,7 @@
 	{ \
 		a = BUXN_POLY_POP(K_, R_, 0)(); \
 		b = BUXN_POLY_POP(K_, R_, S_)(); \
-		BUXN_POLY_STORE(S_)(a, b); \
+		BUXN_POLY_STOREZ(S_)(a, b); \
 	}
 
 // addr8 -- value
@@ -326,11 +366,7 @@
 	{ \
 		a = BUXN_POLY_POP(K_, R_, 0)(); \
 		BUXN_SAVE_STATE(); \
-		if (buxn_device_id(a) == 0) { \
-			b = buxn_system_dei(vm, buxn_device_port(a)); \
-		} else { \
-			b = buxn_vm_dei(vm, a); \
-		} \
+		b = BUXN_POLY_DEV_IN(S_)(a); \
 		BUXN_LOAD_STATE(); \
 		BUXN_POLY_PUSH(R_, S_)(b); \
 	}
@@ -341,24 +377,18 @@
 		a = BUXN_POLY_POP(K_, R_, 0)(); \
 		b = BUXN_POLY_POP(K_, R_, S_)(); \
 		BUXN_SAVE_STATE(); \
-		if (buxn_device_id(a) == 0) { \
-			buxn_system_deo(vm, buxn_device_port(a), b); \
-		} else { \
-			buxn_vm_deo(vm, a, b); \
-		} \
+		BUXN_POLY_DEV_OUT(S_)(a, b); \
 		BUXN_LOAD_STATE(); \
-		if (a == 0x0f && b != 0 && S_ == 0) { \
-			return -(int)(b & 0x7f); \
-		} \
+		if (dev[0x0f] != 0) { return; } \
 	}
 
 // a b -- a BIN_OP b
-#define BUXN_POLY_OP_ADD(...) BUXN_POLY_CMP_OP(+, __VA_ARGS__)
-#define BUXN_POLY_OP_SUB(...) BUXN_POLY_CMP_OP(-, __VA_ARGS__)
-#define BUXN_POLY_OP_MUL(...) BUXN_POLY_CMP_OP(*, __VA_ARGS__)
-#define BUXN_POLY_OP_AND(...) BUXN_POLY_CMP_OP(&, __VA_ARGS__)
-#define BUXN_POLY_OP_ORA(...) BUXN_POLY_CMP_OP(|, __VA_ARGS__)
-#define BUXN_POLY_OP_EOR(...) BUXN_POLY_CMP_OP(^, __VA_ARGS__)
+#define BUXN_POLY_OP_ADD(...) BUXN_POLY_BIN_OP(+, __VA_ARGS__)
+#define BUXN_POLY_OP_SUB(...) BUXN_POLY_BIN_OP(-, __VA_ARGS__)
+#define BUXN_POLY_OP_MUL(...) BUXN_POLY_BIN_OP(*, __VA_ARGS__)
+#define BUXN_POLY_OP_AND(...) BUXN_POLY_BIN_OP(&, __VA_ARGS__)
+#define BUXN_POLY_OP_ORA(...) BUXN_POLY_BIN_OP(|, __VA_ARGS__)
+#define BUXN_POLY_OP_EOR(...) BUXN_POLY_BIN_OP(^, __VA_ARGS__)
 #define BUXN_POLY_OP_DIV(...) BUXN_SIMPLE_POLY_OP(DIV, __VA_ARGS__)
 #define BUXN_POLY_OP_DIV_IMPL(POP, PUSH) \
 	{ \
@@ -373,7 +403,7 @@
 	{ \
 		b = BUXN_POLY_POP(K_, R_, 0)(); \
 		a = BUXN_POLY_POP(K_, R_, S_)(); \
-		c = (a >> (b & 0x0f)) << (b & 0xf0); \
+		c = (a >> (b & 0x0f)) << ((b & 0xf0) >> 4); \
 		BUXN_POLY_PUSH(R_, S_)(c); \
 	}
 
@@ -397,88 +427,24 @@
 #endif
 
 void
-buxn_vm_reset(buxn_vm_t* vm) {
-	vm->color_r = 0x000;
-	vm->color_g = 0x7db;
-	vm->color_b = 0xf62;
-	vm->state = 0;
-	vm->metadata_addr = 0;
-
-	vm->pc = BUXN_RESET_VECTOR;
-	vm->wsp = 0;
-	vm->rsp = 0;
-	memset(vm->ws, 0, sizeof(vm->ws));
-	memset(vm->rs, 0, sizeof(vm->rs));
-	memset(vm->memory, 0, BUXN_RESET_VECTOR);
-}
-
-uint16_t
-buxn_system_dei(struct buxn_vm_s* vm, uint8_t port) {
-	switch (port) {
-		case 0x04: return vm->wsp;
-		case 0x05: return vm->rsp;
-		case 0x06: return vm->metadata_addr;
-		case 0x08: return vm->color_r;
-		case 0x0a: return vm->color_g;
-		case 0x0c: return vm->color_b;
-		case 0x0f: return vm->state;
-		default: return 0;
+buxn_vm_reset(buxn_vm_t* vm, uint8_t reset_flags) {
+	if ((reset_flags & BUXN_VM_RESET_STACK) > 0) {
+		vm->wsp = 0;
+		vm->rsp = 0;
+		memset(vm->ws, 0, sizeof(vm->ws));
+		memset(vm->rs, 0, sizeof(vm->rs));
 	}
-}
 
-void
-buxn_system_deo(struct buxn_vm_s* vm, uint8_t port, uint16_t value) {
-	switch (port) {
-		case 0x02: {
-			uint8_t op = vm->memory[value];
-			uint32_t memory_size = vm->memory_size;
-			uint32_t length = buxn_vm_load2(vm, value + 1);
-			switch (op) {
-				case 0x00: {
-					uint32_t bank = buxn_vm_load2(vm, value + 3);
-					uint32_t addr = buxn_vm_load2(vm, value + 5);
-					uint32_t start = bank * (uint32_t)UINT16_MAX + addr;
-					start = start < memory_size ? start : memory_size;
+	if ((reset_flags & BUXN_VM_RESET_DEVICE) > 0) {
+		memset(vm->device, 0, sizeof(vm->device));
+	}
 
-					uint32_t end = start + length;
-					end = end < memory_size ? end : memory_size;
+	if ((reset_flags & BUXN_VM_RESET_ZERO_PAGE) > 0) {
+		memset(vm->memory, 0, BUXN_RESET_VECTOR);
+	}
 
-					uint8_t fill_value = vm->memory[value + 7];
-					memset(vm->memory + start, fill_value, end - start);
-				} break;
-				case 0x01:
-				case 0x02: {
-					uint32_t src_bank = buxn_vm_load2(vm, value + 3);
-					uint32_t src_addr = buxn_vm_load2(vm, value + 5);
-					uint32_t src = src_bank * UINT16_MAX + src_addr;
-					src = src < memory_size ? src : memory_size;
-
-					uint32_t dst_bank = buxn_vm_load2(vm, value + 7);
-					uint32_t dst_addr = buxn_vm_load2(vm, value + 9);
-					uint32_t dst = dst_bank * UINT16_MAX + dst_addr;
-					dst = dst < memory_size ? dst : memory_size;
-
-					uint32_t max = src > dst ? src : dst;
-					uint32_t end = max + length;
-					end = end < memory_size ? end : memory_size;
-					length = end - max;
-
-					if (op == 0x01) {
-						memcpy(vm->memory + dst, vm->memory + src, length);
-					} else {
-						memmove(vm->memory + dst, vm->memory + src, length);
-					}
-				} break;
-			}
-		} break;
-		case 0x04: vm->wsp = value; break;
-		case 0x05: vm->rsp = value; break;
-		case 0x06: vm->metadata_addr = value; break;
-		case 0x08: vm->color_r = value; break;
-		case 0x0a: vm->color_g = value; break;
-		case 0x0c: vm->color_b = value; break;
-		case 0x0e: if (vm->debug_hook) { vm->debug_hook(vm, value & 0x0f); } break;
-		case 0x0f: vm->state = value & 0x0f; break;
+	if ((reset_flags & BUXN_VM_RESET_HIGH_MEM) > 0) {
+		memset(vm->memory + BUXN_RESET_VECTOR, 0, vm->memory_size - BUXN_RESET_VECTOR);
 	}
 }
 
@@ -492,8 +458,10 @@ BUXN_WARNING_PUSH()
 #pragma GCC diagnostic ignored "-Wunused-value"
 #endif
 
-int
-buxn_vm_execute(buxn_vm_t* vm) {
+void
+buxn_vm_execute(buxn_vm_t* vm, uint16_t pc) {
+	if (pc == 0) { return; }
+
 	static const void* dispatch_table[256] = {
 		BUXN_OPCODE_DISPATCH_MONO(BRK, 0x00, 0, 0, 0),
 		BUXN_OPCODE_DISPATCH_POLY(INC, 0x01),
@@ -536,15 +504,16 @@ buxn_vm_execute(buxn_vm_t* vm) {
 	uint8_t* const ws = vm->ws;
 	uint8_t* const rs = vm->rs;
 	uint8_t* const mem = vm->memory;
-	uint16_t pc, wsp, rsp;
-	uint16_t kwsp, krsp;
+	uint8_t* const dev = vm->device;
+	uint8_t wsp, rsp;
+	uint8_t kwsp, krsp;
 	uint16_t a, b, c;  // Temporary variables following stack notation
 	BUXN_LOAD_STATE();
 
 	while (true) {
 		BUXN_NEXT_OPCODE();
 
-		BUXN_IMPL_MONO_OPCODE(BRK, { BUXN_SAVE_STATE(); return 1; })
+		BUXN_IMPL_MONO_OPCODE(BRK, { BUXN_SAVE_STATE(); return; })
 		BUXN_IMPL_POLY_OPCODE(INC)
 		BUXN_IMPL_POLY_OPCODE(POP)
 		BUXN_IMPL_POLY_OPCODE(NIP)
@@ -599,8 +568,8 @@ buxn_vm_execute(buxn_vm_t* vm) {
 		})
 		// -- a
 		BUXN_IMPL_MONO_OPCODE(LIT, {
-			a = BUXN_UOP_LOAD(pc);
-			pc += 2;
+			a = BUXN_UOP_LOAD1(pc);
+			pc += 1;
 			BUXN_UOP_PUSH(a);
 		})
 		BUXN_IMPL_MONO_OPCODE(LIT2, {
@@ -609,8 +578,8 @@ buxn_vm_execute(buxn_vm_t* vm) {
 			BUXN_UOP_PUSH2(a);
 		})
 		BUXN_IMPL_MONO_OPCODE(LITr, {
-			a = BUXN_UOP_LOAD(pc);
-			pc += 2;
+			a = BUXN_UOP_LOAD1(pc);
+			pc += 1;
 			BUXN_UOP_PUSHR(a);
 		})
 		BUXN_IMPL_MONO_OPCODE(LIT2r, {
