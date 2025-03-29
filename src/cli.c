@@ -84,11 +84,15 @@ main(int argc, const char* argv[]) {
 		goto end;
 	}
 
-	while (buxn_system_exit_code(vm) < 0 && devices.console.vector_addr) {
+	while (
+		buxn_system_exit_code(vm) < 0
+		&& buxn_stdio_console_should_update_io(vm, &devices.console)
+	) {
 		buxn_stdio_console_update_io(vm, &devices.console);
 	}
 
 	exit_code = buxn_system_exit_code(vm);
+	if (exit_code < 0) { exit_code = 0; }
 end:
 	free(vm);
 	return exit_code;

@@ -25,7 +25,6 @@ buxn_stdio_console_init(
 
 	device->argc = argc;
 	device->argv = argv;
-	device->vector_addr = 0;
 	device->type = argc > 0;
 }
 
@@ -89,13 +88,19 @@ buxn_stdio_console_send_args(struct buxn_vm_s* vm, buxn_stdio_console_t* device)
 	}
 }
 
+bool
+buxn_stdio_console_should_update_io(struct buxn_vm_s* vm, buxn_stdio_console_t* device) {
+	uint16_t vector_addr = buxn_vm_dev_load2(vm, 0x10);
+	return device->read != NULL && !feof(device->read) && vector_addr != 0;
+}
+
 void
 buxn_stdio_console_update_io(struct buxn_vm_s* vm, buxn_stdio_console_t* device) {
 	if (device->read == NULL) { return; }
 
 	int ch = fgetc(device->read);
 	if (ch == EOF) {
-		buxn_send_data(vm, device, 0, 0);
+		buxn_send_data(vm, device, 4, 0);
 	} else {
 		buxn_send_data(vm, device, 1, ch);
 	}

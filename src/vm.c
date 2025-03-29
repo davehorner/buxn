@@ -501,10 +501,10 @@ buxn_vm_execute(buxn_vm_t* vm, uint16_t pc) {
 		BUXN_OPCODE_DISPATCH_KEEP(LIT, 0x80),
 	};
 
-	uint8_t* const ws = vm->ws;
-	uint8_t* const rs = vm->rs;
-	uint8_t* const mem = vm->memory;
-	uint8_t* const dev = vm->device;
+	uint8_t* restrict const ws = vm->ws;
+	uint8_t* restrict const rs = vm->rs;
+	uint8_t* restrict const mem = vm->memory;
+	uint8_t* restrict const dev = vm->device;
 	uint8_t wsp, rsp;
 	uint8_t kwsp, krsp;
 	uint16_t a, b, c;  // Temporary variables following stack notation

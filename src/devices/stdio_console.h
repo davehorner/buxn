@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 struct buxn_vm_s;
 
@@ -11,7 +12,6 @@ typedef struct {
 	FILE* write;
 	FILE* error;
 
-	uint16_t vector_addr;
 	int argc;
 	const char** argv;
 	uint8_t type;
@@ -33,6 +33,9 @@ buxn_stdio_console_deo(struct buxn_vm_s* vm, buxn_stdio_console_t* device, uint8
 
 void
 buxn_stdio_console_send_args(struct buxn_vm_s* vm, buxn_stdio_console_t* device);
+
+bool
+buxn_stdio_console_should_update_io(struct buxn_vm_s* vm, buxn_stdio_console_t* device);
 
 void
 buxn_stdio_console_update_io(struct buxn_vm_s* vm, buxn_stdio_console_t* device);

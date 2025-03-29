@@ -33,6 +33,7 @@ build_linux() {
 
 	compile_common
 	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
+	echo "Linking..."
 	$CXX \
 		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
@@ -40,6 +41,7 @@ build_linux() {
 		${OBJ_DIR}/src/{cli.c.o,vm.c.o} \
 		${OBJ_DIR}/src/devices/{stdio_console.c.o,system.c.o} \
 		-o ${BIN_DIR}/buxn-cli
+	echo "Done"
 }
 
 compile_common() {
