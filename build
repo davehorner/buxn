@@ -44,6 +44,37 @@ build_linux() {
 	echo "Done"
 }
 
+build_cosmo() {
+	if ! command -v cosmocc > /dev/null
+	then
+		echo "You need to add cosmopolitan toolchain to your path:"
+		echo "export PATH=\$PATH:<path-to-cosmopolitan>/bin"
+		exit 1
+	fi
+
+	COSMO_HOME=$(dirname $(dirname $(which cosmocc)))
+
+	export CC=cosmocc
+	export CXX=cosmoc++
+
+	COMMON_FLAGS="-Wall -Wextra -pedantic -Werror -mtiny -mclang"
+	Release="-O3"
+	Debug="-mdbg"
+	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
+
+	export COMPILE_FLAGS="${COMMON_FLAGS} ${BUILD_TYPE_FLAGS}"
+
+	compile_common
+	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
+	echo "Linking..."
+	$CXX \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/{cli.c.o,vm.c.o} \
+		${OBJ_DIR}/src/devices/{stdio_console.c.o,system.c.o,datetime.c.o} \
+		-o ${BIN_DIR}/buxn-cli
+	echo "Done"
+}
+
 compile_common() {
 	compile src/cli.c $COMPILE_FLAGS
 	compile src/vm.c $COMPILE_FLAGS

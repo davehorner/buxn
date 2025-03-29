@@ -2,7 +2,7 @@
 
 ./build $@
 
-inotifywait -r -e CLOSE_WRITE -m src | \
+inotifywait -r -e CLOSE_WRITE -m build src | \
 	while read path action file
 	do
 		printf '%*s\n' "$(tput cols)" '' | tr ' ' -
