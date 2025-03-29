@@ -1,0 +1,56 @@
+#!/bin/sh -e
+
+main() {
+	export BUILD_TYPE=${1:-Debug}
+	export PLATFORM=${2:-linux}
+	export OBJ_DIR=".build/$PLATFORM/$BUILD_TYPE"
+	export BIN_DIR="bin/$PLATFORM/$BUILD_TYPE"
+
+	rm -f .build/commands
+	mkdir -p .build
+	mkdir -p $BIN_DIR
+
+	if [ -t 1 ]
+	then
+		PARALLEL_FLAGS="--bar"
+	else
+		PARALLEL_FLAGS="--progress"
+	fi
+
+	build_$PLATFORM
+}
+
+build_linux() {
+	export CC=clang
+	export CXX=clang++
+
+	COMMON_FLAGS="-Wall -Wextra -pedantic -Werror"
+	Release="-O3 -flto"
+	Debug="-g -fsanitize=undefined,address"
+	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
+
+	export COMPILE_FLAGS="${COMMON_FLAGS} ${BUILD_TYPE_FLAGS}"
+
+	compile_common
+	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
+	$CXX \
+		-fuse-ld=mold \
+		-Wl,--separate-debug-file \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/{cli.c.o,vm.c.o} \
+		${OBJ_DIR}/src/devices/{stdio_console.c.o,system.c.o} \
+		-o ${BIN_DIR}/buxn-cli
+}
+
+compile_common() {
+	compile src/cli.c $COMPILE_FLAGS
+	compile src/vm.c $COMPILE_FLAGS
+	compile src/devices/stdio_console.c $COMPILE_FLAGS
+	compile src/devices/system.c $COMPILE_FLAGS
+}
+
+compile() {
+	echo ./compile "$@" >> .build/commands
+}
+
+main $@
