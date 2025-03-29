@@ -39,7 +39,7 @@ build_linux() {
 		-Wl,--separate-debug-file \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{cli.c.o,vm.c.o} \
-		${OBJ_DIR}/src/devices/{stdio_console.c.o,system.c.o} \
+		${OBJ_DIR}/src/devices/{stdio_console.c.o,system.c.o,datetime.c.o} \
 		-o ${BIN_DIR}/buxn-cli
 	echo "Done"
 }
@@ -49,6 +49,7 @@ compile_common() {
 	compile src/vm.c $COMPILE_FLAGS
 	compile src/devices/stdio_console.c $COMPILE_FLAGS
 	compile src/devices/system.c $COMPILE_FLAGS
+	compile src/devices/datetime.c $COMPILE_FLAGS
 }
 
 compile() {

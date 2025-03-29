@@ -4,6 +4,7 @@
 #include "vm.h"
 #include "devices/stdio_console.h"
 #include "devices/system.h"
+#include "devices/datetime.h"
 
 typedef struct {
 	buxn_system_t system;
@@ -18,6 +19,8 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 			return buxn_system_dei(vm, &devices->system, address);
 		case BUXN_DEVICE_CONSOLE:
 			return buxn_stdio_console_dei(vm, &devices->console, address);
+		case BUXN_DEVICE_DATETIME:
+			return buxn_datetime_dei(vm, address);
 		default:
 			return vm->device[address];
 	}
