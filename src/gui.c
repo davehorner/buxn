@@ -139,6 +139,8 @@ init(void) {
 				read_pos += num_bytes;
 			}
 
+			sapp_set_window_title(app.argv[1]);
+
 			buxn_sokol_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
 			buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
 			buxn_sokol_console_send_args(app.vm, &app.devices.console);
@@ -147,7 +149,7 @@ init(void) {
 	}
 
 	app.last_frame = stm_now();
-	app.frame_time_accumulator = 0.0;
+	app.frame_time_accumulator = FRAME_TIME_US;  // Render once
 }
 
 static void
@@ -163,12 +165,14 @@ cleanup(void) {
 
 static void
 frame(void) {
+	if (buxn_system_exit_code(app.vm) > 0) { sapp_quit(); }
+
 	uint64_t now = stm_now();
 	double time_diff = stm_us(stm_diff(now, app.last_frame));
 	app.last_frame = now;
 	app.frame_time_accumulator += time_diff;
-	bool draw_requested = false;
 
+	bool draw_requested = false;
 	while (app.frame_time_accumulator >= FRAME_TIME_US) {
 		draw_requested = true;
 		app.frame_time_accumulator -= FRAME_TIME_US;
@@ -215,28 +219,37 @@ frame(void) {
 		}
 	}
 
-	int width = sapp_width();
-	int height = sapp_height();
+	int actual_width = sapp_width();
+	int actual_height = sapp_height();
+	int fb_width = app.devices.screen->width;
+	int fb_height = app.devices.screen->height;
+
+	float x_scale = (float)actual_width / (float)fb_width;
+	float y_scale = (float)actual_height / (float)fb_height;
+	float draw_scale = x_scale < y_scale ? x_scale : y_scale;
+	float scaled_width = (float)fb_width * draw_scale;
+	float scaled_height = (float)fb_height * draw_scale;
+	float x_margin = ((float)actual_width - scaled_width) * 0.5f;
+	float y_margin = ((float)actual_height - scaled_height) * 0.5f;
 
 	sg_begin_pass(&(sg_pass){ .swapchain = sglue_swapchain() });
 	{
-		sgp_begin(width, height);
+		sgp_begin(actual_width, actual_height);
 		{
-			sgp_viewport(0, 0, width, height);
-			sgp_project(0.f, (float)width, 0.f, (float)height);
+			sgp_viewport(0, 0, actual_width, actual_height);
+			sgp_project(0.f, (float)actual_width, 0.f, (float)actual_height);
 			sgp_set_blend_mode(SGP_BLENDMODE_BLEND);
 
 			sgp_set_image(0, app.background_texture.gpu);
-			sgp_draw_filled_rect(0.f, 0.f, (float)width, (float)height);
+			sgp_draw_filled_rect(x_margin, y_margin, scaled_width, scaled_height);
 
 			sgp_set_image(0, app.foreground_texture.gpu);
-			sgp_draw_filled_rect(0.f, 0.f, (float)width, (float)height);
+			sgp_draw_filled_rect(x_margin, y_margin, scaled_width, scaled_height);
 		}
 		sgp_flush();
 		sgp_end();
 	}
 	sg_end_pass();
-
 	sg_commit();
 }
 
