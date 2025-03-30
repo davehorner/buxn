@@ -19,22 +19,30 @@ WITH REGARD TO THIS SOFTWARE.
 
 struct buxn_vm_s;
 
-typedef struct UxnScreen {
+typedef struct {
+	int x1, y1, x2, y2;
+} buxn_screen_rect_t;
+
+typedef struct {
 	int rX, rY, rA, rMX, rMY, rMA, rML, rDX, rDY;
-	int width, height, vector, x1, y1, x2, y2;
+	int width, height;
+
+	buxn_screen_rect_t fg_dirty_rect;
+	buxn_screen_rect_t bg_dirty_rect;
+
 	uint8_t* fg;
 	uint8_t bg[];
 } buxn_screen_t;
-
-typedef enum {
-	BUXN_SCREEN_LAYER_BACKGROUND,
-	BUXN_SCREEN_LAYER_FOREGROUND,
-} buxn_screen_layer_type_t;
 
 typedef struct {
 	size_t screen_mem_size;
 	size_t target_mem_size;
 } buxn_screen_info_t;
+
+typedef enum {
+	BUXN_SCREEN_LAYER_BACKGROUND,
+	BUXN_SCREEN_LAYER_FOREGROUND,
+} buxn_screen_layer_type_t;
 
 buxn_screen_info_t
 buxn_screen_info(uint16_t width, uint16_t height);

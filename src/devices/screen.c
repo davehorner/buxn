@@ -27,11 +27,14 @@ static const uint8_t BUXN_BLENDING[4][16] = {
 };
 
 static void
-buxn_screen_dirty(buxn_screen_t* device, int x1, int y1, int x2, int y2) {
-	if(x1 < device->x1) device->x1 = x1;
-	if(y1 < device->y1) device->y1 = y1;
-	if(x2 > device->x2) device->x2 = x2;
-	if(y2 > device->y2) device->y2 = y2;
+buxn_screen_dirty(
+	buxn_screen_rect_t* rect,
+	int x1, int y1, int x2, int y2
+) {
+	if(x1 < rect->x1) rect->x1 = x1;
+	if(y1 < rect->y1) rect->y1 = y1;
+	if(x2 > rect->x2) rect->x2 = x2;
+	if(y2 > rect->y2) rect->y2 = y2;
 }
 
 buxn_screen_info_t
@@ -50,10 +53,9 @@ buxn_screen_resize(buxn_screen_t* screen, uint16_t width, uint16_t height) {
 	screen->width = width;
 	screen->height = height;
 	memset(screen->bg, 0, length * 2);
-	screen->x1 = 0;
-	screen->y1 = 0;
-	screen->x2 = width;
-	screen->y2 = height;
+
+	buxn_screen_dirty(&screen->bg_dirty_rect, 0, 0, width, height);
+	buxn_screen_dirty(&screen->fg_dirty_rect, 0, 0, width, height);
 }
 
 void
@@ -69,25 +71,29 @@ buxn_screen_render(
 	uint32_t palette[4],
 	uint32_t* target
 ) {
-	clamp(device->x1, 0, device->width);
-	clamp(device->x2, 0, device->width);
-	clamp(device->y1, 0, device->height);
-	clamp(device->y2, 0, device->height);
-	if (!(device->x2 > device->x1 && device->y2 > device->y1)) {
+	const uint8_t* rendered_layer = layer == BUXN_SCREEN_LAYER_BACKGROUND ? &device->bg[0] : &device->fg[0];
+	buxn_screen_rect_t* rect = layer == BUXN_SCREEN_LAYER_BACKGROUND ? &device->bg_dirty_rect : &device->fg_dirty_rect;
+
+	clamp(rect->x1, 0, device->width);
+	clamp(rect->x2, 0, device->width);
+	clamp(rect->y1, 0, device->height);
+	clamp(rect->y2, 0, device->height);
+
+	if (!(rect->x2 > rect->x1 && rect->y2 > rect->y1)) {
 		return false;
 	}
 
 	int i, x, y;
-	const uint8_t* rendered_layer = layer == BUXN_SCREEN_LAYER_BACKGROUND ? &device->bg[0] : &device->fg[0];
-	for(y = device->y1; y < device->y2; y++) {
-		for(x = device->x1, i = MAR(x) + MAR(y) * MAR2(device->width); x < device->x2; x++, i++) {
+	for(y = rect->y1; y < rect->y2; y++) {
+		for(x = rect->x1, i = MAR(x) + MAR(y) * MAR2(device->width); x < rect->x2; x++, i++) {
 			int c = palette[rendered_layer[i]];
 			int oo = (y * device->width + x);
 			target[oo] = c;
 		}
 	}
-	device->x1 = device->y1 = 9999;
-	device->x2 = device->y2 = 0;
+	rect->x1 = device->width + 1;
+	rect->y1 = device->height + 1;
+	rect->x2 = rect->y2 = 0;
 
 	return true;
 }
@@ -139,6 +145,7 @@ buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 			int color = ctrl & 0x3;
 			int len = MAR2(device->width);
 			uint8_t* layer = ctrl & 0x40 ? device->fg : device->bg;
+			buxn_screen_rect_t* rect = ctrl & 0x40 ? &device->fg_dirty_rect : &device->bg_dirty_rect;
 			if(ctrl & 0x80) {
 				/* fill mode */
 				int x1, y1, x2, y2, ax, bx, ay, by, hor, ver;
@@ -158,13 +165,13 @@ buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 						layer[ax] = color;
 					}
 				}
-				buxn_screen_dirty(device, x1, y1, x2, y2);
+				buxn_screen_dirty(rect, x1, y1, x2, y2);
 			} else {
 				/* pixel mode */
 				if(device->rX >= 0 && device->rY >= 0 && device->rX < len && device->rY < device->height) {
 					layer[MAR(device->rX) + MAR(device->rY) * len] = color;
 				}
-				buxn_screen_dirty(device, device->rX, device->rY, device->rX + 1, device->rY + 1);
+				buxn_screen_dirty(rect, device->rX, device->rY, device->rX + 1, device->rY + 1);
 				if(device->rMX) device->rX++;
 				if(device->rMY) device->rY++;
 			}
@@ -179,6 +186,7 @@ buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 			int hmar2 = MAR2(device->height);
 			int i, x1, x2, y1, y2, ax, ay, qx, qy, x = device->rX, y = device->rY;
 			uint8_t* layer = ctrl & 0x40 ? device->fg : device->bg;
+			buxn_screen_rect_t* rect = ctrl & 0x40 ? &device->fg_dirty_rect : &device->bg_dirty_rect;
 			if(ctrl & 0x80) {
 				int addr_incr = device->rMA << 2;
 				for(i = 0; i <= device->rML; i++, x += dyx, y += dxy, device->rA += addr_incr) {
@@ -210,7 +218,9 @@ buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 							int ch1 = sprite[qy], bx = xmar2 + ay;
 							for(ax = xmar + ay, qx = qfx; ax < bx; ax++, qx -= fx) {
 								int color = (ch1 >> qx) & 1;
-								if(opaque || color) layer[ax] = BUXN_BLENDING[color][blend];
+								if(opaque || color) {
+									layer[ax] = BUXN_BLENDING[color][blend];
+								}
 							}
 						}
 					}
@@ -226,7 +236,7 @@ buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 			} else {
 				y1 = device->rY, y2 = y;
 			}
-			buxn_screen_dirty(device, x1 - 8, y1 - 8, x2 + 8, y2 + 8);
+			buxn_screen_dirty(rect, x1 - 8, y1 - 8, x2 + 8, y2 + 8);
 			if(device->rMX) device->rX += device->rDX * fx;
 			if(device->rMY) device->rY += device->rDY * fy;
 		} break;

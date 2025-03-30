@@ -72,10 +72,10 @@ buxn_system_deo(struct buxn_vm_s* vm, buxn_system_t* device, uint8_t address) {
 
 static uint32_t
 buxn_make_rgba(uint8_t r, uint8_t g, uint8_t b) {
-	return ((uint32_t)r << 28) | ((uint32_t)r << 24)
-	     | ((uint32_t)g << 20) | ((uint32_t)g << 16)
-	     | ((uint32_t)b << 12) | ((uint32_t)b <<  8)
-	     | 0xff;
+	return (uint32_t)0xff000000
+		 | ((uint32_t)b << 20) | ((uint32_t)b << 16)
+	     | ((uint32_t)g << 12) | ((uint32_t)g <<  8)
+		 | ((uint32_t)r <<  4) | ((uint32_t)r <<  0);
 }
 
 void
