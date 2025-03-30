@@ -59,9 +59,9 @@ buxn_screen_resize(buxn_screen_t* screen, uint16_t width, uint16_t height) {
 }
 
 void
-buxn_screen_requested_size(struct buxn_vm_s* vm, uint16_t* width, uint16_t* height) {
-	*width  = buxn_vm_mem_load2(vm, 0x22);
-	*height = buxn_vm_mem_load2(vm, 0x24);
+buxn_screen_preferred_size(struct buxn_vm_s* vm, uint16_t* width, uint16_t* height) {
+	*width  = buxn_vm_dev_load2(vm, 0x22);
+	*height = buxn_vm_dev_load2(vm, 0x24);
 }
 
 bool
@@ -115,6 +115,17 @@ buxn_screen_dei(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 	}
 }
 
+static buxn_screen_t*
+buxn_screen_maybe_resize(struct buxn_vm_s* vm, buxn_screen_t* device) {
+	uint16_t preferred_width, preferred_height;
+	buxn_screen_preferred_size(vm, &preferred_width, &preferred_height);
+	if (preferred_width != device->width || preferred_height != device->height) {
+		return buxn_screen_request_resize(vm, device, preferred_width, preferred_height);
+	} else {
+		return device;
+	}
+}
+
 void
 buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 	switch(address) {
@@ -141,6 +152,7 @@ buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 			device->rA = (vm->device[0x2c] << 8) | vm->device[0x2d];
 		} break;
 		case 0x2e: {
+			device = buxn_screen_maybe_resize(vm, device);
 			int ctrl = vm->device[0x2e];
 			int color = ctrl & 0x3;
 			int len = MAR2(device->width);
@@ -177,6 +189,7 @@ buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 			}
 		} break;
 		case 0x2f: {
+			device = buxn_screen_maybe_resize(vm, device);
 			int ctrl = vm->device[0x2f];
 			int blend = ctrl & 0xf, opaque = blend % 5;
 			int fx = ctrl & 0x10 ? -1 : 1, fy = ctrl & 0x20 ? -1 : 1;

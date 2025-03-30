@@ -100,6 +100,26 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 	}
 }
 
+buxn_screen_t*
+buxn_screen_request_resize(
+	struct buxn_vm_s* vm,
+	buxn_screen_t* screen,
+	uint16_t width, uint16_t height
+) {
+	(void)vm;
+	cleanup_layer_texture(&app.background_texture);
+	cleanup_layer_texture(&app.foreground_texture);
+
+	buxn_screen_info_t screen_info = buxn_screen_info(width, height);
+	init_layer_texture(&app.background_texture, width, height, screen_info, "uxn.screen.background");
+	init_layer_texture(&app.foreground_texture, width, height, screen_info, "uxn.screen.foreground");
+	screen = realloc(screen, screen_info.screen_mem_size);
+	buxn_screen_resize(screen, width, height);
+	app.devices.screen = screen;
+
+	return screen;
+}
+
 static void
 init(void) {
 	stm_setup();
@@ -121,15 +141,15 @@ init(void) {
 	memset(app.devices.screen, 0, sizeof(*app.devices.screen));
 	buxn_screen_resize(app.devices.screen, width, height);
 
-	init_layer_texture(&app.background_texture, width, height, screen_info, "background");
-	init_layer_texture(&app.foreground_texture, width, height, screen_info, "foreground");
-    app.sampler = sg_make_sampler(&(sg_sampler_desc){
-        .min_filter = SG_FILTER_NEAREST,
-        .mag_filter = SG_FILTER_NEAREST,
-        .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
-        .wrap_v = SG_WRAP_CLAMP_TO_EDGE,
-		.label = "layer_sampler",
-    });
+	init_layer_texture(&app.background_texture, width, height, screen_info, "uxn.screen.background");
+	init_layer_texture(&app.foreground_texture, width, height, screen_info, "uxn.screen.foreground");
+	app.sampler = sg_make_sampler(&(sg_sampler_desc){
+		.min_filter = SG_FILTER_NEAREST,
+		.mag_filter = SG_FILTER_NEAREST,
+		.wrap_u = SG_WRAP_CLAMP_TO_EDGE,
+		.wrap_v = SG_WRAP_CLAMP_TO_EDGE,
+		.label = "uxn.screen",
+	});
 
 	app.vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
 	app.vm->userdata = &app.devices;
@@ -148,7 +168,6 @@ init(void) {
 			}
 
 			sapp_set_window_title(app.argv[1]);
-
 			buxn_sokol_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
 			buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
 			buxn_sokol_console_send_args(app.vm, &app.devices.console);

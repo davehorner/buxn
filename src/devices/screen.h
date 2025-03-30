@@ -51,7 +51,7 @@ void
 buxn_screen_resize(buxn_screen_t* screen, uint16_t width, uint16_t height);
 
 void
-buxn_screen_requested_size(struct buxn_vm_s* vm, uint16_t* width, uint16_t* height);
+buxn_screen_preferred_size(struct buxn_vm_s* vm, uint16_t* width, uint16_t* height);
 
 void
 buxn_screen_update(struct buxn_vm_s* vm);
@@ -69,5 +69,14 @@ buxn_screen_dei(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address);
 
 void
 buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address);
+
+// Must be provided by the host program
+
+extern buxn_screen_t*
+buxn_screen_request_resize(
+	struct buxn_vm_s* vm,
+	buxn_screen_t* screen,
+	uint16_t width, uint16_t height
+);
 
 #endif
