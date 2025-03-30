@@ -96,6 +96,8 @@ compile_common() {
 	compile src/devices/stdio_console.c $COMPILE_FLAGS
 	compile src/devices/sokol_console.c $COMPILE_FLAGS
 	compile src/devices/system.c $COMPILE_FLAGS
+	compile src/devices/screen.c $COMPILE_FLAGS
+	compile src/devices/audio.c $COMPILE_FLAGS
 	compile src/devices/datetime.c $COMPILE_FLAGS
 }
 
