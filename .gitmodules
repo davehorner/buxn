@@ -1,0 +1,6 @@
+[submodule "deps/sokol"]
+	path = deps/sokol
+	url = https://github.com/floooh/sokol.git
+[submodule "deps/sokol_gp"]
+	path = deps/sokol_gp
+	url = https://github.com/edubart/sokol_gp.git

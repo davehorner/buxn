@@ -24,7 +24,7 @@ build_linux() {
 	export CC=clang
 	export CXX=clang++
 
-	COMMON_FLAGS="-Wall -Wextra -pedantic -Werror"
+	COMMON_FLAGS="-Wall -Wextra -pedantic -Werror -Ideps/sokol -Ideps/sokol_gp -DSOKOL_GLCORE"
 	Release="-O3 -flto"
 	Debug="-g -fsanitize=undefined,address"
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
@@ -32,8 +32,10 @@ build_linux() {
 	export COMPILE_FLAGS="${COMMON_FLAGS} ${BUILD_TYPE_FLAGS}"
 
 	compile_common
+	compile src/sokol.c $COMPILE_FLAGS
 	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
 	echo "Linking..."
+
 	$CXX \
 		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
@@ -41,6 +43,16 @@ build_linux() {
 		${OBJ_DIR}/src/{cli.c.o,vm.c.o} \
 		${OBJ_DIR}/src/devices/{stdio_console.c.o,system.c.o,datetime.c.o} \
 		-o ${BIN_DIR}/buxn-cli
+
+	$CXX \
+		-fuse-ld=mold \
+		-Wl,--separate-debug-file \
+		-lGL -lX11 -lXcursor -lXi \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/{gui.c.o,vm.c.o,sokol.c.o} \
+		${OBJ_DIR}/src/devices/{sokol_console.c.o,system.c.o,datetime.c.o} \
+		-o ${BIN_DIR}/buxn-gui
+
 	echo "Done"
 }
 
@@ -67,18 +79,22 @@ build_cosmo() {
 	compile_common
 	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
 	echo "Linking..."
+
 	$CXX \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{cli.c.o,vm.c.o} \
 		${OBJ_DIR}/src/devices/{stdio_console.c.o,system.c.o,datetime.c.o} \
 		-o ${BIN_DIR}/buxn-cli
+
 	echo "Done"
 }
 
 compile_common() {
 	compile src/cli.c $COMPILE_FLAGS
+	compile src/gui.c $COMPILE_FLAGS
 	compile src/vm.c $COMPILE_FLAGS
 	compile src/devices/stdio_console.c $COMPILE_FLAGS
+	compile src/devices/sokol_console.c $COMPILE_FLAGS
 	compile src/devices/system.c $COMPILE_FLAGS
 	compile src/devices/datetime.c $COMPILE_FLAGS
 }

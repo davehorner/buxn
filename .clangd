@@ -7,3 +7,6 @@ CompileFlags:
     - -Werror
     - -pedantic
     - -std=c11
+    - -I./deps/sokol
+    - -I./deps/sokol_gp
+    - -DSOKOL_GLCORE
