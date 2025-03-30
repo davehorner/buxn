@@ -358,19 +358,19 @@ event(const sapp_event* event) {
 
 sapp_desc
 sokol_main(int argc, char* argv[]) {
-   	app.argc = argc;
-   	app.argv = (const char**)argv;
+	app.argc = argc;
+	app.argv = (const char**)argv;
 
-    return (sapp_desc){
-        .init_cb = init,
-        .frame_cb = frame,
+	return (sapp_desc){
+		.init_cb = init,
+		.frame_cb = frame,
 		.event_cb = event,
-        .cleanup_cb = cleanup,
-        .width = 640,
-        .height = 480,
-        .sample_count = 1,
-        .window_title = "buxn-gui",
-        .icon.sokol_default = true,
-        .logger.func = slog_func,
-    };
+		.cleanup_cb = cleanup,
+		.width = 640,
+		.height = 480,
+		.sample_count = 1,
+		.window_title = "buxn-gui",
+		.icon.sokol_default = true,
+		.logger.func = slog_func,
+	};
 }
