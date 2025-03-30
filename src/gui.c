@@ -7,6 +7,7 @@
 #include <sokol_log.h>
 #include <sokol_glue.h>
 #include <sokol_gp.h>
+#include <math.h>
 #include "vm.h"
 #include "devices/system.h"
 #include "devices/sokol_console.h"
@@ -122,6 +123,13 @@ init(void) {
 
 	init_layer_texture(&app.background_texture, width, height, screen_info, "background");
 	init_layer_texture(&app.foreground_texture, width, height, screen_info, "foreground");
+    app.sampler = sg_make_sampler(&(sg_sampler_desc){
+        .min_filter = SG_FILTER_NEAREST,
+        .mag_filter = SG_FILTER_NEAREST,
+        .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
+        .wrap_v = SG_WRAP_CLAMP_TO_EDGE,
+		.label = "layer_sampler",
+    });
 
 	app.vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
 	app.vm->userdata = &app.devices;
@@ -155,6 +163,7 @@ init(void) {
 static void
 cleanup(void) {
 	free(app.devices.screen);
+	sg_destroy_sampler(app.sampler);
 	cleanup_layer_texture(&app.foreground_texture);
 	cleanup_layer_texture(&app.background_texture);
 	free(app.vm);
@@ -172,14 +181,13 @@ frame(void) {
 	app.last_frame = now;
 	app.frame_time_accumulator += time_diff;
 
-	bool draw_requested = false;
+	bool should_redraw = app.frame_time_accumulator >= FRAME_TIME_US;
 	while (app.frame_time_accumulator >= FRAME_TIME_US) {
-		draw_requested = true;
 		app.frame_time_accumulator -= FRAME_TIME_US;
 		buxn_screen_update(app.vm);
 	}
 
-	if (draw_requested) {
+	if (should_redraw) {
 		uint32_t palette[4];
 		buxn_system_palette(app.vm, palette);
 
@@ -229,8 +237,8 @@ frame(void) {
 	float draw_scale = x_scale < y_scale ? x_scale : y_scale;
 	float scaled_width = (float)fb_width * draw_scale;
 	float scaled_height = (float)fb_height * draw_scale;
-	float x_margin = ((float)actual_width - scaled_width) * 0.5f;
-	float y_margin = ((float)actual_height - scaled_height) * 0.5f;
+	float x_margin = floorf(((float)actual_width - scaled_width) * 0.5f);
+	float y_margin = floorf(((float)actual_height - scaled_height) * 0.5f);
 
 	sg_begin_pass(&(sg_pass){ .swapchain = sglue_swapchain() });
 	{
@@ -239,6 +247,8 @@ frame(void) {
 			sgp_viewport(0, 0, actual_width, actual_height);
 			sgp_project(0.f, (float)actual_width, 0.f, (float)actual_height);
 			sgp_set_blend_mode(SGP_BLENDMODE_BLEND);
+
+			sgp_set_sampler(0, app.sampler);
 
 			sgp_set_image(0, app.background_texture.gpu);
 			sgp_draw_filled_rect(x_margin, y_margin, scaled_width, scaled_height);
