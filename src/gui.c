@@ -14,6 +14,10 @@
 #include "devices/screen.h"
 #include "devices/datetime.h"
 
+#if defined(__linux__)
+#include <X11/Xlib.h>
+#endif
+
 #define FRAME_TIME_US (1000000.0 / 60.0)
 
 typedef struct {
@@ -100,6 +104,20 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 	}
 }
 
+static void
+linux_resize_window(uint16_t width, uint16_t height) {
+	Display* display = (Display*)sapp_x11_get_display();
+	Window window = (Window)sapp_x11_get_window();
+	XResizeWindow(display, window, width, height);
+}
+
+static void
+resize_window(uint16_t width, uint16_t height) {
+#if defined(__linux__)
+	linux_resize_window(width, height);
+#endif
+}
+
 buxn_screen_t*
 buxn_screen_request_resize(
 	struct buxn_vm_s* vm,
@@ -116,6 +134,8 @@ buxn_screen_request_resize(
 	screen = realloc(screen, screen_info.screen_mem_size);
 	buxn_screen_resize(screen, width, height);
 	app.devices.screen = screen;
+
+	resize_window(width, height);
 
 	return screen;
 }

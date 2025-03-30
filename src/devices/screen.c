@@ -119,7 +119,10 @@ static buxn_screen_t*
 buxn_screen_maybe_resize(struct buxn_vm_s* vm, buxn_screen_t* device) {
 	uint16_t preferred_width, preferred_height;
 	buxn_screen_preferred_size(vm, &preferred_width, &preferred_height);
-	if (preferred_width != device->width || preferred_height != device->height) {
+	if (
+		(preferred_width != 0 && preferred_height != 0)
+		&& (preferred_width != device->width || preferred_height != device->height)
+	) {
 		return buxn_screen_request_resize(vm, device, preferred_width, preferred_height);
 	} else {
 		return device;
