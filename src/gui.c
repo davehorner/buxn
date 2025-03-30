@@ -12,6 +12,7 @@
 #include "devices/system.h"
 #include "devices/sokol_console.h"
 #include "devices/screen.h"
+#include "devices/mouse.h"
 #include "devices/datetime.h"
 
 #if defined(__linux__)
@@ -23,6 +24,7 @@
 typedef struct {
 	buxn_system_t system;
 	buxn_sokol_console_t console;
+	buxn_mouse_t mouse;
 	buxn_screen_t* screen;
 } devices_t;
 
@@ -81,6 +83,8 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 			return buxn_sokol_console_dei(vm, &devices->console, address);
 		case BUXN_DEVICE_SCREEN:
 			return buxn_screen_dei(vm, devices->screen, address);
+		case BUXN_DEVICE_MOUSE:
+			return buxn_mouse_dei(vm, &devices->mouse, address);
 		case BUXN_DEVICE_DATETIME:
 			return buxn_datetime_dei(vm, address);
 		default:
@@ -100,6 +104,9 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			break;
 		case BUXN_DEVICE_SCREEN:
 			buxn_screen_deo(vm, devices->screen, address);
+			break;
+		case BUXN_DEVICE_MOUSE:
+			buxn_mouse_deo(vm, &devices->mouse, address);
 			break;
 	}
 }
@@ -302,6 +309,53 @@ frame(void) {
 	sg_commit();
 }
 
+static void
+event(const sapp_event* event) {
+	bool update_mouse = false;
+	switch (event->type) {
+		case SAPP_EVENTTYPE_MOUSE_UP:
+		case SAPP_EVENTTYPE_MOUSE_DOWN: {
+			int button;
+			switch (event->mouse_button) {
+				case SAPP_MOUSEBUTTON_LEFT:
+					button = 0;
+					break;
+				case SAPP_MOUSEBUTTON_RIGHT:
+					button = 2;
+					break;
+				case SAPP_MOUSEBUTTON_MIDDLE:
+					button = 1;
+					break;
+				default:
+					button = -1;
+					break;
+			}
+			if (button >= 0) {
+				buxn_mouse_set_button(
+					&app.devices.mouse,
+					button,
+					event->type == SAPP_EVENTTYPE_MOUSE_DOWN
+				);
+				update_mouse = true;
+			}
+		} break;
+		case SAPP_EVENTTYPE_MOUSE_SCROLL:
+			app.devices.mouse.scroll_x = (int16_t)event->scroll_x;
+			app.devices.mouse.scroll_y = (int16_t)event->scroll_y;
+			update_mouse = true;
+			break;
+		case SAPP_EVENTTYPE_MOUSE_MOVE:
+			app.devices.mouse.x = (uint16_t)event->mouse_x;
+			app.devices.mouse.y = (uint16_t)event->mouse_y;
+			update_mouse = true;
+			break;
+		default:
+			break;
+	}
+
+	if (update_mouse) { buxn_mouse_update(app.vm); }
+}
+
 sapp_desc
 sokol_main(int argc, char* argv[]) {
    	app.argc = argc;
@@ -310,6 +364,7 @@ sokol_main(int argc, char* argv[]) {
     return (sapp_desc){
         .init_cb = init,
         .frame_cb = frame,
+		.event_cb = event,
         .cleanup_cb = cleanup,
         .width = 640,
         .height = 480,
