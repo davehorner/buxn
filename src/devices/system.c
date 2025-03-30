@@ -69,3 +69,23 @@ buxn_system_deo(struct buxn_vm_s* vm, buxn_system_t* device, uint8_t address) {
 		case 0x0e: if (device->debug_hook) { device->debug_hook(vm); } break;
 	}
 }
+
+static uint32_t
+buxn_make_rgba(uint8_t r, uint8_t g, uint8_t b) {
+	return ((uint32_t)r << 28) | ((uint32_t)r << 24)
+	     | ((uint32_t)g << 20) | ((uint32_t)g << 16)
+	     | ((uint32_t)b << 12) | ((uint32_t)b <<  8)
+	     | 0xff;
+}
+
+void
+buxn_system_palette(struct buxn_vm_s* vm, uint32_t palette[4]) {
+	uint16_t r = buxn_vm_dev_load2(vm, 0x08);
+	uint16_t g = buxn_vm_dev_load2(vm, 0x0a);
+	uint16_t b = buxn_vm_dev_load2(vm, 0x0c);
+
+	palette[0] = buxn_make_rgba((r >> 12) & 0x0f, (g >> 12) & 0x0f, (b >> 12) & 0x0f);
+	palette[1] = buxn_make_rgba((r >>  8) & 0x0f, (g >>  8) & 0x0f, (b >>  8) & 0x0f);
+	palette[2] = buxn_make_rgba((r >>  4) & 0x0f, (g >>  4) & 0x0f, (b >>  4) & 0x0f);
+	palette[3] = buxn_make_rgba((r >>  0) & 0x0f, (g >>  0) & 0x0f, (b >>  0) & 0x0f);
+}

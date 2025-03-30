@@ -6,7 +6,7 @@ flags="$@"
 
 object="$OBJ_DIR/$source.o"
 
-if [ ! -f "$object" ] || [ "$source" -nt "$object" ]
+if [ ! -f "$object" ] || [ "$source" -nt "$object" ] || [ "./build" -nt "$object" ]
 then
 	mkdir -p $(dirname "$object")
 	case "$source" in

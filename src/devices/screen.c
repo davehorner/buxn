@@ -191,7 +191,9 @@ buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 							int ch1 = sprite[qy], ch2 = sprite[qy + 8] << 1, bx = xmar2 + ay;
 							for(ax = xmar + ay, qx = qfx; ax < bx; ax++, qx -= fx) {
 								int color = ((ch1 >> qx) & 1) | ((ch2 >> qx) & 2);
-								if(opaque || color) layer[ax] = BUXN_BLENDING[color][blend];
+								if(opaque || color) {
+									layer[ax] = BUXN_BLENDING[color][blend];
+								}
 							}
 						}
 					}
@@ -229,4 +231,10 @@ buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 			if(device->rMY) device->rY += device->rDY * fy;
 		} break;
 	}
+}
+
+void
+buxn_screen_update(struct buxn_vm_s* vm) {
+	uint16_t vector_addr = buxn_vm_dev_load2(vm, 0x20);
+	if (vector_addr != 0) { buxn_vm_execute(vm, vector_addr); }
 }

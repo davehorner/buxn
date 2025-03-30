@@ -10,12 +10,13 @@
 #define BUXN_DEVICE_MEM_SIZE 256
 
 #define BUXN_DEVICE_SYSTEM   0x00
-#define BUXN_DEVICE_CONSOLE  0x01
-#define BUXN_DEVICE_AUDIO_0  0x03
-#define BUXN_DEVICE_AUDIO_1  0x04
-#define BUXN_DEVICE_AUDIO_2  0x05
-#define BUXN_DEVICE_AUDIO_3  0x06
-#define BUXN_DEVICE_DATETIME 0x0c
+#define BUXN_DEVICE_CONSOLE  0x10
+#define BUXN_DEVICE_SCREEN   0x20
+#define BUXN_DEVICE_AUDIO_0  0x30
+#define BUXN_DEVICE_AUDIO_1  0x40
+#define BUXN_DEVICE_AUDIO_2  0x50
+#define BUXN_DEVICE_AUDIO_3  0x60
+#define BUXN_DEVICE_DATETIME 0xc0
 
 #define BUXN_VM_RESET_NONE   0
 #define BUXN_VM_RESET_ZERO_PAGE (1 << 1)
@@ -52,7 +53,12 @@ buxn_vm_execute(buxn_vm_t* vm, uint16_t vector);
 
 static inline uint8_t
 buxn_device_id(uint8_t address) {
-	return (address & 0xf0) >> 4;
+	return address & 0xf0;
+}
+
+static inline uint8_t
+buxn_device_port(uint8_t address) {
+	return address & 0x0f;
 }
 
 static inline uint8_t
