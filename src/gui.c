@@ -147,6 +147,24 @@ buxn_screen_request_resize(
 	return screen;
 }
 
+static bool
+try_load_rom(const char* path) {
+	FILE* rom_file;
+	if ((rom_file = fopen(path, "rb")) != NULL) {
+		uint8_t* read_pos = &app.vm->memory[BUXN_RESET_VECTOR];
+		while (read_pos < app.vm->memory + app.vm->memory_size) {
+			size_t num_bytes = fread(read_pos, 1, 1024, rom_file);
+			if (num_bytes == 0) { break; }
+			read_pos += num_bytes;
+		}
+
+		fclose(rom_file);
+		return true;
+	} else {
+		return false;
+	}
+}
+
 static void
 init(void) {
 	stm_setup();
@@ -184,22 +202,11 @@ init(void) {
 	buxn_vm_reset(app.vm, BUXN_VM_RESET_ALL);
 	buxn_sokol_console_init(app.vm, &app.devices.console, app.argc, app.argv);
 
-	if (app.argc >= 2) {
-		FILE* rom_file;
-		if ((rom_file = fopen(app.argv[1], "rb")) != NULL) {
-			uint8_t* read_pos = &app.vm->memory[BUXN_RESET_VECTOR];
-			while (read_pos < app.vm->memory + app.vm->memory_size) {
-				size_t num_bytes = fread(read_pos, 1, 1024, rom_file);
-				if (num_bytes == 0) { break; }
-				read_pos += num_bytes;
-			}
-
-			sapp_set_window_title(app.argv[1]);
-			buxn_sokol_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
-			buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
-			buxn_sokol_console_send_args(app.vm, &app.devices.console);
-		}
-		fclose(rom_file);
+	if (app.argc >= 2 && try_load_rom(app.argv[1])) {
+		sapp_set_window_title(app.argv[1]);
+		buxn_sokol_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
+		buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
+		buxn_sokol_console_send_args(app.vm, &app.devices.console);
 	}
 
 	app.last_frame = stm_now();
@@ -349,6 +356,22 @@ event(const sapp_event* event) {
 			app.devices.mouse.y = (uint16_t)event->mouse_y;
 			update_mouse = true;
 			break;
+		case SAPP_EVENTTYPE_FILES_DROPPED:
+			if (
+				sapp_get_num_dropped_files() == 1
+				&& try_load_rom(sapp_get_dropped_file_path(0))
+			) {
+				buxn_vm_reset(
+					app.vm,
+					BUXN_VM_RESET_STACK
+					| BUXN_VM_RESET_DEVICE
+					| BUXN_VM_RESET_ZERO_PAGE
+				);
+				sapp_set_window_title(sapp_get_dropped_file_path(0));
+				buxn_sokol_console_init(app.vm, &app.devices.console, 0, NULL);
+				buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
+			}
+			break;
 		default:
 			break;
 	}
@@ -369,6 +392,8 @@ sokol_main(int argc, char* argv[]) {
 		.width = 640,
 		.height = 480,
 		.sample_count = 1,
+		.max_dropped_files = 1,
+		.enable_dragndrop = true,
 		.window_title = "buxn-gui",
 		.icon.sokol_default = true,
 		.logger.func = slog_func,
