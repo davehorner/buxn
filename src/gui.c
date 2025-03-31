@@ -351,11 +351,26 @@ event(const sapp_event* event) {
 			app.devices.mouse.scroll_y = (int16_t)event->scroll_y;
 			update_mouse = true;
 			break;
-		case SAPP_EVENTTYPE_MOUSE_MOVE:
-			app.devices.mouse.x = (uint16_t)event->mouse_x;
-			app.devices.mouse.y = (uint16_t)event->mouse_y;
+		case SAPP_EVENTTYPE_MOUSE_MOVE: {
+			int actual_width = sapp_width();
+			int actual_height = sapp_height();
+			int fb_width = app.devices.screen->width;
+			int fb_height = app.devices.screen->height;
+			float x_scale = (float)actual_width / (float)fb_width;
+			float y_scale = (float)actual_height / (float)fb_height;
+			float draw_scale = x_scale < y_scale ? x_scale : y_scale;
+			float scaled_width = (float)fb_width * draw_scale;
+			float scaled_height = (float)fb_height * draw_scale;
+			float x_margin = floorf(((float)actual_width - scaled_width) * 0.5f);
+			float y_margin = floorf(((float)actual_height - scaled_height) * 0.5f);
+
+			float mouse_x = (float)(event->mouse_x - x_margin) / draw_scale;
+			float mouse_y = (float)(event->mouse_y - y_margin) / draw_scale;
+
+			app.devices.mouse.x = (uint16_t)mouse_x;
+			app.devices.mouse.y = (uint16_t)mouse_y;
 			update_mouse = true;
-			break;
+		} break;
 		case SAPP_EVENTTYPE_FILES_DROPPED:
 			if (
 				sapp_get_num_dropped_files() == 1
