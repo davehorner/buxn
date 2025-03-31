@@ -98,8 +98,23 @@ buxn_screen_render(
 	return true;
 }
 
+static buxn_screen_t*
+buxn_screen_maybe_resize(struct buxn_vm_s* vm, buxn_screen_t* device) {
+	uint16_t preferred_width, preferred_height;
+	buxn_screen_preferred_size(vm, &preferred_width, &preferred_height);
+	if (
+		(preferred_width != 0 && preferred_height != 0)
+		&& (preferred_width != device->width || preferred_height != device->height)
+	) {
+		return buxn_screen_request_resize(vm, device, preferred_width, preferred_height);
+	} else {
+		return device;
+	}
+}
+
 uint8_t
 buxn_screen_dei(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
+	device = buxn_screen_maybe_resize(vm, device);
 	switch (address) {
 		case 0x22: return device->width >> 8;
 		case 0x23: return device->width;
@@ -112,20 +127,6 @@ buxn_screen_dei(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 		case 0x2c: return device->rA >> 8;
 		case 0x2d: return device->rA;
 		default: return vm->device[address];
-	}
-}
-
-static buxn_screen_t*
-buxn_screen_maybe_resize(struct buxn_vm_s* vm, buxn_screen_t* device) {
-	uint16_t preferred_width, preferred_height;
-	buxn_screen_preferred_size(vm, &preferred_width, &preferred_height);
-	if (
-		(preferred_width != 0 && preferred_height != 0)
-		&& (preferred_width != device->width || preferred_height != device->height)
-	) {
-		return buxn_screen_request_resize(vm, device, preferred_width, preferred_height);
-	} else {
-		return device;
 	}
 }
 
