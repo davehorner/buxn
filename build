@@ -24,7 +24,7 @@ build_linux() {
 	export CC=clang
 	export CXX=clang++
 
-	COMMON_FLAGS="-Wall -Wextra -pedantic -Werror -Ideps/sokol -Ideps/sokol_gp -DSOKOL_GLCORE"
+	COMMON_FLAGS="-Wall -Wextra -pedantic -Werror -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -DSOKOL_GLCORE"
 	Release="-O3 -flto -DNDEBUG"
 	Debug="-g -fsanitize=undefined,address -D_DEBUG"
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"

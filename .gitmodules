@@ -4,3 +4,6 @@
 [submodule "deps/sokol_gp"]
 	path = deps/sokol_gp
 	url = https://github.com/edubart/sokol_gp.git
+[submodule "deps/blibs"]
+	path = deps/blibs
+	url = https://github.com/bullno1/libs.git

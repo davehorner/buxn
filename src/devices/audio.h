@@ -15,9 +15,24 @@ WITH REGARD TO THIS SOFTWARE.
 
 #include <stdint.h>
 
+#define BUXN_AUDIO_PREFERRED_SAMPLE_RATE 44100
+#define BUXN_AUDIO_PREFERRED_NUM_CHANNELS 2
+
 struct buxn_vm_s;
+struct buxn_audio_s;
 
 typedef struct {
+	struct buxn_audio_s* device;
+
+	uint8_t* addr;
+	uint16_t adsr;
+	uint16_t len;
+	uint8_t pitch;
+	uint8_t repeat;
+	int8_t volume[2];
+} buxn_audio_message_t;
+
+typedef struct buxn_audio_s {
 	uint32_t sample_frequency;
 
 	uint8_t* addr;
@@ -40,13 +55,14 @@ void
 buxn_audio_deo(struct buxn_vm_s* vm, buxn_audio_t* device, uint8_t* mem, uint8_t port);
 
 buxn_audio_state_t
-buxn_audio_get_samples(buxn_audio_t* device, float* stream, int len);
+buxn_audio_render(buxn_audio_t* device, float* stream, int len);
+
+void
+buxn_audio_receive(const buxn_audio_message_t* message);
 
 // Must be provided by the host program
-extern void
-buxn_audio_lock_device(void);
 
 extern void
-buxn_audio_unlock_device(void);
+buxn_audio_send(struct buxn_vm_s* vm, const buxn_audio_message_t* message);
 
 #endif

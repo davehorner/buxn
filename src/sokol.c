@@ -11,3 +11,6 @@
 #include <sokol_time.h>
 #include <sokol_audio.h>
 #include <sokol_gp.h>
+
+#define BLIB_IMPLEMENTATION
+#include <bspscq.h>

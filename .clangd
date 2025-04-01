@@ -9,4 +9,5 @@ CompileFlags:
     - -std=c11
     - -I./deps/sokol
     - -I./deps/sokol_gp
+    - -I./deps/blibs
     - -DSOKOL_GLCORE
