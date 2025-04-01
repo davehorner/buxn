@@ -97,7 +97,7 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 			return buxn_audio_dei(
 				vm,
 				devices->audio + (device_id - BUXN_DEVICE_AUDIO_0) / (BUXN_DEVICE_AUDIO_1 - BUXN_DEVICE_AUDIO_0),
-				vm->memory + device_id,
+				vm->device + device_id,
 				buxn_device_port(address)
 			);
 		case BUXN_DEVICE_MOUSE:
@@ -381,6 +381,17 @@ frame(void) {
 	sg_commit();
 }
 
+static float
+clamp(float val, float min, float max) {
+	if (val < min) {
+		return min;
+	} else if (val > max) {
+		return max;
+	} else {
+		return val;
+	}
+}
+
 static void
 event(const sapp_event* event) {
 	bool update_mouse = false;
@@ -432,8 +443,8 @@ event(const sapp_event* event) {
 			float mouse_x = (float)(event->mouse_x - x_margin) / draw_scale;
 			float mouse_y = (float)(event->mouse_y - y_margin) / draw_scale;
 
-			app.devices.mouse.x = (uint16_t)mouse_x;
-			app.devices.mouse.y = (uint16_t)mouse_y;
+			app.devices.mouse.x = (uint16_t)clamp(mouse_x, 0.f, (float)fb_width);
+			app.devices.mouse.y = (uint16_t)clamp(mouse_y, 0.f, (float)fb_height);
 			update_mouse = true;
 		} break;
 		case SAPP_EVENTTYPE_FILES_DROPPED:

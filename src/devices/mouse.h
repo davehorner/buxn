@@ -29,7 +29,7 @@ buxn_mouse_set_button(buxn_mouse_t* device, uint8_t button, bool down) {
 	if (down) {
 		device->state |= mask;
 	} else {
-		device->state ^= mask;
+		device->state &= ~mask;
 	}
 }
 
