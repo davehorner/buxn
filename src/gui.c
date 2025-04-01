@@ -2,18 +2,21 @@
 #include <stdio.h>
 #include <string.h>
 #include <sokol_app.h>
+#include <sokol_audio.h>
 #include <sokol_time.h>
 #include <sokol_gfx.h>
 #include <sokol_log.h>
 #include <sokol_glue.h>
 #include <sokol_gp.h>
 #include <math.h>
+#include <threads.h>
 #include "vm.h"
 #include "devices/system.h"
 #include "devices/sokol_console.h"
 #include "devices/screen.h"
 #include "devices/mouse.h"
 #include "devices/datetime.h"
+#include "devices/audio.h"
 
 #if defined(__linux__)
 #include <X11/Xlib.h>
@@ -25,6 +28,7 @@ typedef struct {
 	buxn_system_t system;
 	buxn_sokol_console_t console;
 	buxn_mouse_t mouse;
+	buxn_audio_t audio[BUXN_NUM_AUDIO_DEVICES];
 	buxn_screen_t* screen;
 } devices_t;
 
@@ -45,6 +49,8 @@ static struct {
 	sg_sampler sampler;
 	layer_texture_t background_texture;
 	layer_texture_t foreground_texture;
+
+	mtx_t audio_lock;
 } app;
 
 static void
@@ -76,13 +82,24 @@ cleanup_layer_texture(layer_texture_t* texture) {
 uint8_t
 buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 	devices_t* devices = vm->userdata;
-	switch (buxn_device_id(address)) {
+	uint8_t device_id = buxn_device_id(address);
+	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
 			return buxn_system_dei(vm, &devices->system, address);
 		case BUXN_DEVICE_CONSOLE:
 			return buxn_sokol_console_dei(vm, &devices->console, address);
 		case BUXN_DEVICE_SCREEN:
 			return buxn_screen_dei(vm, devices->screen, address);
+		case BUXN_DEVICE_AUDIO_0:
+		case BUXN_DEVICE_AUDIO_1:
+		case BUXN_DEVICE_AUDIO_2:
+		case BUXN_DEVICE_AUDIO_3:
+			return buxn_audio_dei(
+				vm,
+				devices->audio + (device_id - BUXN_DEVICE_AUDIO_0) / (BUXN_DEVICE_AUDIO_1 - BUXN_DEVICE_AUDIO_0),
+				vm->memory + device_id,
+				buxn_device_port(address)
+			);
 		case BUXN_DEVICE_MOUSE:
 			return buxn_mouse_dei(vm, &devices->mouse, address);
 		case BUXN_DEVICE_DATETIME:
@@ -95,7 +112,8 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 void
 buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 	devices_t* devices = vm->userdata;
-	switch (buxn_device_id(address)) {
+	uint8_t device_id = buxn_device_id(address);
+	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
 			buxn_system_deo(vm, &devices->system, address);
 			break;
@@ -104,6 +122,17 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			break;
 		case BUXN_DEVICE_SCREEN:
 			buxn_screen_deo(vm, devices->screen, address);
+			break;
+		case BUXN_DEVICE_AUDIO_0:
+		case BUXN_DEVICE_AUDIO_1:
+		case BUXN_DEVICE_AUDIO_2:
+		case BUXN_DEVICE_AUDIO_3:
+			buxn_audio_deo(
+				vm,
+				devices->audio + (device_id - BUXN_DEVICE_AUDIO_0) / (BUXN_DEVICE_AUDIO_1 - BUXN_DEVICE_AUDIO_0),
+				vm->device + device_id,
+				buxn_device_port(address)
+			);
 			break;
 		case BUXN_DEVICE_MOUSE:
 			buxn_mouse_deo(vm, &devices->mouse, address);
@@ -165,21 +194,54 @@ try_load_rom(const char* path) {
 	}
 }
 
+void
+buxn_audio_lock_device(void) {
+	mtx_lock(&app.audio_lock);
+}
+
+void
+buxn_audio_unlock_device(void) {
+	mtx_unlock(&app.audio_lock);
+}
+
+static void
+audio_callback(float* buffer, int num_frames, int num_channels) {
+	(void)num_channels;  // TODO: handle mono
+	mtx_lock(&app.audio_lock);
+	memset(buffer, 0, sizeof(float) * num_frames * num_channels);
+	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
+		buxn_audio_get_samples(&app.devices.audio[i], buffer, num_frames);
+	}
+	mtx_unlock(&app.audio_lock);
+}
+
 static void
 init(void) {
+	app.devices = (devices_t){ 0 };
+
 	stm_setup();
 
-    sg_setup(&(sg_desc){
-        .environment = sglue_environment(),
-        .logger.func = slog_func,
-    });
+	sg_setup(&(sg_desc){
+		.environment = sglue_environment(),
+		.logger.func = slog_func,
+	});
+	sgp_setup(&(sgp_desc){ 0 });
 
-    sgp_setup(&(sgp_desc){ 0 });
+	mtx_init(&app.audio_lock, mtx_plain);
+	mtx_lock(&app.audio_lock);
+	saudio_setup(&(saudio_desc){
+		.num_channels = 2,
+		.stream_cb = audio_callback,
+		.logger.func = slog_func,
+	});
+	int audio_sample_rate = saudio_sample_rate();
+	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
+		app.devices.audio[i].sample_frequency = audio_sample_rate;
+	}
+	mtx_unlock(&app.audio_lock);
 
 	int width = sapp_width();
 	int height = sapp_height();
-
-	app.devices = (devices_t){ 0 };
 
 	buxn_screen_info_t screen_info = buxn_screen_info(width, height);
 	app.devices.screen = malloc(screen_info.screen_mem_size),
@@ -219,8 +281,11 @@ cleanup(void) {
 	sg_destroy_sampler(app.sampler);
 	cleanup_layer_texture(&app.foreground_texture);
 	cleanup_layer_texture(&app.background_texture);
+
+	saudio_shutdown();
 	free(app.vm);
 
+	mtx_destroy(&app.audio_lock);
 	sgp_shutdown();
 	sg_shutdown();
 }

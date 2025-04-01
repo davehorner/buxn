@@ -111,8 +111,9 @@ buxn_audio_state_t
 buxn_audio_get_samples(buxn_audio_t* c, float* stream, int len) {
 	int32_t s;
 	float* sample = stream;
-	float* end = sample + len;
+	float* end = sample + len * 2;  // TODO: handle mono
 	if(!c->advance || !c->period) { return BUXN_AUDIO_STOPPED; }
+
 	while(sample < end) {
 		c->count += c->advance;
 		c->i += c->count / c->period;
@@ -126,8 +127,8 @@ buxn_audio_get_samples(buxn_audio_t* c, float* stream, int len) {
 		}
 		s = (int8_t)(c->addr[c->i] + 0x80) * buxn_audio_envelope(c, c->age++);
 		// TODO: handle single channel audio
-		*sample++ += (float)(s * c->volume[0]) / (float)INT32_MAX;
-		*sample++ += (float)(s * c->volume[1]) / (float)INT32_MAX;
+		*sample++ += (float)(s * c->volume[0]) / (float)0x180 / (float)(-INT16_MIN);
+		*sample++ += (float)(s * c->volume[1]) / (float)0x180 / (float)(-INT16_MIN);
 	}
 
 	return !c->advance ? BUXN_AUDIO_FINISHED : BUXN_AUDIO_PLAYING;
