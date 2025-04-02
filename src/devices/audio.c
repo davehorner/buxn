@@ -148,3 +148,9 @@ buxn_audio_render(buxn_audio_t* c, float* stream, int len) {
 
 	return !c->advance ? BUXN_AUDIO_FINISHED : BUXN_AUDIO_PLAYING;
 }
+
+void
+buxn_audio_notify_finished(struct buxn_vm_s* vm, uint8_t device_id) {
+	uint16_t vector_addr = buxn_vm_dev_load2(vm, device_id);
+	if (vector_addr != 0) { buxn_vm_execute(vm, vector_addr); }
+}

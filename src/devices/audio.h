@@ -54,6 +54,9 @@ buxn_audio_dei(struct buxn_vm_s* vm, buxn_audio_t* device, uint8_t* mem, uint8_t
 void
 buxn_audio_deo(struct buxn_vm_s* vm, buxn_audio_t* device, uint8_t* mem, uint8_t port);
 
+void
+buxn_audio_notify_finished(struct buxn_vm_s* vm, uint8_t device_id);
+
 buxn_audio_state_t
 buxn_audio_render(buxn_audio_t* device, float* stream, int len);
 

@@ -11,6 +11,7 @@
 #include <bspscq.h>
 #include <math.h>
 #include <threads.h>
+#include <stdatomic.h>
 #include "vm.h"
 #include "devices/system.h"
 #include "devices/sokol_console.h"
@@ -55,6 +56,8 @@ static struct {
 	void* audio_queue_storage[BUXN_NUM_AUDIO_DEVICES];
 	buxn_audio_message_t audio_queue_messages[BUXN_NUM_AUDIO_DEVICES + 2];
 	int audio_message_index;
+	atomic_int audio_finished_count[BUXN_NUM_AUDIO_DEVICES];
+	int audio_finished_ack[BUXN_NUM_AUDIO_DEVICES];
 } app;
 
 static void
@@ -219,7 +222,9 @@ audio_callback(float* buffer, int num_frames, int num_channels) {
 	(void)num_channels;  // TODO: handle mono
 	memset(buffer, 0, sizeof(float) * num_frames * num_channels);
 	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
-		buxn_audio_render(&app.devices.audio[i], buffer, num_frames);
+		if (buxn_audio_render(&app.devices.audio[i], buffer, num_frames) == BUXN_AUDIO_FINISHED) {
+			atomic_fetch_add_explicit(&app.audio_finished_count[i], 1, memory_order_relaxed);
+		}
 	}
 }
 
@@ -304,6 +309,14 @@ cleanup(void) {
 static void
 frame(void) {
 	if (buxn_system_exit_code(app.vm) > 0) { sapp_quit(); }
+
+	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
+		int num_finished = atomic_load_explicit(&app.audio_finished_count[i], memory_order_relaxed);
+		if (num_finished != app.audio_finished_ack[i]) {
+			buxn_audio_notify_finished(app.vm, BUXN_DEVICE_AUDIO_0 + i);
+			app.audio_finished_ack[i] = num_finished;
+		}
+	}
 
 	uint64_t now = stm_now();
 	double time_diff = stm_us(stm_diff(now, app.last_frame));
