@@ -123,13 +123,12 @@ buxn_audio_deo(struct buxn_vm_s* vm, buxn_audio_t* device, uint8_t* mem, uint8_t
 }
 
 buxn_audio_state_t
-buxn_audio_render(buxn_audio_t* c, float* stream, int len) {
+buxn_audio_render(buxn_audio_t* c, float* stream, int len, int num_channels) {
 	int32_t s;
-	float* sample = stream;
-	float* end = sample + len * 2;  // TODO: handle mono
+	float* end = stream + len * num_channels;
 	if(!c->advance || !c->period) { return BUXN_AUDIO_STOPPED; }
 
-	while(sample < end) {
+	while(stream < end) {
 		c->count += c->advance;
 		c->i += c->count / c->period;
 		c->count %= c->period;
@@ -141,9 +140,19 @@ buxn_audio_render(buxn_audio_t* c, float* stream, int len) {
 			c->i %= c->len;
 		}
 		s = (int8_t)(c->addr[c->i] + 0x80) * buxn_audio_envelope(c, c->age++);
-		// TODO: handle single channel audio
-		*sample++ += (float)(s * c->volume[0]) / (float)0x180 / (float)(-INT16_MIN);
-		*sample++ += (float)(s * c->volume[1]) / (float)0x180 / (float)(-INT16_MIN);
+		if (num_channels < BUXN_AUDIO_PREFERRED_NUM_CHANNELS) {
+			// If fewer channels, down-mix
+			float sample = 0.f;
+			for (int i = 0; i < BUXN_AUDIO_PREFERRED_NUM_CHANNELS; ++i) {
+				sample += (float)(s * c->volume[i]) / (float)0x180 / (float)(-INT16_MIN);
+			}
+			*stream++ = sample * 0.5f;
+		} else {
+			// If more channels, duplicate
+			for (int i = 0; i < num_channels; ++i) {
+				*stream++ = (float)(s * c->volume[i % BUXN_AUDIO_PREFERRED_NUM_CHANNELS]) / (float)0x180 / (float)(-INT16_MIN);
+			}
+		}
 	}
 
 	return !c->advance ? BUXN_AUDIO_FINISHED : BUXN_AUDIO_PLAYING;

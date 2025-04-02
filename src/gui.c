@@ -219,10 +219,9 @@ audio_callback(float* buffer, int num_frames, int num_channels) {
 	}
 
 	// Render audio
-	(void)num_channels;  // TODO: handle mono
 	memset(buffer, 0, sizeof(float) * num_frames * num_channels);
 	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
-		if (buxn_audio_render(&app.devices.audio[i], buffer, num_frames) == BUXN_AUDIO_FINISHED) {
+		if (buxn_audio_render(&app.devices.audio[i], buffer, num_frames, num_channels) == BUXN_AUDIO_FINISHED) {
 			atomic_fetch_add_explicit(&app.audio_finished_count[i], 1, memory_order_relaxed);
 		}
 	}
@@ -245,7 +244,7 @@ init(void) {
 		app.devices.audio[i].sample_frequency = BUXN_AUDIO_PREFERRED_SAMPLE_RATE;
 	}
 	saudio_setup(&(saudio_desc){
-		.num_channels = BUXN_AUDIO_PREFERRED_NUM_CHANNELS,  // TODO: deal with mono
+		.num_channels = BUXN_AUDIO_PREFERRED_NUM_CHANNELS,
 		.sample_rate = BUXN_AUDIO_PREFERRED_SAMPLE_RATE,
 		.stream_cb = audio_callback,
 		.logger.func = slog_func,

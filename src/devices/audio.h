@@ -58,7 +58,7 @@ void
 buxn_audio_notify_finished(struct buxn_vm_s* vm, uint8_t device_id);
 
 buxn_audio_state_t
-buxn_audio_render(buxn_audio_t* device, float* stream, int len);
+buxn_audio_render(buxn_audio_t* device, float* stream, int len, int num_channels);
 
 void
 buxn_audio_receive(const buxn_audio_message_t* message);
