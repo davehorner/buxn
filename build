@@ -41,7 +41,7 @@ build_linux() {
 		-Wl,--separate-debug-file \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{cli.c.o,vm.c.o} \
-		${OBJ_DIR}/src/devices/{stdio_console.c.o,system.c.o,datetime.c.o} \
+		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o} \
 		-o ${BIN_DIR}/buxn-cli
 
 	$CXX \
@@ -51,7 +51,7 @@ build_linux() {
 		-lasound \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{gui.c.o,vm.c.o,sokol.c.o} \
-		${OBJ_DIR}/src/devices/{sokol_console.c.o,system.c.o,datetime.c.o,screen.c.o,mouse.c.o,audio.c.o} \
+		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,screen.c.o,mouse.c.o,audio.c.o} \
 		-o ${BIN_DIR}/buxn-gui
 
 	echo "Done"
@@ -94,8 +94,7 @@ compile_common() {
 	compile src/cli.c $COMPILE_FLAGS
 	compile src/gui.c $COMPILE_FLAGS
 	compile src/vm.c $COMPILE_FLAGS
-	compile src/devices/stdio_console.c $COMPILE_FLAGS
-	compile src/devices/sokol_console.c $COMPILE_FLAGS
+	compile src/devices/console.c $COMPILE_FLAGS
 	compile src/devices/system.c $COMPILE_FLAGS
 	compile src/devices/screen.c $COMPILE_FLAGS
 	compile src/devices/mouse.c $COMPILE_FLAGS

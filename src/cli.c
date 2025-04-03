@@ -2,13 +2,13 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "vm.h"
-#include "devices/stdio_console.h"
+#include "devices/console.h"
 #include "devices/system.h"
 #include "devices/datetime.h"
 
 typedef struct {
 	buxn_system_t system;
-	buxn_stdio_console_t console;
+	buxn_console_t console;
 } devices_t;
 
 uint8_t
@@ -18,7 +18,7 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 		case BUXN_DEVICE_SYSTEM:
 			return buxn_system_dei(vm, &devices->system, address);
 		case BUXN_DEVICE_CONSOLE:
-			return buxn_stdio_console_dei(vm, &devices->console, address);
+			return buxn_console_dei(vm, &devices->console, address);
 		case BUXN_DEVICE_DATETIME:
 			return buxn_datetime_dei(vm, address);
 		default:
@@ -34,9 +34,23 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			buxn_system_deo(vm, &devices->system, address);
 			break;
 		case BUXN_DEVICE_CONSOLE:
-			buxn_stdio_console_deo(vm, &devices->console, address);
+			buxn_console_deo(vm, &devices->console, address);
 			break;
 	}
+}
+
+void
+buxn_console_handle_write(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
+	(void)vm;
+	(void)device;
+	fputc(c, stdout);
+}
+
+extern void
+buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
+	(void)vm;
+	(void)device;
+	fputc(c, stderr);
 }
 
 int
@@ -47,13 +61,7 @@ main(int argc, const char* argv[]) {
 	}
 	int exit_code = 0;
 
-	devices_t devices = {
-		.console = {
-			.read = stdin,
-			.write = stdout,
-			.error = stderr,
-		},
-	};
+	devices_t devices = { 0 };
 
 	buxn_vm_t* vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
 	vm->userdata = &devices;
@@ -75,23 +83,29 @@ main(int argc, const char* argv[]) {
 	}
 	fclose(rom_file);
 
-	buxn_stdio_console_init(vm, &devices.console, argc - 2, argv + 2);
+	buxn_console_init(vm, &devices.console, argc - 2, argv + 2);
 
 	buxn_vm_execute(vm, BUXN_RESET_VECTOR);
 	if ((exit_code = buxn_system_exit_code(vm)) > 0) {
 		goto end;
 	}
 
-	buxn_stdio_console_send_args(vm, &devices.console);
+	buxn_console_send_args(vm, &devices.console);
 	if ((exit_code = buxn_system_exit_code(vm)) > 0) {
 		goto end;
 	}
 
 	while (
 		buxn_system_exit_code(vm) < 0
-		&& buxn_stdio_console_should_update_io(vm, &devices.console)
+		&& buxn_console_should_send_input(vm)
 	) {
-		buxn_stdio_console_update_io(vm, &devices.console);
+		char ch = fgetc(stdin);
+		if (ch != EOF) {
+			buxn_console_send_input(vm, &devices.console, ch);
+		} else {
+			buxn_console_send_input_end(vm, &devices.console);
+			break;
+		}
 	}
 
 	exit_code = buxn_system_exit_code(vm);

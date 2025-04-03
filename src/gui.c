@@ -14,7 +14,7 @@
 #include <stdatomic.h>
 #include "vm.h"
 #include "devices/system.h"
-#include "devices/sokol_console.h"
+#include "devices/console.h"
 #include "devices/screen.h"
 #include "devices/mouse.h"
 #include "devices/datetime.h"
@@ -25,14 +25,20 @@
 #endif
 
 #define FRAME_TIME_US (1000000.0 / 60.0)
+#define CONSOLE_BUFFER_SIZE 256
 
 typedef struct {
 	buxn_system_t system;
-	buxn_sokol_console_t console;
+	buxn_console_t console;
 	buxn_mouse_t mouse;
 	buxn_audio_t audio[BUXN_NUM_AUDIO_DEVICES];
 	buxn_screen_t* screen;
 } devices_t;
+
+typedef struct {
+	int pos;
+	char data[CONSOLE_BUFFER_SIZE];
+} console_buf_t;
 
 typedef struct {
 	sg_image gpu;
@@ -47,6 +53,9 @@ static struct {
 	devices_t devices;
 	uint64_t last_frame;
 	double frame_time_accumulator;
+
+	console_buf_t console_out_buf;
+	console_buf_t console_err_buf;
 
 	sg_sampler sampler;
 	layer_texture_t background_texture;
@@ -94,7 +103,7 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 		case BUXN_DEVICE_SYSTEM:
 			return buxn_system_dei(vm, &devices->system, address);
 		case BUXN_DEVICE_CONSOLE:
-			return buxn_sokol_console_dei(vm, &devices->console, address);
+			return buxn_console_dei(vm, &devices->console, address);
 		case BUXN_DEVICE_SCREEN:
 			return buxn_screen_dei(vm, devices->screen, address);
 		case BUXN_DEVICE_AUDIO_0:
@@ -125,7 +134,7 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			buxn_system_deo(vm, &devices->system, address);
 			break;
 		case BUXN_DEVICE_CONSOLE:
-			buxn_sokol_console_deo(vm, &devices->console, address);
+			buxn_console_deo(vm, &devices->console, address);
 			break;
 		case BUXN_DEVICE_SCREEN:
 			buxn_screen_deo(vm, devices->screen, address);
@@ -145,6 +154,41 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			buxn_mouse_deo(vm, &devices->mouse, address);
 			break;
 	}
+}
+
+static inline void
+buxn_console_putc(
+	int level,
+	console_buf_t* buffer,
+	char ch
+) {
+	bool should_flush = false;
+	if (ch != '\n') {
+		buffer->data[buffer->pos++] = ch;
+		should_flush = buffer->pos >= (int)(sizeof(buffer->data) - 1);
+	} else {
+		should_flush = true;
+	}
+
+	if (should_flush) {
+		buffer->data[buffer->pos] = '\0';
+		slog_func("uxn", level, level, buffer->data, __LINE__, __FILE__, 0);
+		buffer->pos = 0;
+	}
+}
+
+void
+buxn_console_handle_write(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
+	(void)vm;
+	(void)device;
+	buxn_console_putc(3, &app.console_out_buf, c);
+}
+
+extern void
+buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
+	(void)vm;
+	(void)device;
+	buxn_console_putc(1, &app.console_err_buf, c);
 }
 
 static void
@@ -276,13 +320,13 @@ init(void) {
 	app.vm->userdata = &app.devices;
 	app.vm->memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS;
 	buxn_vm_reset(app.vm, BUXN_VM_RESET_ALL);
-	buxn_sokol_console_init(app.vm, &app.devices.console, app.argc, app.argv);
+	buxn_console_init(app.vm, &app.devices.console, app.argc, app.argv);
 
 	if (app.argc >= 2 && try_load_rom(app.argv[1])) {
 		sapp_set_window_title(app.argv[1]);
-		buxn_sokol_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
+		buxn_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
 		buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
-		buxn_sokol_console_send_args(app.vm, &app.devices.console);
+		buxn_console_send_args(app.vm, &app.devices.console);
 	}
 
 	app.last_frame = stm_now();
@@ -482,7 +526,7 @@ event(const sapp_event* event) {
 					| BUXN_VM_RESET_ZERO_PAGE
 				);
 				sapp_set_window_title(sapp_get_dropped_file_path(0));
-				buxn_sokol_console_init(app.vm, &app.devices.console, 0, NULL);
+				buxn_console_init(app.vm, &app.devices.console, 0, NULL);
 				buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
 			}
 			break;
