@@ -17,8 +17,11 @@
 #define BUXN_DEVICE_AUDIO_2  0x50
 #define BUXN_DEVICE_AUDIO_3  0x60
 #define BUXN_DEVICE_MOUSE    0x90
+#define BUXN_DEVICE_FILE_0   0xa0
+#define BUXN_DEVICE_FILE_1   0xb0
 #define BUXN_DEVICE_DATETIME 0xc0
 #define BUXN_NUM_AUDIO_DEVICES 4
+#define BUXN_NUM_FILE_DEVICES  2
 
 #define BUXN_VM_RESET_NONE   0
 #define BUXN_VM_RESET_ZERO_PAGE (1 << 1)
@@ -31,6 +34,9 @@
 	|BUXN_VM_RESET_DEVICE \
 	|BUXN_VM_RESET_STACK)
 #define BUXN_VM_RESET_SOFT (BUXN_RESET_HIGH_MEM | BUXN_RESET_STACK)
+
+#define BUXN_MEM_ADDR_MASK 0xffff
+#define BUXN_DEV_ADDR_MASK 0x00ff
 
 typedef struct buxn_vm_s {
 	// User config, not touched by buxn
@@ -63,28 +69,21 @@ buxn_device_port(uint8_t address) {
 	return address & 0x0f;
 }
 
-static inline uint8_t
-buxn_vm_mem_load1(buxn_vm_t* vm, uint16_t addr) {
-	return vm->memory[addr];
+static inline uint16_t
+buxn_vm_load2(uint8_t* mem, uint16_t addr, uint16_t addr_mask) {
+	uint16_t hi = (uint16_t)mem[(addr + 0) & addr_mask] << 8;
+	uint16_t lo = (uint16_t)mem[(addr + 1) & addr_mask];
+	return hi | lo;
 }
 
 static inline uint16_t
 buxn_vm_mem_load2(buxn_vm_t* vm, uint16_t addr) {
-	uint16_t hi = (uint16_t)buxn_vm_mem_load1(vm, addr) << 8;
-	uint16_t lo = (uint16_t)buxn_vm_mem_load1(vm, (addr + 1) & 0xffff);
-	return hi | lo;
-}
-
-static inline uint8_t
-buxn_vm_dev_load1(buxn_vm_t* vm, uint8_t addr) {
-	return vm->device[addr];
+	return buxn_vm_load2(vm->memory, addr, BUXN_MEM_ADDR_MASK);
 }
 
 static inline uint16_t
 buxn_vm_dev_load2(buxn_vm_t* vm, uint8_t addr) {
-	uint16_t hi = (uint16_t)buxn_vm_dev_load1(vm, addr) << 8;
-	uint16_t lo = (uint16_t)buxn_vm_dev_load1(vm, (addr + 1) & 0xff);
-	return hi | lo;
+	return buxn_vm_load2(vm->device, addr, BUXN_DEV_ADDR_MASK);
 }
 
 // Must be provided by the host program

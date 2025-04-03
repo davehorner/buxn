@@ -41,13 +41,6 @@ buxn_audio_get_vu(buxn_audio_t* device) {
 	return (sum[0] << 4) | sum[1];
 }
 
-static uint16_t
-buxn_audio_load2(uint8_t* mem) {
-	uint16_t hi = (uint16_t)mem[0] << 8;
-	uint16_t lo = (uint16_t)mem[1];
-	return hi | lo;
-}
-
 void
 buxn_audio_receive(const buxn_audio_message_t* message) {
 	buxn_audio_t* c = message->device;
@@ -100,9 +93,9 @@ void
 buxn_audio_deo(struct buxn_vm_s* vm, buxn_audio_t* device, uint8_t* mem, uint8_t port) {
 	if(port == 0xf) {
 		uint8_t pitch = mem[0xf] & 0x7f;
-		uint16_t addr = buxn_audio_load2(mem + 0xc);
-		uint16_t adsr = buxn_audio_load2(mem + 0x8);
-		uint16_t len = buxn_audio_load2(mem + 0xa);
+		uint16_t addr = buxn_vm_load2(mem, 0xc, 0x0f);
+		uint16_t adsr = buxn_vm_load2(mem, 0x8, 0x0f);
+		uint16_t len = buxn_vm_load2(mem, 0xa, 0x0f);
 		if(len > 0x10000 - addr)
 			len = 0x10000 - addr;
 		uint8_t* sample_ptr = &vm->memory[addr];
