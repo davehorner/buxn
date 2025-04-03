@@ -9,6 +9,7 @@
 #include <sokol_glue.h>
 #include <sokol_gp.h>
 #include <bspscq.h>
+#include <physfs.h>
 #include <math.h>
 #include <threads.h>
 #include <stdatomic.h>
@@ -19,6 +20,7 @@
 #include "devices/mouse.h"
 #include "devices/datetime.h"
 #include "devices/audio.h"
+#include "devices/file.h"
 
 #if defined(__linux__)
 #include <X11/Xlib.h>
@@ -33,6 +35,7 @@ typedef struct {
 	buxn_mouse_t mouse;
 	buxn_audio_t audio[BUXN_NUM_AUDIO_DEVICES];
 	buxn_screen_t* screen;
+	buxn_file_t file[BUXN_NUM_FILE_DEVICES];
 } devices_t;
 
 typedef struct {
@@ -118,6 +121,14 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 			);
 		case BUXN_DEVICE_MOUSE:
 			return buxn_mouse_dei(vm, &devices->mouse, address);
+		case BUXN_DEVICE_FILE_0:
+		case BUXN_DEVICE_FILE_1:
+			return buxn_file_dei(
+				vm,
+				devices->file + (device_id - BUXN_DEVICE_FILE_0) / (BUXN_DEVICE_FILE_1 - BUXN_DEVICE_FILE_0),
+				vm->device + device_id,
+				buxn_device_port(address)
+			);
 		case BUXN_DEVICE_DATETIME:
 			return buxn_datetime_dei(vm, address);
 		default:
@@ -152,6 +163,15 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			break;
 		case BUXN_DEVICE_MOUSE:
 			buxn_mouse_deo(vm, &devices->mouse, address);
+			break;
+		case BUXN_DEVICE_FILE_0:
+		case BUXN_DEVICE_FILE_1:
+			buxn_file_deo(
+				vm,
+				devices->file + (device_id - BUXN_DEVICE_FILE_0) / (BUXN_DEVICE_FILE_1 - BUXN_DEVICE_FILE_0),
+				vm->device + device_id,
+				buxn_device_port(address)
+			);
 			break;
 	}
 }
@@ -273,6 +293,11 @@ audio_callback(float* buffer, int num_frames, int num_channels) {
 
 static void
 init(void) {
+	PHYSFS_init(app.argv[0]);
+#ifdef __linux__
+	PHYSFS_mount(".", "", 1);
+#endif
+
 	app.devices = (devices_t){ 0 };
 
 	stm_setup();
@@ -347,6 +372,8 @@ cleanup(void) {
 
 	sgp_shutdown();
 	sg_shutdown();
+
+	PHYSFS_deinit();
 }
 
 static void

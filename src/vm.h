@@ -37,6 +37,7 @@
 
 #define BUXN_MEM_ADDR_MASK 0xffff
 #define BUXN_DEV_ADDR_MASK 0x00ff
+#define BUXN_DEV_PRIV_ADDR_MASK 0x000f
 
 typedef struct buxn_vm_s {
 	// User config, not touched by buxn

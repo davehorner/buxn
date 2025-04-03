@@ -24,15 +24,19 @@ build_linux() {
 	export CC=clang
 	export CXX=clang++
 
-	COMMON_FLAGS="-Wall -Wextra -pedantic -Werror -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -DSOKOL_GLCORE"
 	Release="-O3 -flto -DNDEBUG"
 	Debug="-g -fsanitize=undefined,address -D_DEBUG"
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
 
-	export COMPILE_FLAGS="${COMMON_FLAGS} ${BUILD_TYPE_FLAGS}"
+	DEV_FLAGS="-Wall -Wextra -pedantic -Werror"
+	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -DSOKOL_GLCORE"
+	VM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS}"
+	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1"
 
 	compile_common
-	compile src/sokol.c $COMPILE_FLAGS
+	compile src/libs.c $PROGRAM_FLAGS
+	compile deps/physfs/src/physfs_platform_unix.c $PHYSFS_FLAGS
+	compile deps/physfs/src/physfs_platform_posix.c $PHYSFS_FLAGS
 	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
 	echo "Linking..."
 
@@ -40,8 +44,10 @@ build_linux() {
 		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
 		${BUILD_TYPE_FLAGS} \
-		${OBJ_DIR}/src/{cli.c.o,vm.c.o} \
-		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o} \
+		${OBJ_DIR}/src/{cli.c.o,vm.c.o,physfs.c.o} \
+		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o} \
+		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o} \
+		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
 		-o ${BIN_DIR}/buxn-cli
 
 	$CXX \
@@ -50,8 +56,10 @@ build_linux() {
 		-lGL -lX11 -lXcursor -lXi \
 		-lasound \
 		${BUILD_TYPE_FLAGS} \
-		${OBJ_DIR}/src/{gui.c.o,vm.c.o,sokol.c.o} \
-		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,screen.c.o,mouse.c.o,audio.c.o} \
+		${OBJ_DIR}/src/{gui.c.o,vm.c.o,physfs.c.o,libs.c.o} \
+		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o,screen.c.o,mouse.c.o,audio.c.o} \
+		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o} \
+		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
 		-o ${BIN_DIR}/buxn-gui
 
 	echo "Done"
@@ -70,12 +78,14 @@ build_cosmo() {
 	export CC=cosmocc
 	export CXX=cosmoc++
 
-	COMMON_FLAGS="-Wall -Wextra -pedantic -Werror -mtiny -mclang"
-	Release="-O3"
-	Debug="-mdbg"
+	Release="-O3 -DNDEBUG"
+	Debug="-mdbg -D_DEBUG"
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
 
-	export COMPILE_FLAGS="${COMMON_FLAGS} ${BUILD_TYPE_FLAGS}"
+	DEV_FLAGS="-Wall -Wextra -pedantic -Werror"
+	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -std=c11 -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src"
+	VM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS}"
+	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1"
 
 	compile_common
 	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
@@ -91,15 +101,27 @@ build_cosmo() {
 }
 
 compile_common() {
-	compile src/cli.c $COMPILE_FLAGS
-	compile src/gui.c $COMPILE_FLAGS
-	compile src/vm.c $COMPILE_FLAGS
-	compile src/devices/console.c $COMPILE_FLAGS
-	compile src/devices/system.c $COMPILE_FLAGS
-	compile src/devices/screen.c $COMPILE_FLAGS
-	compile src/devices/mouse.c $COMPILE_FLAGS
-	compile src/devices/audio.c $COMPILE_FLAGS
-	compile src/devices/datetime.c $COMPILE_FLAGS
+	# Program
+	compile src/cli.c $PROGRAM_FLAGS
+	compile src/physfs.c $PROGRAM_FLAGS
+	compile src/gui.c $PROGRAM_FLAGS
+
+	# VM
+	compile src/vm.c $VM_FLAGS
+	compile src/devices/console.c $VM_FLAGS
+	compile src/devices/system.c $VM_FLAGS
+	compile src/devices/screen.c $VM_FLAGS
+	compile src/devices/mouse.c $VM_FLAGS
+	compile src/devices/audio.c $VM_FLAGS
+	compile src/devices/datetime.c $VM_FLAGS
+	compile src/devices/file.c $VM_FLAGS
+
+	# PhysFS
+	compile deps/physfs/src/physfs.c $PHYSFS_FLAGS
+	compile deps/physfs/src/physfs_unicode.c $PHYSFS_FLAGS
+	compile deps/physfs/src/physfs_byteorder.c $PHYSFS_FLAGS
+	compile deps/physfs/src/physfs_archiver_zip.c $PHYSFS_FLAGS
+	compile deps/physfs/src/physfs_archiver_dir.c $PHYSFS_FLAGS
 }
 
 compile() {

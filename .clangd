@@ -10,4 +10,5 @@ CompileFlags:
     - -I./deps/sokol
     - -I./deps/sokol_gp
     - -I./deps/blibs
+    - -I./deps/physfs/src
     - -DSOKOL_GLCORE

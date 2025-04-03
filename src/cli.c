@@ -1,26 +1,38 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <physfs.h>
 #include "vm.h"
 #include "devices/console.h"
 #include "devices/system.h"
 #include "devices/datetime.h"
+#include "devices/file.h"
 
 typedef struct {
 	buxn_system_t system;
 	buxn_console_t console;
+	buxn_file_t file[BUXN_NUM_FILE_DEVICES];
 } devices_t;
 
 uint8_t
 buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 	devices_t* devices = vm->userdata;
-	switch (buxn_device_id(address)) {
+	uint8_t device_id = buxn_device_id(address);
+	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
 			return buxn_system_dei(vm, &devices->system, address);
 		case BUXN_DEVICE_CONSOLE:
 			return buxn_console_dei(vm, &devices->console, address);
 		case BUXN_DEVICE_DATETIME:
 			return buxn_datetime_dei(vm, address);
+		case BUXN_DEVICE_FILE_0:
+		case BUXN_DEVICE_FILE_1:
+			return buxn_file_dei(
+				vm,
+				devices->file + (device_id - BUXN_DEVICE_FILE_0) / (BUXN_DEVICE_FILE_1 - BUXN_DEVICE_FILE_0),
+				vm->device + device_id,
+				buxn_device_port(address)
+			);
 		default:
 			return vm->device[address];
 	}
@@ -29,12 +41,21 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 void
 buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 	devices_t* devices = vm->userdata;
-	switch (buxn_device_id(address)) {
+	uint8_t device_id = buxn_device_id(address);
+	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
 			buxn_system_deo(vm, &devices->system, address);
 			break;
 		case BUXN_DEVICE_CONSOLE:
 			buxn_console_deo(vm, &devices->console, address);
+		case BUXN_DEVICE_FILE_0:
+		case BUXN_DEVICE_FILE_1:
+			buxn_file_deo(
+				vm,
+				devices->file + (device_id - BUXN_DEVICE_FILE_0) / (BUXN_DEVICE_FILE_1 - BUXN_DEVICE_FILE_0),
+				vm->device + device_id,
+				buxn_device_port(address)
+			);
 			break;
 	}
 }
@@ -60,6 +81,11 @@ main(int argc, const char* argv[]) {
 		return 1;
 	}
 	int exit_code = 0;
+
+	PHYSFS_init(argv[0]);
+#ifdef __linux__
+	PHYSFS_mount(".", "", 1);
+#endif
 
 	devices_t devices = { 0 };
 
@@ -112,5 +138,6 @@ main(int argc, const char* argv[]) {
 	if (exit_code < 0) { exit_code = 0; }
 end:
 	free(vm);
+	PHYSFS_deinit();
 	return exit_code;
 }
