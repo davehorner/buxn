@@ -518,7 +518,7 @@ event(const sapp_event* event) {
 		} break;
 		case SAPP_EVENTTYPE_MOUSE_SCROLL:
 			app.devices.mouse.scroll_x = (int16_t)event->scroll_x;
-			app.devices.mouse.scroll_y = (int16_t)event->scroll_y;
+			app.devices.mouse.scroll_y = -(int16_t)event->scroll_y;
 			update_mouse = true;
 			break;
 		case SAPP_EVENTTYPE_MOUSE_MOVE: {
@@ -561,7 +561,10 @@ event(const sapp_event* event) {
 			break;
 	}
 
-	if (update_mouse) { buxn_mouse_update(app.vm); }
+	if (update_mouse) {
+		buxn_mouse_update(app.vm);
+		app.devices.mouse.scroll_x = app.devices.mouse.scroll_y = 0;
+	}
 }
 
 sapp_desc
