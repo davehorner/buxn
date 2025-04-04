@@ -24,7 +24,7 @@ build_linux() {
 	export CC=clang
 	export CXX=clang++
 
-	Release="-O3 -flto -DNDEBUG"
+	Release="-g -O3 -flto -DNDEBUG"
 	Debug="-g -fsanitize=undefined,address -D_DEBUG"
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
 

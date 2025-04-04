@@ -711,7 +711,11 @@ sokol_main(int argc, char* argv[]) {
 	static blog_file_logger_options_t options;
 	options.file = stderr;
 	options.with_colors = true;
+#ifdef _DEBUG
 	blog_add_file_logger(BLOG_LEVEL_DEBUG, &options);
+#else
+	blog_add_file_logger(BLOG_LEVEL_INFO, &options);
+#endif
 
 	memset(&app, 0, sizeof(app));
 	app.argc = argc;
