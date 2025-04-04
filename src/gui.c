@@ -49,6 +49,16 @@ typedef struct {
 	size_t size;
 } layer_texture_t;
 
+typedef struct {
+	int actual_width;
+	int actual_height;
+	float draw_scale;
+	float scaled_width;
+	float scaled_height;
+	float x_margin;
+	float y_margin;
+} draw_info_t;
+
 static struct {
 	int argc;
 	const char** argv;
@@ -174,6 +184,32 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			);
 			break;
 	}
+}
+
+static void
+get_draw_info(draw_info_t* out) {
+	int actual_width = sapp_width();
+	int actual_height = sapp_height();
+	int fb_width = app.devices.screen->width;
+	int fb_height = app.devices.screen->height;
+
+	float x_scale = (float)actual_width / (float)fb_width;
+	float y_scale = (float)actual_height / (float)fb_height;
+	float draw_scale = x_scale < y_scale ? x_scale : y_scale;
+	float scaled_width = (float)fb_width * draw_scale;
+	float scaled_height = (float)fb_height * draw_scale;
+	float x_margin = floorf(((float)actual_width - scaled_width) * 0.5f);
+	float y_margin = floorf(((float)actual_height - scaled_height) * 0.5f);
+
+	*out = (draw_info_t){
+		.actual_width = actual_width,
+		.actual_height = actual_height,
+		.draw_scale = draw_scale,
+		.scaled_width = scaled_width,
+		.scaled_height = scaled_height,
+		.x_margin = x_margin,
+		.y_margin = y_margin,
+	};
 }
 
 static inline void
@@ -439,34 +475,24 @@ frame(void) {
 		}
 	}
 
-	int actual_width = sapp_width();
-	int actual_height = sapp_height();
-	int fb_width = app.devices.screen->width;
-	int fb_height = app.devices.screen->height;
-
-	float x_scale = (float)actual_width / (float)fb_width;
-	float y_scale = (float)actual_height / (float)fb_height;
-	float draw_scale = x_scale < y_scale ? x_scale : y_scale;
-	float scaled_width = (float)fb_width * draw_scale;
-	float scaled_height = (float)fb_height * draw_scale;
-	float x_margin = floorf(((float)actual_width - scaled_width) * 0.5f);
-	float y_margin = floorf(((float)actual_height - scaled_height) * 0.5f);
+	draw_info_t draw_info;
+	get_draw_info(&draw_info);
 
 	sg_begin_pass(&(sg_pass){ .swapchain = sglue_swapchain() });
 	{
-		sgp_begin(actual_width, actual_height);
+		sgp_begin(draw_info.actual_width, draw_info.actual_height);
 		{
-			sgp_viewport(0, 0, actual_width, actual_height);
-			sgp_project(0.f, (float)actual_width, 0.f, (float)actual_height);
+			sgp_viewport(0, 0, draw_info.actual_width, draw_info.actual_height);
+			sgp_project(0.f, (float)draw_info.actual_width, 0.f, (float)draw_info.actual_height);
 			sgp_set_blend_mode(SGP_BLENDMODE_BLEND);
 
 			sgp_set_sampler(0, app.sampler);
 
 			sgp_set_image(0, app.background_texture.gpu);
-			sgp_draw_filled_rect(x_margin, y_margin, scaled_width, scaled_height);
+			sgp_draw_filled_rect(draw_info.x_margin, draw_info.y_margin, draw_info.scaled_width, draw_info.scaled_height);
 
 			sgp_set_image(0, app.foreground_texture.gpu);
-			sgp_draw_filled_rect(x_margin, y_margin, scaled_width, scaled_height);
+			sgp_draw_filled_rect(draw_info.x_margin, draw_info.y_margin, draw_info.scaled_width, draw_info.scaled_height);
 		}
 		sgp_flush();
 		sgp_end();
@@ -522,23 +548,14 @@ event(const sapp_event* event) {
 			update_mouse = true;
 			break;
 		case SAPP_EVENTTYPE_MOUSE_MOVE: {
-			int actual_width = sapp_width();
-			int actual_height = sapp_height();
-			int fb_width = app.devices.screen->width;
-			int fb_height = app.devices.screen->height;
-			float x_scale = (float)actual_width / (float)fb_width;
-			float y_scale = (float)actual_height / (float)fb_height;
-			float draw_scale = x_scale < y_scale ? x_scale : y_scale;
-			float scaled_width = (float)fb_width * draw_scale;
-			float scaled_height = (float)fb_height * draw_scale;
-			float x_margin = floorf(((float)actual_width - scaled_width) * 0.5f);
-			float y_margin = floorf(((float)actual_height - scaled_height) * 0.5f);
+			draw_info_t draw_info;
+			get_draw_info(&draw_info);
 
-			float mouse_x = (float)(event->mouse_x - x_margin) / draw_scale;
-			float mouse_y = (float)(event->mouse_y - y_margin) / draw_scale;
+			float mouse_x = (float)(event->mouse_x - draw_info.x_margin) / draw_info.draw_scale;
+			float mouse_y = (float)(event->mouse_y - draw_info.y_margin) / draw_info.draw_scale;
 
-			app.devices.mouse.x = (uint16_t)clamp(mouse_x, 0.f, (float)fb_width);
-			app.devices.mouse.y = (uint16_t)clamp(mouse_y, 0.f, (float)fb_height);
+			app.devices.mouse.x = (uint16_t)clamp(mouse_x, 0.f, (float)app.devices.screen->width);
+			app.devices.mouse.y = (uint16_t)clamp(mouse_y, 0.f, (float)app.devices.screen->height);
 			update_mouse = true;
 		} break;
 		case SAPP_EVENTTYPE_FILES_DROPPED:
