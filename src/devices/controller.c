@@ -1,6 +1,6 @@
 #include "controller.h"
 #include "../vm.h"
-#include <stdio.h>
+
 static void
 buxn_controller_call_vector(struct buxn_vm_s* vm) {
 	uint16_t vector_addr = buxn_vm_dev_load2(vm, 0x80);
