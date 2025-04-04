@@ -2,11 +2,11 @@
 #include "vm.h"
 
 static const buxn_metadata_t BUXN_NO_METADATA = { 0 };
-#include <stdio.h>
+
 static buxn_metadata_t
 buxn_metadata_parse_internal(uint8_t* addr, uint8_t* max_addr) {
 	uint8_t version = *addr;
-	const char* content = (char*)++addr;
+	char* content = (char*)++addr;
 
 	while (1) {
 		if (addr >= max_addr) { return BUXN_NO_METADATA; }
@@ -19,12 +19,14 @@ buxn_metadata_parse_internal(uint8_t* addr, uint8_t* max_addr) {
 	uint8_t* extension_address = NULL;
 	uint8_t num_extensions = 0;
 
-	if (addr < max_addr - 1) {
-		extension_address = addr + 1;
-		num_extensions = *extension_address;
-		if ((max_addr - extension_address) / 3 < num_extensions) {
-			extension_address = NULL;
-			num_extensions = 0;
+	if (addr < max_addr - 2) {
+		num_extensions = *(addr + 1);
+		if (num_extensions > 0) {
+			extension_address = addr + 2;
+			if ((max_addr - extension_address) / 3 < num_extensions) {
+				extension_address = NULL;
+				num_extensions = 0;
+			}
 		}
 	}
 

@@ -126,6 +126,33 @@ sokol_log(const char* tag, uint32_t log_level, uint32_t log_item, const char* me
 	blog_write(blog_level, filename, line_nr, "%s(%d): %s", tag, log_item, message);
 }
 
+static void
+apply_metadata(buxn_metadata_t metadata) {
+	char* ch = metadata.content;
+	while (ch < metadata.content + metadata.content_len && *ch != '\n') {
+		++ch;
+	}
+	// It is VM so the memory is writable
+	// We can avoid allocation
+	char old_char = *ch;
+	*ch = '\0';
+	sapp_set_window_title(metadata.content);
+	*ch = old_char;
+
+	for (int i = 0; i < metadata.num_extensions; ++i) {
+		buxn_metadata_ext_t ext = buxn_metadata_get_ext(&metadata, i);
+
+		switch (ext.id) {
+			case BUXN_METADATA_EXT_ICON_CHR:
+				BLOG_TRACE("Has chr icon");
+				break;
+			case BUXN_METADATA_EXT_ICON_ICN:
+				BLOG_TRACE("Has icn icon");
+				break;
+		}
+	}
+}
+
 uint8_t
 buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 	devices_t* devices = vm->userdata;
@@ -217,14 +244,13 @@ buxn_system_debug(buxn_vm_t* vm, uint8_t value) {
 
 void
 buxn_system_set_metadata(buxn_vm_t* vm, uint16_t address) {
-	BLOG_TRACE("Metatadata");
 	buxn_metadata_t metadata = buxn_metadata_parse_from_memory(vm, address);
 	if (metadata.content == NULL) {
 		BLOG_WARN("ROM set invalid metadata");
 		return;
 	}
 
-	BLOG_INFO("ROM set metadata: %s", metadata.content);
+	apply_metadata(metadata);
 }
 
 static void
@@ -436,11 +462,12 @@ init(void) {
 		buxn_metadata_t metadata = buxn_metadata_parse_from_rom(
 			&app.vm->memory[BUXN_RESET_VECTOR], app.vm->memory_size - 256
 		);
-		if (metadata.content_len != 0) {
-			BLOG_INFO("Loaded ROM with metadata: %.*s", metadata.content_len, metadata.content);
-		}
 
-		sapp_set_window_title(app.argv[1]);
+		if (metadata.content_len != 0) {
+			apply_metadata(metadata);
+		} else {
+			sapp_set_window_title(app.argv[1]);
+		}
 		buxn_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
 		buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
 		buxn_console_send_args(app.vm, &app.devices.console);
@@ -737,7 +764,7 @@ sokol_main(int argc, char* argv[]) {
 	options.file = stderr;
 	options.with_colors = true;
 #ifdef _DEBUG
-	blog_add_file_logger(BLOG_LEVEL_DEBUG, &options);
+	blog_add_file_logger(BLOG_LEVEL_TRACE, &options);
 #else
 	blog_add_file_logger(BLOG_LEVEL_INFO, &options);
 #endif

@@ -13,7 +13,7 @@ struct buxn_vm_s;
 
 typedef struct {
 	uint8_t version;
-	const char* content;
+	char* content;
 	int content_len;
 
 	uint8_t* extension_address;
