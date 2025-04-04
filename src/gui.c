@@ -13,6 +13,7 @@
 #include <math.h>
 #include <threads.h>
 #include <stdatomic.h>
+#include <errno.h>
 #include "vm.h"
 #include "metadata.h"
 #include "devices/system.h"
@@ -83,6 +84,7 @@ static struct {
 	atomic_int audio_finished_count[BUXN_NUM_AUDIO_DEVICES];
 	int audio_finished_ack[BUXN_NUM_AUDIO_DEVICES];
 
+	bool rom_loaded;
 	bool should_set_icon;
 	uint8_t paletted_icon[24 * 24];
 } app;
@@ -391,6 +393,7 @@ try_load_rom(const char* path) {
 		fclose(rom_file);
 		return true;
 	} else {
+		BLOG_ERROR("Could not load rom: %s", strerror(errno));
 		return false;
 	}
 }
@@ -498,6 +501,7 @@ init(void) {
 		buxn_console_send_args(app.vm, &app.devices.console);
 		buxn_console_send_input(app.vm, &app.devices.console, '\n');
 		buxn_console_send_input_end(app.vm, &app.devices.console);
+		app.rom_loaded = true;
 	}
 
 	app.last_frame = stm_now();
@@ -585,6 +589,7 @@ frame(void) {
 		}
 
 		if (app.should_set_icon) {
+			BLOG_DEBUG("Changing app icon");
 			uint32_t rendered_icon[24 * 24];
 
 			for (int i = 0; i < (int)sizeof(app.paletted_icon); ++i) {
@@ -774,7 +779,8 @@ event(const sapp_event* event) {
 		} break;
 		case SAPP_EVENTTYPE_FILES_DROPPED:
 			if (
-				sapp_get_num_dropped_files() == 1
+				!app.rom_loaded
+				&& sapp_get_num_dropped_files() == 1
 				&& try_load_rom(sapp_get_dropped_file_path(0))
 			) {
 				buxn_vm_reset(
@@ -786,6 +792,10 @@ event(const sapp_event* event) {
 				sapp_set_window_title(sapp_get_dropped_file_path(0));
 				buxn_console_init(app.vm, &app.devices.console, 0, NULL);
 				buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
+				buxn_console_send_args(app.vm, &app.devices.console);
+				buxn_console_send_input(app.vm, &app.devices.console, '\n');
+				buxn_console_send_input_end(app.vm, &app.devices.console);
+				app.rom_loaded = true;
 			}
 			break;
 		default:
