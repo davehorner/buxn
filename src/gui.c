@@ -18,6 +18,7 @@
 #include "devices/console.h"
 #include "devices/screen.h"
 #include "devices/mouse.h"
+#include "devices/controller.h"
 #include "devices/datetime.h"
 #include "devices/audio.h"
 #include "devices/file.h"
@@ -33,6 +34,7 @@ typedef struct {
 	buxn_system_t system;
 	buxn_console_t console;
 	buxn_mouse_t mouse;
+	buxn_controller_t controller;
 	buxn_audio_t audio[BUXN_NUM_AUDIO_DEVICES];
 	buxn_screen_t* screen;
 	buxn_file_t file[BUXN_NUM_FILE_DEVICES];
@@ -131,6 +133,8 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 			);
 		case BUXN_DEVICE_MOUSE:
 			return buxn_mouse_dei(vm, &devices->mouse, address);
+		case BUXN_DEVICE_CONTROLLER:
+			return buxn_controller_dei(vm, &devices->controller, address);
 		case BUXN_DEVICE_FILE_0:
 		case BUXN_DEVICE_FILE_1:
 			return buxn_file_dei(
@@ -173,6 +177,9 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			break;
 		case BUXN_DEVICE_MOUSE:
 			buxn_mouse_deo(vm, &devices->mouse, address);
+			break;
+		case BUXN_DEVICE_CONTROLLER:
+			buxn_controller_deo(vm, &devices->controller, address);
 			break;
 		case BUXN_DEVICE_FILE_0:
 		case BUXN_DEVICE_FILE_1:
@@ -558,6 +565,70 @@ event(const sapp_event* event) {
 			app.devices.mouse.x = (uint16_t)clamp(mouse_x, 0.f, (float)app.devices.screen->width);
 			app.devices.mouse.y = (uint16_t)clamp(mouse_y, 0.f, (float)app.devices.screen->height);
 			update_mouse = true;
+		} break;
+		case SAPP_EVENTTYPE_KEY_DOWN:
+		case SAPP_EVENTTYPE_KEY_UP: {
+			bool down = event->type == SAPP_EVENTTYPE_KEY_DOWN;
+			int button = -1;
+			char ch = 0;
+			switch (event->key_code) {
+				case SAPP_KEYCODE_LEFT_CONTROL:
+				case SAPP_KEYCODE_RIGHT_CONTROL:
+					button = BUXN_CONTROLLER_BTN_A;
+					break;
+				case SAPP_KEYCODE_LEFT_ALT:
+				case SAPP_KEYCODE_RIGHT_ALT:
+					button = BUXN_CONTROLLER_BTN_B;
+					break;
+				case SAPP_KEYCODE_LEFT_SHIFT:
+				case SAPP_KEYCODE_RIGHT_SHIFT:
+					button = BUXN_CONTROLLER_BTN_SELECT;
+					break;
+				case SAPP_KEYCODE_HOME:
+					button = BUXN_CONTROLLER_BTN_START;
+					break;
+				case SAPP_KEYCODE_UP:
+					button = BUXN_CONTROLLER_BTN_UP;
+					break;
+				case SAPP_KEYCODE_DOWN:
+					button = BUXN_CONTROLLER_BTN_DOWN;
+					break;
+				case SAPP_KEYCODE_LEFT:
+					button = BUXN_CONTROLLER_BTN_LEFT;
+					break;
+				case SAPP_KEYCODE_RIGHT:
+					button = BUXN_CONTROLLER_BTN_RIGHT;
+					break;
+				case SAPP_KEYCODE_ENTER:
+					ch = '\r';
+					break;
+				case SAPP_KEYCODE_ESCAPE:
+					ch = '\x1B';
+					break;
+				case SAPP_KEYCODE_BACKSPACE:
+					ch = '\b';
+					break;
+				case SAPP_KEYCODE_TAB:
+					ch = '\t';
+					break;
+				case SAPP_KEYCODE_DELETE:
+					ch = '\x7F';
+					break;
+				default:
+					break;
+			}
+			if (button >= 0) {
+				buxn_controller_set_button(app.vm, &app.devices.controller, 0, button, down);
+			}
+			if (ch > 0) {
+				buxn_controller_send_char(app.vm, &app.devices.controller, ch);
+			}
+		} break;
+		case SAPP_EVENTTYPE_CHAR: {
+			uint32_t ch = event->char_code;
+			if (ch <= 127) {
+				buxn_controller_send_char(app.vm, &app.devices.controller, ch);
+			}
 		} break;
 		case SAPP_EVENTTYPE_FILES_DROPPED:
 			if (
