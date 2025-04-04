@@ -2,7 +2,6 @@
 #include "vm.h"
 #include <physfs.h>
 #include <string.h>
-#include <stdio.h>
 
 // TODO: log error
 
@@ -59,10 +58,8 @@ buxn_file_opendir(struct buxn_vm_s* vm, const char* path) {
 
 	for (int i = 0; i < BUXN_NUM_FILE_DEVICES; ++i) {
 		if (dir_buf[i].files == NULL) {
-			char path_buf[BUXN_FILE_MAX_NAME + 2];
-			snprintf(path_buf, sizeof(path_buf), "/%s", path);
 			dir_buf[i].current = dir_buf[i].files = PHYSFS_enumerateFiles(
-				strcmp(path, ".") == 0 ? "/" : path_buf
+				strcmp(path, ".") == 0 ? "/" : path
 			);
 			return &dir_buf[i];
 		}
@@ -109,16 +106,13 @@ buxn_file_stat_t
 buxn_file_stat(struct buxn_vm_s* vm, const char* path) {
 	(void)vm;
 
-	char path_buf[BUXN_FILE_MAX_NAME + 2];
-	snprintf(path_buf, sizeof(path_buf), "/%s", path);
-
 	PHYSFS_Stat stat;
 	if (strcmp(path, "/") == 0 || strcmp(path, ".") == 0) {
 		return (buxn_file_stat_t){
 			.type = BUXN_FILE_TYPE_DIRECTORY,
 			.size = 0,
 		};
-	} else if (PHYSFS_stat(path_buf, &stat)) {
+	} else if (PHYSFS_stat(path, &stat)) {
 		if (stat.filetype == PHYSFS_FILETYPE_REGULAR) {
 			return (buxn_file_stat_t){
 				.type = BUXN_FILE_TYPE_REGULAR,
