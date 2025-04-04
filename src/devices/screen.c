@@ -181,7 +181,7 @@ buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address) {
 						layer[ax] = color;
 					}
 				}
-				buxn_screen_dirty(rect, x1, y1, x2, y2);
+				buxn_screen_dirty(rect, x1 - 0x08, y1 - 0x08, x2 - 0x08, y2 - 0x08);
 			} else {
 				/* pixel mode */
 				if(device->rX >= 0 && device->rY >= 0 && device->rX < len && device->rY < device->height) {
