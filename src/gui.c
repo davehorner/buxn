@@ -82,6 +82,9 @@ static struct {
 	int audio_message_index;
 	atomic_int audio_finished_count[BUXN_NUM_AUDIO_DEVICES];
 	int audio_finished_ack[BUXN_NUM_AUDIO_DEVICES];
+
+	bool should_set_icon;
+	uint8_t paletted_icon[24 * 24];
 } app;
 
 static void
@@ -126,6 +129,21 @@ sokol_log(const char* tag, uint32_t log_level, uint32_t log_item, const char* me
 	blog_write(blog_level, filename, line_nr, "%s(%d): %s", tag, log_item, message);
 }
 
+// https://wiki.xxiivv.com/site/chr_format.html
+static void
+draw_chr(uint8_t* dst, int x, int y, uint16_t addr) {
+	(void)dst;
+	for(int v = 0; v < 8; v++) {
+		for(int h = 0; h < 8; h++) {
+			int ch1 = ((app.vm->memory[(addr + v) & 0xffff] >> h) & 0x1);
+			int ch2 = (((app.vm->memory[(addr + v + 8) & 0xffff] >> h) & 0x1) << 1);
+
+			int element = (y + v) * 24 + (x + 7 - h);
+			dst[element] = ch1 + ch2;
+		}
+	}
+}
+
 static void
 apply_metadata(buxn_metadata_t metadata) {
 	char* ch = metadata.content;
@@ -143,12 +161,19 @@ apply_metadata(buxn_metadata_t metadata) {
 		buxn_metadata_ext_t ext = buxn_metadata_get_ext(&metadata, i);
 
 		switch (ext.id) {
-			case BUXN_METADATA_EXT_ICON_CHR:
-				BLOG_TRACE("Has chr icon");
-				break;
-			case BUXN_METADATA_EXT_ICON_ICN:
-				BLOG_TRACE("Has icn icon");
-				break;
+			case BUXN_METADATA_EXT_ICON_CHR: {
+				for (int y = 0; y < 3; ++y) {
+					for (int x = 0; x < 3; ++x) {
+						draw_chr(
+							app.paletted_icon,
+							x * 8, y * 8,
+							ext.value + (x + (y * 3)) * 16
+						);
+					}
+				}
+
+				app.should_set_icon = true;
+			} break;
 		}
 	}
 }
@@ -246,7 +271,7 @@ void
 buxn_system_set_metadata(buxn_vm_t* vm, uint16_t address) {
 	buxn_metadata_t metadata = buxn_metadata_parse_from_memory(vm, address);
 	if (metadata.content == NULL) {
-		BLOG_WARN("ROM set invalid metadata");
+		BLOG_WARN("ROM tried to set invalid metadata");
 		return;
 	}
 
@@ -557,6 +582,25 @@ frame(void) {
 					},
 				}
 			);
+		}
+
+		if (app.should_set_icon) {
+			uint32_t rendered_icon[24 * 24];
+
+			for (int i = 0; i < (int)sizeof(app.paletted_icon); ++i) {
+				rendered_icon[i] = palette[app.paletted_icon[i]];
+			}
+			sapp_set_icon(&(sapp_icon_desc){
+				.images[0] = {
+					.width = 24,
+					.height = 24,
+					.pixels = {
+						.ptr = rendered_icon,
+						.size = sizeof(rendered_icon),
+					},
+				}
+			});
+			app.should_set_icon = false;
 		}
 	}
 
