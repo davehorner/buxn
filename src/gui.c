@@ -396,6 +396,9 @@ init(void) {
 		buxn_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
 		buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
 		buxn_console_send_args(app.vm, &app.devices.console);
+		buxn_console_send_input(app.vm, &app.devices.console, '\r');
+		buxn_console_send_input(app.vm, &app.devices.console, '\n');
+		buxn_console_send_input_end(app.vm, &app.devices.console);
 	}
 
 	app.last_frame = stm_now();
