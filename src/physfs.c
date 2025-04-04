@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdio.h>
 
+// TODO: log error
+
 typedef struct physfs_dir_buf_t {
 	char** files;
 	char** current;

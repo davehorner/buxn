@@ -85,6 +85,7 @@ main(int argc, const char* argv[]) {
 	PHYSFS_init(argv[0]);
 #ifdef __linux__
 	PHYSFS_mount(".", "", 1);
+	PHYSFS_setWriteDir(".");
 #endif
 
 	devices_t devices = { 0 };

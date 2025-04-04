@@ -49,6 +49,9 @@ buxn_file_set_mode(
 				device->handle = buxn_file_fopen(vm, path, mode);
 			} else if (device->stat.type == BUXN_FILE_TYPE_DIRECTORY) {
 				device->handle = buxn_file_opendir(vm, path);
+			} else if (device ->stat.type == BUXN_FILE_TYPE_INVALID && mode != BUXN_FILE_MODE_READ) {
+				device->handle = buxn_file_fopen(vm, path, mode);
+				device->stat.type = BUXN_FILE_TYPE_REGULAR;
 			}
 			device->mode = mode;
 		}

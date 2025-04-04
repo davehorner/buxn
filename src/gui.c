@@ -332,6 +332,7 @@ init(void) {
 	PHYSFS_init(app.argv[0]);
 #ifdef __linux__
 	PHYSFS_mount(".", "", 1);
+	PHYSFS_setWriteDir(".");
 #endif
 
 	app.devices = (devices_t){ 0 };
