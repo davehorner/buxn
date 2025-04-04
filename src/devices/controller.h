@@ -31,19 +31,44 @@ void
 buxn_controller_deo(struct buxn_vm_s* vm, buxn_controller_t* device, uint8_t address);
 
 void
+buxn_controller_send_event(struct buxn_vm_s* vm);
+
+static inline void
 buxn_controller_set_button(
+	buxn_controller_t* device,
+	int controller_index,
+	buxn_controller_btn_t btn,
+	bool down
+) {
+	uint8_t mask = 1 << btn;
+	if (down) {
+		device->buttons[controller_index] |= mask;
+	} else {
+		device->buttons[controller_index] &= ~mask;
+	}
+}
+
+static inline void
+buxn_controller_send_button(
 	struct buxn_vm_s* vm,
 	buxn_controller_t* device,
 	int controller_index,
 	buxn_controller_btn_t btn,
 	bool down
-);
+) {
+	buxn_controller_set_button(device, controller_index, btn, down);
+	buxn_controller_send_event(vm);
+}
 
-void
+static inline void
 buxn_controller_send_char(
 	struct buxn_vm_s* vm,
 	buxn_controller_t* device,
-	char key
-);
+	char ch
+) {
+	device->ch = ch;
+	buxn_controller_send_event(vm);
+	device->ch = 0;
+}
 
 #endif

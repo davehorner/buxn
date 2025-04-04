@@ -620,7 +620,7 @@ event(const sapp_event* event) {
 					break;
 			}
 			if (button >= 0) {
-				buxn_controller_set_button(app.vm, &app.devices.controller, 0, button, down);
+				buxn_controller_send_button(app.vm, &app.devices.controller, 0, button, down);
 			}
 			if (ch > 0 && down) {
 				buxn_controller_send_char(app.vm, &app.devices.controller, ch);
@@ -629,6 +629,27 @@ event(const sapp_event* event) {
 		case SAPP_EVENTTYPE_CHAR: {
 			uint32_t ch = event->char_code;
 			if (ch <= 127) {
+				// Sync the modifiers in case we missed their release due to
+				// focus change
+				buxn_controller_set_button(
+					&app.devices.controller,
+					0,
+					BUXN_CONTROLLER_BTN_A,
+					(event->modifiers & SAPP_MODIFIER_CTRL) != 0
+				);
+				buxn_controller_set_button(
+					&app.devices.controller,
+					0,
+					BUXN_CONTROLLER_BTN_B,
+					(event->modifiers & SAPP_MODIFIER_ALT) != 0
+				);
+				buxn_controller_set_button(
+					&app.devices.controller,
+					0,
+					BUXN_CONTROLLER_BTN_SELECT,
+					(event->modifiers & SAPP_MODIFIER_SHIFT) != 0
+				);
+				// Send the actual character
 				buxn_controller_send_char(app.vm, &app.devices.controller, ch);
 			}
 		} break;
