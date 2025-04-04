@@ -80,6 +80,12 @@ buxn_file_format_stat(char* buf, uint16_t len, const buxn_file_stat_t* stat) {
 	}
 }
 
+static uint16_t
+buxn_file_clamp_length(uint16_t length, uint16_t addr) {
+	uint16_t max_len = 0x10000 - addr;
+	return length > max_len ? max_len : length;
+}
+
 uint8_t
 buxn_file_dei(struct buxn_vm_s* vm, buxn_file_t* device, uint8_t* mem, uint8_t port) {
 	(void)vm;
@@ -96,7 +102,10 @@ buxn_file_deo(struct buxn_vm_s* vm, buxn_file_t* device, uint8_t* mem, uint8_t p
 		case 0x05: {
 			// stat
 			uint16_t stat_addr = buxn_vm_load2(mem, port - 1, BUXN_DEV_PRIV_ADDR_MASK);
-			uint16_t length = buxn_vm_load2(mem, 0xa, BUXN_DEV_PRIV_ADDR_MASK);
+			uint16_t length = buxn_file_clamp_length(
+				buxn_vm_load2(mem, 0xa, BUXN_DEV_PRIV_ADDR_MASK),
+				stat_addr
+			);
 			if (device->handle != NULL) {
 				buxn_file_format_stat((char*)&vm->memory[stat_addr], length, &device->stat);
 			} else {
@@ -131,11 +140,12 @@ buxn_file_deo(struct buxn_vm_s* vm, buxn_file_t* device, uint8_t* mem, uint8_t p
 			buxn_file_handle_t* file = buxn_file_set_mode(vm, device, mem, BUXN_FILE_MODE_READ);
 			if (file != NULL) {
 				uint16_t read_addr = buxn_vm_load2(mem, port - 1, BUXN_DEV_PRIV_ADDR_MASK);
-				uint16_t length = buxn_vm_load2(mem, 0xa, BUXN_DEV_PRIV_ADDR_MASK);
+				uint16_t length = buxn_file_clamp_length(
+					buxn_vm_load2(mem, 0xa, BUXN_DEV_PRIV_ADDR_MASK),
+					read_addr
+				);
 				uint16_t total_bytes_read = 0;
 
-				// TODO: Will this overflow into extended memory or wrap around?
-				// What to do if there is no extended memory?
 				if (device->stat.type == BUXN_FILE_TYPE_DIRECTORY) {
 					// Read dir
 					uint16_t read_dir_pos = device->read_dir_pos;
@@ -204,7 +214,10 @@ buxn_file_deo(struct buxn_vm_s* vm, buxn_file_t* device, uint8_t* mem, uint8_t p
 			if (file != NULL && device->stat.type == BUXN_FILE_TYPE_REGULAR) {
 				uint16_t total_bytes_written = 0;
 				uint16_t write_addr = buxn_vm_load2(mem, port - 1, BUXN_DEV_PRIV_ADDR_MASK);
-				uint16_t length = buxn_vm_load2(mem, 0xa, BUXN_DEV_PRIV_ADDR_MASK);
+				uint16_t length = buxn_file_clamp_length(
+					buxn_vm_load2(mem, 0xa, BUXN_DEV_PRIV_ADDR_MASK),
+					write_addr
+				);
 				uint16_t bytes_written;
 
 				while (
