@@ -396,7 +396,6 @@ init(void) {
 		buxn_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
 		buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
 		buxn_console_send_args(app.vm, &app.devices.console);
-		buxn_console_send_input(app.vm, &app.devices.console, '\r');
 		buxn_console_send_input(app.vm, &app.devices.console, '\n');
 		buxn_console_send_input_end(app.vm, &app.devices.console);
 	}
@@ -606,16 +605,16 @@ event(const sapp_event* event) {
 					ch = '\r';
 					break;
 				case SAPP_KEYCODE_ESCAPE:
-					ch = '\x1B';
+					ch = 27;
 					break;
 				case SAPP_KEYCODE_BACKSPACE:
-					ch = '\b';
+					ch = 8;
 					break;
 				case SAPP_KEYCODE_TAB:
 					ch = '\t';
 					break;
 				case SAPP_KEYCODE_DELETE:
-					ch = '\x7F';
+					ch = 127;
 					break;
 				default:
 					break;
@@ -623,7 +622,7 @@ event(const sapp_event* event) {
 			if (button >= 0) {
 				buxn_controller_set_button(app.vm, &app.devices.controller, 0, button, down);
 			}
-			if (ch > 0) {
+			if (ch > 0 && down) {
 				buxn_controller_send_char(app.vm, &app.devices.controller, ch);
 			}
 		} break;
