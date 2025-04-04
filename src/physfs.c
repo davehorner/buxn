@@ -2,8 +2,7 @@
 #include "vm.h"
 #include <physfs.h>
 #include <string.h>
-
-// TODO: log error
+#include <blog.h>
 
 typedef struct physfs_dir_buf_t {
 	char** files;
@@ -12,17 +11,28 @@ typedef struct physfs_dir_buf_t {
 
 static physfs_dir_buf_t dir_buf[BUXN_NUM_FILE_DEVICES] = { 0 };
 
+static inline buxn_file_handle_t*
+buxn_file_log_open_error(const char* path, PHYSFS_file* file) {
+	if (file == NULL) {
+		BLOG_ERROR("Could not open %s: %s", path, PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
+	}
+
+	return file;
+}
+
 buxn_file_handle_t*
 buxn_file_fopen(struct buxn_vm_s* vm, const char* path, buxn_file_mode_t mode) {
 	(void)vm;
 
+	BLOG_DEBUG("Opening %s with mode %d", path, mode);
+
 	switch (mode) {
 		case BUXN_FILE_MODE_READ:
-			return PHYSFS_openRead(path);
+			return buxn_file_log_open_error(path, PHYSFS_openRead(path));
 		case BUXN_FILE_MODE_WRITE:
-			return PHYSFS_openWrite(path);
+			return buxn_file_log_open_error(path, PHYSFS_openWrite(path));
 		case BUXN_FILE_MODE_APPEND:
-			return PHYSFS_openAppend(path);
+			return buxn_file_log_open_error(path, PHYSFS_openAppend(path));
 	}
 }
 
@@ -55,6 +65,7 @@ buxn_file_handle_t*
 buxn_file_opendir(struct buxn_vm_s* vm, const char* path) {
 	(void)vm;
 
+	BLOG_DEBUG("Opening directory %s", path);
 
 	for (int i = 0; i < BUXN_NUM_FILE_DEVICES; ++i) {
 		if (dir_buf[i].files == NULL) {
@@ -99,12 +110,20 @@ buxn_file_readdir(
 bool
 buxn_file_delete(struct buxn_vm_s* vm, const char* path) {
 	(void)vm;
-	return PHYSFS_delete(path);
+
+	BLOG_DEBUG("Deleting %s", path);
+	bool success = PHYSFS_delete(path);
+	if (!success) {
+		BLOG_ERROR("Could not delete %s: %s", path, PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
+	}
+	return success;
 }
 
 buxn_file_stat_t
 buxn_file_stat(struct buxn_vm_s* vm, const char* path) {
 	(void)vm;
+
+	BLOG_DEBUG("Stating %s", path);
 
 	PHYSFS_Stat stat;
 	if (strcmp(path, "/") == 0 || strcmp(path, ".") == 0) {
@@ -130,6 +149,7 @@ buxn_file_stat(struct buxn_vm_s* vm, const char* path) {
 			};
 		}
 	} else {
+		BLOG_ERROR("Could not stat %s: %s", path, PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
 		return (buxn_file_stat_t){ .type = BUXN_FILE_TYPE_INVALID };
 	}
 }

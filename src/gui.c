@@ -5,10 +5,10 @@
 #include <sokol_audio.h>
 #include <sokol_time.h>
 #include <sokol_gfx.h>
-#include <sokol_log.h>
 #include <sokol_glue.h>
 #include <sokol_gp.h>
 #include <bspscq.h>
+#include <blog.h>
 #include <physfs.h>
 #include <math.h>
 #include <threads.h>
@@ -102,12 +102,28 @@ init_layer_texture(
 		.usage = SG_USAGE_STREAM,
 		.label = label
 	});
+	BLOG_INFO("Created layer texture %s with size %dx%d", label, width, height);
 }
 
 static void
 cleanup_layer_texture(layer_texture_t* texture) {
 	sg_destroy_image(texture->gpu);
 	free(texture->cpu);
+}
+
+static void
+sokol_log(const char* tag, uint32_t log_level, uint32_t log_item, const char* message, uint32_t line_nr, const char* filename, void* user_data) {
+	(void)user_data;
+
+	blog_level_t blog_level = BLOG_LEVEL_INFO;
+	switch (log_level) {
+		case 0: blog_level = BLOG_LEVEL_FATAL;
+		case 1: blog_level = BLOG_LEVEL_ERROR;
+		case 2: blog_level = BLOG_LEVEL_WARN;
+		default: blog_level = BLOG_LEVEL_INFO;
+	}
+
+	blog_write(blog_level, filename, line_nr, "%s(%d): %s", tag, log_item, message);
 }
 
 uint8_t
@@ -221,7 +237,7 @@ get_draw_info(draw_info_t* out) {
 
 static inline void
 buxn_console_putc(
-	int level,
+	blog_level_t level,
 	console_buf_t* buffer,
 	char ch
 ) {
@@ -235,7 +251,7 @@ buxn_console_putc(
 
 	if (should_flush) {
 		buffer->data[buffer->pos] = '\0';
-		slog_func("uxn", level, level, buffer->data, __LINE__, __FILE__, 0);
+		blog_write(level, __FILE__, __LINE__, "%s", buffer->data);
 		buffer->pos = 0;
 	}
 }
@@ -244,14 +260,14 @@ void
 buxn_console_handle_write(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
 	(void)vm;
 	(void)device;
-	buxn_console_putc(3, &app.console_out_buf, c);
+	buxn_console_putc(BLOG_LEVEL_INFO, &app.console_out_buf, c);
 }
 
 extern void
 buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
 	(void)vm;
 	(void)device;
-	buxn_console_putc(1, &app.console_err_buf, c);
+	buxn_console_putc(BLOG_LEVEL_ERROR, &app.console_err_buf, c);
 }
 
 static void
@@ -277,6 +293,8 @@ buxn_screen_request_resize(
 	(void)vm;
 	cleanup_layer_texture(&app.background_texture);
 	cleanup_layer_texture(&app.foreground_texture);
+
+	BLOG_INFO("Received resize request to: %dx%d", width, height);
 
 	buxn_screen_info_t screen_info = buxn_screen_info(width, height);
 	init_layer_texture(&app.background_texture, width, height, screen_info, "uxn.screen.background");
@@ -348,7 +366,7 @@ init(void) {
 
 	sg_setup(&(sg_desc){
 		.environment = sglue_environment(),
-		.logger.func = slog_func,
+		.logger.func = sokol_log,
 	});
 	sgp_setup(&(sgp_desc){ 0 });
 
@@ -360,12 +378,17 @@ init(void) {
 		.num_channels = BUXN_AUDIO_PREFERRED_NUM_CHANNELS,
 		.sample_rate = BUXN_AUDIO_PREFERRED_SAMPLE_RATE,
 		.stream_cb = audio_callback,
-		.logger.func = slog_func,
+		.logger.func = sokol_log,
 	});
 	int audio_sample_rate = saudio_sample_rate();
 	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
 		app.devices.audio[i].sample_frequency = audio_sample_rate;
 	}
+	BLOG_INFO(
+		"Audio initalized with sample rate %d Hz and %d channel(s)",
+		audio_sample_rate,
+		saudio_channels()
+	);
 
 	int width = sapp_width();
 	int height = sapp_height();
@@ -681,6 +704,15 @@ event(const sapp_event* event) {
 
 sapp_desc
 sokol_main(int argc, char* argv[]) {
+	blog_init(&(blog_options_t){
+		.current_filename = __FILE__,
+		.current_depth_in_project = 1,
+	});
+	static blog_file_logger_options_t options;
+	options.file = stderr;
+	options.with_colors = true;
+	blog_add_file_logger(BLOG_LEVEL_DEBUG, &options);
+
 	memset(&app, 0, sizeof(app));
 	app.argc = argc;
 	app.argv = (const char**)argv;
@@ -697,6 +729,6 @@ sokol_main(int argc, char* argv[]) {
 		.enable_dragndrop = true,
 		.window_title = "buxn-gui",
 		.icon.sokol_default = true,
-		.logger.func = slog_func,
+		.logger.func = sokol_log,
 	};
 }

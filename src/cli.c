@@ -142,3 +142,6 @@ end:
 	PHYSFS_deinit();
 	return exit_code;
 }
+
+#define BLIB_IMPLEMENTATION
+#include <blog.h>
