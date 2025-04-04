@@ -1,6 +1,5 @@
 #include "file.h"
 #include "../vm.h"
-#include <stdio.h>
 #include <string.h>
 
 static char*
@@ -66,17 +65,18 @@ buxn_file_format_stat(char* buf, uint16_t len, const buxn_file_stat_t* stat) {
 		case BUXN_FILE_TYPE_INVALID:
 			memset(buf, '!', len);
 			break;
-		case BUXN_FILE_TYPE_REGULAR:
-			if (stat->size > UINT16_MAX) {
-				memset(buf, '?', len);
-			} else {
-				char fmt[5];
-				snprintf(fmt, sizeof(fmt), "%04x", (uint16_t)stat->size);
-				for (uint16_t i = 0; i < len; ++i) {
-					buf[len - 1 - i] = fmt[3 - i];
-				}
+		case BUXN_FILE_TYPE_REGULAR: {
+			size_t size = stat->size;
+			char* dest = buf + len - 1;
+			for(uint16_t i = 0; i < len; ++i) {
+				char c = '0' + (uint8_t)(size & 0xf);
+				if(c > '9') { c += 39; }
+				*(dest--) = c;
+				size = size >> 4;
 			}
-			break;
+
+			if (size != 0) { memset(buf, len, '?'); }
+		} break;
 		case BUXN_FILE_TYPE_DIRECTORY:
 			memset(buf, '-', len);
 			break;
@@ -111,12 +111,16 @@ buxn_file_deo(struct buxn_vm_s* vm, buxn_file_t* device, uint8_t* mem, uint8_t p
 			);
 			if (device->handle != NULL) {
 				buxn_file_format_stat((char*)&vm->memory[stat_addr], length, &device->stat);
+				device->success = length;
 			} else {
 				char path_buf[BUXN_FILE_MAX_PATH];
 				char* path = buxn_file_read_path(vm, mem, path_buf);
 				if (path != NULL) {
 					buxn_file_stat_t stat = buxn_file_stat(vm, path);
 					buxn_file_format_stat((char*)&vm->memory[stat_addr], length, &stat);
+					device->success = length;
+				} else {
+					device->success = 0;
 				}
 			}
 		} break;
@@ -167,16 +171,16 @@ buxn_file_deo(struct buxn_vm_s* vm, buxn_file_t* device, uint8_t* mem, uint8_t p
 
 							buxn_file_format_stat(read_dir_buf, 4, &stat);
 							read_dir_len += 4;
-							int len = snprintf(
-								read_dir_buf + read_dir_len,
-								sizeof(device->read_dir_buf) - read_dir_len,
-								" %s\n", filename
-							);
-							if (len < 0) {
+
+							size_t name_len = strlen(filename);
+							if (read_dir_len + name_len + 2 > sizeof(device->read_dir_buf)) {
 								read_dir_len = 0;
 								break;
 							} else {
-								read_dir_len += (uint16_t)len;
+								read_dir_buf[read_dir_len++] = ' ';
+								memcpy(&read_dir_buf[read_dir_len], filename, name_len);
+								read_dir_len += (uint16_t)name_len;
+								read_dir_buf[read_dir_len++] = '\n';
 							}
 						}
 

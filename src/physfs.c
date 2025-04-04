@@ -102,7 +102,7 @@ buxn_file_readdir(
 bool
 buxn_file_delete(struct buxn_vm_s* vm, const char* path) {
 	(void)vm;
-	return PHYSFS_delete(path) == 0;
+	return PHYSFS_delete(path);
 }
 
 buxn_file_stat_t
