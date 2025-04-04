@@ -9,7 +9,6 @@
 #include "devices/file.h"
 
 typedef struct {
-	buxn_system_t system;
 	buxn_console_t console;
 	buxn_file_t file[BUXN_NUM_FILE_DEVICES];
 } devices_t;
@@ -20,7 +19,7 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
-			return buxn_system_dei(vm, &devices->system, address);
+			return buxn_system_dei(vm, address);
 		case BUXN_DEVICE_CONSOLE:
 			return buxn_console_dei(vm, &devices->console, address);
 		case BUXN_DEVICE_DATETIME:
@@ -44,7 +43,7 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
-			buxn_system_deo(vm, &devices->system, address);
+			buxn_system_deo(vm, address);
 			break;
 		case BUXN_DEVICE_CONSOLE:
 			buxn_console_deo(vm, &devices->console, address);
@@ -61,13 +60,25 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 }
 
 void
+buxn_system_debug(buxn_vm_t* vm, uint8_t value) {
+	(void)vm;
+	(void)value;
+}
+
+void
+buxn_system_set_metadata(buxn_vm_t* vm, uint16_t address) {
+	(void)vm;
+	(void)address;
+}
+
+void
 buxn_console_handle_write(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
 	(void)vm;
 	(void)device;
 	fputc(c, stdout);
 }
 
-extern void
+void
 buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
 	(void)vm;
 	(void)device;

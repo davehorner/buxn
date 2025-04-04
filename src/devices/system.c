@@ -9,8 +9,7 @@ buxn_system_exit_code(struct buxn_vm_s* vm) {
 }
 
 uint8_t
-buxn_system_dei(struct buxn_vm_s* vm, buxn_system_t* device, uint8_t address) {
-	(void)device;
+buxn_system_dei(struct buxn_vm_s* vm, uint8_t address) {
 	switch (address) {
 		case 0x04: return vm->wsp;
 		case 0x05: return vm->rsp;
@@ -19,7 +18,7 @@ buxn_system_dei(struct buxn_vm_s* vm, buxn_system_t* device, uint8_t address) {
 }
 
 void
-buxn_system_deo(struct buxn_vm_s* vm, buxn_system_t* device, uint8_t address) {
+buxn_system_deo(struct buxn_vm_s* vm, uint8_t address) {
 	switch (address) {
 		case 0x03: {
 			uint16_t op_addr = buxn_vm_dev_load2(vm, 0x02);
@@ -70,7 +69,14 @@ buxn_system_deo(struct buxn_vm_s* vm, buxn_system_t* device, uint8_t address) {
 		} break;
 		case 0x04: vm->wsp = vm->device[address]; break;
 		case 0x05: vm->rsp = vm->device[address]; break;
-		case 0x0e: if (device->debug_hook) { device->debug_hook(vm); } break;
+		case 0x07:
+			buxn_system_set_metadata(vm, buxn_vm_dev_load2(vm, 0x06));
+			break;
+		case 0x0e:
+			if (vm->device[address]) {
+				buxn_system_debug(vm, vm->device[address]);
+			}
+			break;
 	}
 }
 

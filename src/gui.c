@@ -14,6 +14,7 @@
 #include <threads.h>
 #include <stdatomic.h>
 #include "vm.h"
+#include "metadata.h"
 #include "devices/system.h"
 #include "devices/console.h"
 #include "devices/screen.h"
@@ -31,7 +32,6 @@
 #define CONSOLE_BUFFER_SIZE 256
 
 typedef struct {
-	buxn_system_t system;
 	buxn_console_t console;
 	buxn_mouse_t mouse;
 	buxn_controller_t controller;
@@ -132,7 +132,7 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
-			return buxn_system_dei(vm, &devices->system, address);
+			return buxn_system_dei(vm, address);
 		case BUXN_DEVICE_CONSOLE:
 			return buxn_console_dei(vm, &devices->console, address);
 		case BUXN_DEVICE_SCREEN:
@@ -172,7 +172,7 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
-			buxn_system_deo(vm, &devices->system, address);
+			buxn_system_deo(vm, address);
 			break;
 		case BUXN_DEVICE_CONSOLE:
 			buxn_console_deo(vm, &devices->console, address);
@@ -207,6 +207,24 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			);
 			break;
 	}
+}
+
+void
+buxn_system_debug(buxn_vm_t* vm, uint8_t value) {
+	(void)vm;
+	(void)value;
+}
+
+void
+buxn_system_set_metadata(buxn_vm_t* vm, uint16_t address) {
+	BLOG_TRACE("Metatadata");
+	buxn_metadata_t metadata = buxn_metadata_parse_from_memory(vm, address);
+	if (metadata.content == NULL) {
+		BLOG_WARN("ROM set invalid metadata");
+		return;
+	}
+
+	BLOG_INFO("ROM set metadata: %s", metadata.content);
 }
 
 static void
@@ -415,6 +433,13 @@ init(void) {
 	buxn_console_init(app.vm, &app.devices.console, app.argc, app.argv);
 
 	if (app.argc >= 2 && try_load_rom(app.argv[1])) {
+		buxn_metadata_t metadata = buxn_metadata_parse_from_rom(
+			&app.vm->memory[BUXN_RESET_VECTOR], app.vm->memory_size - 256
+		);
+		if (metadata.content_len != 0) {
+			BLOG_INFO("Loaded ROM with metadata: %.*s", metadata.content_len, metadata.content);
+		}
+
 		sapp_set_window_title(app.argv[1]);
 		buxn_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
 		buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
