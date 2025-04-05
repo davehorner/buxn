@@ -388,6 +388,40 @@ buxn_screen_request_resize(
 
 static bool
 try_load_rom(const char* path) {
+	// TODO: unify file I/O
+#ifdef __ANDROID__
+	PHYSFS_File* rom_file;
+	if ((rom_file = PHYSFS_openRead(path)) != NULL) {
+		uint8_t* read_pos = &app.vm->memory[BUXN_RESET_VECTOR];
+		PHYSFS_uint64 mem_left = app.vm->memory_size - BUXN_RESET_VECTOR;
+		PHYSFS_sint64 bytes_read;
+		while (
+			mem_left > 0
+			&& (bytes_read = PHYSFS_readBytes(rom_file, read_pos, mem_left)) > 0
+		) {
+			mem_left -= bytes_read;
+			read_pos += bytes_read;
+		}
+		PHYSFS_ErrorCode error = PHYSFS_getLastErrorCode();
+		PHYSFS_close(rom_file);
+
+		if (bytes_read < 0) {
+			BLOG_ERROR("Error while loading rom: %s", PHYSFS_getErrorByCode(error));
+			return false;
+		}
+
+		if (mem_left == 0 && bytes_read > 0) {
+			BLOG_ERROR("ROM is too large");
+			return false;
+		}
+
+		BLOG_DEBUG("Loaded rom: %zu bytes", read_pos - &app.vm->memory[BUXN_RESET_VECTOR]);
+		return true;
+	} else {
+		BLOG_ERROR("Could not load rom: %s", PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
+		return false;
+	}
+#else
 	FILE* rom_file;
 	if ((rom_file = fopen(path, "rb")) != NULL) {
 		uint8_t* read_pos = &app.vm->memory[BUXN_RESET_VECTOR];
@@ -403,6 +437,7 @@ try_load_rom(const char* path) {
 		BLOG_ERROR("Could not load rom: %s", strerror(errno));
 		return false;
 	}
+#endif
 }
 
 void
@@ -520,14 +555,18 @@ init(void) {
 	buxn_vm_reset(app.vm, BUXN_VM_RESET_ALL);
 	buxn_console_init(app.vm, &app.devices.console, app.argc, app.argv);
 
+#ifdef __ANDROID__
+	if (try_load_rom("boot.rom")) {
+#else
 	if (app.argc >= 2 && try_load_rom(app.argv[1])) {
+#endif
 		buxn_metadata_t metadata = buxn_metadata_parse_from_rom(
 			&app.vm->memory[BUXN_RESET_VECTOR], app.vm->memory_size - 256
 		);
 
 		if (metadata.content_len != 0) {
 			apply_metadata(metadata);
-		} else {
+		} else if (app.argc >= 2) {
 			sapp_set_window_title(app.argv[1]);
 		}
 		buxn_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
@@ -724,6 +763,23 @@ event(const sapp_event* event) {
 
 			app.devices.mouse.x = (uint16_t)clamp(mouse_x, 0.f, (float)app.devices.screen->width);
 			app.devices.mouse.y = (uint16_t)clamp(mouse_y, 0.f, (float)app.devices.screen->height);
+			update_mouse = true;
+		} break;
+		case SAPP_EVENTTYPE_TOUCHES_BEGAN:
+		case SAPP_EVENTTYPE_TOUCHES_ENDED: {
+			draw_info_t draw_info;
+			get_draw_info(&draw_info);
+
+			float mouse_x = (float)(event->touches[0].pos_x - draw_info.x_margin) / draw_info.draw_scale;
+			float mouse_y = (float)(event->touches[0].pos_y - draw_info.y_margin) / draw_info.draw_scale;
+
+			app.devices.mouse.x = (uint16_t)clamp(mouse_x, 0.f, (float)app.devices.screen->width);
+			app.devices.mouse.y = (uint16_t)clamp(mouse_y, 0.f, (float)app.devices.screen->height);
+			buxn_mouse_set_button(
+				&app.devices.mouse,
+				0,
+				event->type == SAPP_EVENTTYPE_TOUCHES_BEGAN
+			);
 			update_mouse = true;
 		} break;
 		case SAPP_EVENTTYPE_KEY_DOWN:

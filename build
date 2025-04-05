@@ -35,10 +35,11 @@ build_linux() {
 
 	compile_common
 	compile src/gui.c $PROGRAM_FLAGS
+	compile src/cli.c $PROGRAM_FLAGS
 	compile src/libs.c $PROGRAM_FLAGS
 	compile deps/physfs/src/physfs_platform_unix.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_platform_posix.c $PHYSFS_FLAGS
-	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
+	cat $OBJ_DIR/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
 	echo "Linking..."
 
 	$CXX \
@@ -170,7 +171,7 @@ build_android_for() {
 	compile deps/physfs/src/physfs_platform_unix.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_platform_posix.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_platform_android.c $PHYSFS_FLAGS
-	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
+	cat $OBJ_DIR/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
 
 	$CC \
 		-lm -landroid -lEGL -lGLESv3 -laaudio -llog \
@@ -235,7 +236,7 @@ build_cosmo() {
 	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1"
 
 	compile_common
-	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
+	cat $OBJ_DIR/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
 	echo "Linking..."
 
 	$CXX \
@@ -272,7 +273,7 @@ compile_common() {
 }
 
 compile() {
-	echo ./compile "$@" >> .build/commands
+	echo ./compile "$@" >> $OBJ_DIR/commands
 }
 
 main $@
