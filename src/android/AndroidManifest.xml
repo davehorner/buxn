@@ -24,11 +24,25 @@
 			android:screenOrientation="landscape"
 			android:exported="true"
 		>
-		<meta-data android:name="android.app.lib_name" android:value="buxn" />
-		<intent-filter>
-			<action android:name="android.intent.action.MAIN" />
-			<category android:name="android.intent.category.LAUNCHER" />
-		</intent-filter>
+			<meta-data android:name="android.app.lib_name" android:value="buxn" />
+			<!-- Direct open -->
+			<intent-filter>
+				<action android:name="android.intent.action.MAIN" />
+				<category android:name="android.intent.category.LAUNCHER" />
+			</intent-filter>
+
+			<!-- Handle .rom file -->
+			<!-- https://www.reddit.com/r/android_devs/comments/q03692/meet_the_new_way_to_handle_files_on_android_12/ -->
+			<intent-filter>
+				<action android:name="android.intent.action.VIEW" />
+				<category android:name="android.intent.category.DEFAULT" />
+				<data android:scheme="file" />
+				<data android:scheme="content" />
+				<data android:mimeType="application/octet-stream" />
+				<data android:pathPattern=".*\\.rom" />
+				<data android:pathPattern=".*\\..*\\.rom" />
+				<data android:pathPattern=".*\\..*\\..*\\.rom" />
+			</intent-filter>
 		</activity>
 	</application>
 </manifest>

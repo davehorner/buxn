@@ -1,7 +1,5 @@
 #!/bin/sh -e
 
-adb install -r $1
-adb shell am start \
-	-n "com.bullno1.buxn/android.app.NativeActivity" \
-	-a android.intent.action.MAIN \
-	-c android.intent.category.LAUNCHER
+adb install -r ${1:-bin/Debug/android/buxn.apk}
+adb shell monkey -p com.bullno1.buxn -c android.intent.category.LAUNCHER 1
+adb logcat --pid=$(adb shell pidof -s com.bullno1.buxn)
