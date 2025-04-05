@@ -483,6 +483,7 @@ init(void) {
 	int width = sapp_width();
 	int height = sapp_height();
 
+	BLOG_INFO("DPI scale: %f", sapp_dpi_scale());
 	buxn_screen_info_t screen_info = buxn_screen_info(width, height);
 	app.devices.screen = malloc(screen_info.screen_mem_size),
 	memset(app.devices.screen, 0, sizeof(*app.devices.screen));
