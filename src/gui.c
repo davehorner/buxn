@@ -503,12 +503,18 @@ init(void) {
 		BLOG_ERROR("Error while mounting apk: %s", PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
 	}
 	PHYSFS_setRoot(base_dir, "/assets");
+	// The actual valuee doesn't matter on Android as it will alawys resolve
+	// to the data directory.
+	const char* write_dir = PHYSFS_getPrefDir("bullno1.com", "buxn");
+	PHYSFS_setWriteDir(write_dir);
+	PHYSFS_mount(write_dir, "/", 1);
 
-	char** files = PHYSFS_enumerateFiles("/");
-	for (int i = 0; files[i] != NULL; ++i) {
-		BLOG_DEBUG("Found: %s", files[i]);
+	PHYSFS_File* file = PHYSFS_openWrite("test");
+	if (file != NULL) {
+		PHYSFS_writeBytes(file, "hello", sizeof("hello"));
+		PHYSFS_close(file);
+		BLOG_INFO("Wrote file");
 	}
-	PHYSFS_freeList(files);
 #else
 	PHYSFS_init(app.argv[0]);
 	PHYSFS_mount(".", "", 1);
@@ -629,8 +635,8 @@ frame(void) {
 	app.last_frame = now;
 	app.frame_time_accumulator += time_diff;
 
-	bool should_redraw = app.frame_time_accumulator >= 0;
-	while (app.frame_time_accumulator >= 0) {
+	bool should_redraw = app.frame_time_accumulator >= FRAME_TIME_US;
+	while (app.frame_time_accumulator >= FRAME_TIME_US) {
 		app.frame_time_accumulator -= FRAME_TIME_US;
 		buxn_screen_update(app.vm);
 	}
