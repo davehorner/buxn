@@ -23,12 +23,7 @@
 #include "devices/datetime.h"
 #include "devices/audio.h"
 #include "devices/file.h"
-
-// TODO: Move platform-specific code to their own files
-
-#if defined(__linux__) && !defined(__ANDROID__)
-#include <X11/Xlib.h>
-#endif
+#include "platform.h"
 
 #define FRAME_TIME_US (1000000.0 / 60.0)
 #define CONSOLE_BUFFER_SIZE 256
@@ -346,25 +341,6 @@ buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) 
 	buxn_console_putc(BLOG_LEVEL_ERROR, &app.console_err_buf, c);
 }
 
-#if defined(__linux__) && !defined(__ANDROID__)
-static void
-linux_resize_window(uint16_t width, uint16_t height) {
-	Display* display = (Display*)sapp_x11_get_display();
-	Window window = (Window)sapp_x11_get_window();
-	XResizeWindow(display, window, width, height);
-}
-#endif
-
-static void
-resize_window(uint16_t width, uint16_t height) {
-#if defined(__linux__) && !defined(__ANDROID__)
-	linux_resize_window(width, height);
-#else
-	(void)width;
-	(void)height;
-#endif
-}
-
 buxn_screen_t*
 buxn_screen_request_resize(
 	struct buxn_vm_s* vm,
@@ -384,15 +360,13 @@ buxn_screen_request_resize(
 	buxn_screen_resize(screen, width, height);
 	app.devices.screen = screen;
 
-	resize_window(width, height);
+	platform_resize_window(width, height);
 
 	return screen;
 }
 
 static bool
 try_load_rom(const char* path) {
-	// TODO: unify file I/O
-#ifdef __ANDROID__
 	PHYSFS_File* rom_file;
 	if ((rom_file = PHYSFS_openRead(path)) != NULL) {
 		uint8_t* read_pos = &app.vm->memory[BUXN_RESET_VECTOR];
@@ -424,23 +398,6 @@ try_load_rom(const char* path) {
 		BLOG_ERROR("Could not load rom: %s", PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
 		return false;
 	}
-#else
-	FILE* rom_file;
-	if ((rom_file = fopen(path, "rb")) != NULL) {
-		uint8_t* read_pos = &app.vm->memory[BUXN_RESET_VECTOR];
-		while (read_pos < app.vm->memory + app.vm->memory_size) {
-			size_t num_bytes = fread(read_pos, 1, 1024, rom_file);
-			if (num_bytes == 0) { break; }
-			read_pos += num_bytes;
-		}
-
-		fclose(rom_file);
-		return true;
-	} else {
-		BLOG_ERROR("Could not load rom: %s", strerror(errno));
-		return false;
-	}
-#endif
 }
 
 void
@@ -480,39 +437,9 @@ audio_callback(float* buffer, int num_frames, int num_channels) {
 	}
 }
 
-#ifdef __ANDROID__
-#include <android/native_activity.h>
-#endif
-
 static void
 init(void) {
-#ifdef __ANDROID__
-	const ANativeActivity* activity = sapp_android_get_native_activity();
-
-	JNIEnv* jenv;
-	JavaVM* jvm = activity->vm;
-    (*jvm)->AttachCurrentThread(jvm, &jenv, NULL);
-	PHYSFS_init((void*)&(struct PHYSFS_AndroidInit){
-		.jnienv = jenv,
-		.context = activity->clazz,
-	});
-    (*jvm)->DetachCurrentThread(jvm);
-
-	const char* base_dir = PHYSFS_getBaseDir();
-	if (!PHYSFS_mount(base_dir, "/", 1)) {
-		BLOG_ERROR("Error while mounting apk: %s", PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
-	}
-	PHYSFS_setRoot(base_dir, "/assets");
-	// The actual valuee doesn't matter on Android as it will alawys resolve
-	// to the data directory.
-	const char* write_dir = PHYSFS_getPrefDir("bullno1.com", "buxn");
-	PHYSFS_setWriteDir(write_dir);
-	PHYSFS_mount(write_dir, "/", 1);
-#else
-	PHYSFS_init(app.argv[0]);
-	PHYSFS_mount(".", "", 1);
-	PHYSFS_setWriteDir(".");
-#endif
+	platform_init_fs(app.argc, app.argv);
 
 	app.devices = (devices_t){ 0 };
 
@@ -567,11 +494,25 @@ init(void) {
 	buxn_vm_reset(app.vm, BUXN_VM_RESET_ALL);
 	buxn_console_init(app.vm, &app.devices.console, app.argc, app.argv);
 
-#ifdef __ANDROID__
-	if (try_load_rom("boot.rom")) {
-#else
-	if (app.argc >= 2 && try_load_rom(app.argv[1])) {
-#endif
+	const char* boot_rom = "boot.rom";
+	if (app.argc >= 2) {
+		boot_rom = app.argv[1];
+
+		// Find base name of arg since we already mounted the target dir
+		int len = strlen(app.argv[1]);
+		int i;
+		for (i = len - 1; i >= 0; --i) {
+			if (app.argv[1][i] == '/' || app.argv[1][i] == '\\') {
+				break;
+			}
+		}
+
+		if (i > 0) {
+			boot_rom += i + 1;
+		}
+	}
+
+	if (try_load_rom(boot_rom)) {
 		buxn_metadata_t metadata = buxn_metadata_parse_from_rom(
 			&app.vm->memory[BUXN_RESET_VECTOR], app.vm->memory_size - 256
 		);
@@ -917,21 +858,7 @@ sokol_main(int argc, char* argv[]) {
 		.current_filename = __FILE__,
 		.current_depth_in_project = 1,
 	});
-#if defined(__ANDROID__)
-	static blog_android_logger_options_t options;
-	options.tag = "buxn";
-	blog_add_android_logger(BLOG_LEVEL_DEBUG, &options);
-#else
-	static blog_file_logger_options_t options;
-	options.file = stderr;
-	options.with_colors = true;
-
-#	ifdef _DEBUG
-	blog_add_file_logger(BLOG_LEVEL_TRACE, &options);
-#	else
-	blog_add_file_logger(BLOG_LEVEL_INFO, &options);
-#	endif
-#endif
+	platform_init_log();
 
 	memset(&app, 0, sizeof(app));
 	app.argc = argc;

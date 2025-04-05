@@ -37,6 +37,7 @@ build_linux() {
 	compile_common
 	compile src/gui.c $PROGRAM_FLAGS
 	compile src/cli.c $PROGRAM_FLAGS
+	compile src/platform_linux.c $PROGRAM_FLAGS
 	compile src/libs.c $PROGRAM_FLAGS
 	compile deps/physfs/src/physfs_platform_unix.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_platform_posix.c $PHYSFS_FLAGS
@@ -60,7 +61,7 @@ build_linux() {
 		-lGL -lX11 -lXcursor -lXi \
 		-lasound \
 		${BUILD_TYPE_FLAGS} \
-		${OBJ_DIR}/src/{gui.c.o,vm.c.o,physfs.c.o,metadata.c.o,libs.c.o} \
+		${OBJ_DIR}/src/{gui.c.o,vm.c.o,physfs.c.o,metadata.c.o,libs.c.o,platform_linux.c.o} \
 		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o,screen.c.o,mouse.c.o,audio.c.o,controller.c.o} \
 		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o} \
 		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
@@ -154,6 +155,7 @@ android_compile_for() {
 	compile_common
 	compile src/gui.c $PROGRAM_FLAGS
 	compile src/libs.c $PROGRAM_FLAGS
+	compile src/platform_android.c $PROGRAM_FLAGS
 	compile deps/physfs/src/physfs_platform_unix.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_platform_posix.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_platform_android.c $PHYSFS_FLAGS
@@ -166,7 +168,7 @@ android_link_for() {
 		-lm -landroid -lEGL -lGLESv3 -laaudio -llog \
 		-Wl,--no-undefined \
 		${BUILD_TYPE_FLAGS} \
-		${OBJ_DIR}/src/{gui.c.o,vm.c.o,physfs.c.o,metadata.c.o,libs.c.o} \
+		${OBJ_DIR}/src/{gui.c.o,vm.c.o,physfs.c.o,metadata.c.o,libs.c.o,platform_android.c.o} \
 		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o,screen.c.o,mouse.c.o,audio.c.o,controller.c.o} \
 		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o,physfs_platform_android.c.o} \
 		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
