@@ -1,3 +1,5 @@
+# https://developer.android.com/ndk/guides/symbol-visibility
+
 LIBBUXN {
   global:
     ANativeActivity_onCreate;

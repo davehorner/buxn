@@ -3,8 +3,8 @@
 main() {
 	export BUILD_TYPE=${1:-Debug}
 	export PLATFORM=${2:-linux}
-	export OBJ_DIR=".build/$PLATFORM/$BUILD_TYPE"
-	export BIN_DIR="bin/$PLATFORM/$BUILD_TYPE"
+	export OBJ_DIR=".build/$BUILD_TYPE/$PLATFORM"
+	export BIN_DIR="bin/$BUILD_TYPE/$PLATFORM"
 
 	rm -f .build/commands
 	mkdir -p .build
@@ -58,8 +58,7 @@ build_linux() {
 	$CXX \
 		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
-		-lGL -lX11 -lXcursor -lXi \
-		-lasound \
+		-lGL -lX11 -lXcursor -lXi -lasound \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{gui.c.o,vm.c.o,physfs.c.o,metadata.c.o,libs.c.o,platform_linux.c.o} \
 		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o,screen.c.o,mouse.c.o,audio.c.o,controller.c.o} \
