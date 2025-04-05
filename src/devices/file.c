@@ -75,7 +75,7 @@ buxn_file_format_stat(char* buf, uint16_t len, const buxn_file_stat_t* stat) {
 				size = size >> 4;
 			}
 
-			if (size != 0) { memset(buf, len, '?'); }
+			if (size != 0) { memset(buf, '?', len); }
 		} break;
 		case BUXN_FILE_TYPE_DIRECTORY:
 			memset(buf, '-', len);
