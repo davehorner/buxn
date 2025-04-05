@@ -1,6 +1,6 @@
 #!/bin/sh -e
 
-./build $@
+./build $@ || true
 
 inotifywait -r -e CLOSE_WRITE -m build src | \
 	while read path action file

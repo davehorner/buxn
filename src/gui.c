@@ -12,7 +12,6 @@
 #include <math.h>
 #include <threads.h>
 #include <stdatomic.h>
-#include <errno.h>
 #include "vm.h"
 #include "metadata.h"
 #include "devices/system.h"
@@ -59,8 +58,8 @@ typedef struct {
 } draw_info_t;
 
 static struct {
-	int argc;
-	const char** argv;
+	args_t args;
+
 	buxn_vm_t* vm;
 	devices_t devices;
 	uint64_t last_frame;
@@ -78,7 +77,6 @@ static struct {
 	int audio_finished_ack[BUXN_NUM_AUDIO_DEVICES];
 	buxn_audio_message_t incoming_audio[BUXN_NUM_AUDIO_DEVICES];
 
-	bool rom_loaded;
 	bool should_set_icon;
 	uint8_t paletted_icon[24 * 24];
 } app;
@@ -366,38 +364,52 @@ buxn_screen_request_resize(
 }
 
 static bool
-try_load_rom(const char* path) {
-	PHYSFS_File* rom_file;
-	if ((rom_file = PHYSFS_openRead(path)) != NULL) {
-		uint8_t* read_pos = &app.vm->memory[BUXN_RESET_VECTOR];
-		PHYSFS_uint64 mem_left = app.vm->memory_size - BUXN_RESET_VECTOR;
-		PHYSFS_sint64 bytes_read;
-		while (
-			mem_left > 0
-			&& (bytes_read = PHYSFS_readBytes(rom_file, read_pos, mem_left)) > 0
-		) {
-			mem_left -= bytes_read;
-			read_pos += bytes_read;
-		}
-		PHYSFS_ErrorCode error = PHYSFS_getLastErrorCode();
-		PHYSFS_close(rom_file);
-
-		if (bytes_read < 0) {
-			BLOG_ERROR("Error while loading rom: %s", PHYSFS_getErrorByCode(error));
-			return false;
-		}
-
-		if (mem_left == 0 && bytes_read > 0) {
-			BLOG_ERROR("ROM is too large");
-			return false;
-		}
-
-		BLOG_DEBUG("Loaded rom: %zu bytes", read_pos - &app.vm->memory[BUXN_RESET_VECTOR]);
-		return true;
-	} else {
-		BLOG_ERROR("Could not load rom: %s", PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
+load_boot_rom(void) {
+	stream_t stream;
+	if (!platform_open_boot_rom(&stream)) {
 		return false;
 	}
+
+	uint8_t* read_pos = &app.vm->memory[BUXN_RESET_VECTOR];
+	uint64_t mem_left = app.vm->memory_size - BUXN_RESET_VECTOR;
+	int64_t bytes_read;
+	while (
+		mem_left > 0
+		&& (bytes_read = stream.read(stream.handle, read_pos, mem_left)) > 0
+	) {
+		mem_left -= bytes_read;
+		read_pos += bytes_read;
+	}
+
+	if (bytes_read < 0) {
+		BLOG_ERROR("Error while loading rom: %s", platform_stream_error(stream));
+		return false;
+	}
+
+	if (mem_left == 0 && bytes_read > 0) {
+		BLOG_ERROR("ROM is too large");
+		return false;
+	}
+
+	BLOG_DEBUG("Loaded rom: %zu bytes", read_pos - &app.vm->memory[BUXN_RESET_VECTOR]);
+	platform_close_stream(stream);
+
+	buxn_metadata_t metadata = buxn_metadata_parse_from_rom(
+		&app.vm->memory[BUXN_RESET_VECTOR], app.vm->memory_size - 256
+	);
+
+	if (metadata.content_len != 0) {
+		apply_metadata(metadata);
+	}
+
+	BLOG_DEBUG("Executing reset vector");
+	buxn_console_init(app.vm, &app.devices.console, app.args.argc, app.args.argv);
+	buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
+	buxn_console_send_args(app.vm, &app.devices.console);
+	buxn_console_send_input(app.vm, &app.devices.console, '\n');
+	buxn_console_send_input_end(app.vm, &app.devices.console);
+
+	return true;
 }
 
 void
@@ -439,8 +451,6 @@ audio_callback(float* buffer, int num_frames, int num_channels) {
 
 static void
 init(void) {
-	platform_init_fs(app.argc, app.argv);
-
 	app.devices = (devices_t){ 0 };
 
 	stm_setup();
@@ -492,42 +502,10 @@ init(void) {
 	app.vm->userdata = &app.devices;
 	app.vm->memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS;
 	buxn_vm_reset(app.vm, BUXN_VM_RESET_ALL);
-	buxn_console_init(app.vm, &app.devices.console, app.argc, app.argv);
 
-	const char* boot_rom = "boot.rom";
-	if (app.argc >= 2) {
-		boot_rom = app.argv[1];
-
-		// Find base name of arg since we already mounted the target dir
-		int len = strlen(app.argv[1]);
-		int i;
-		for (i = len - 1; i >= 0; --i) {
-			if (app.argv[1][i] == '/' || app.argv[1][i] == '\\') {
-				break;
-			}
-		}
-
-		if (i > 0) {
-			boot_rom += i + 1;
-		}
-	}
-
-	if (try_load_rom(boot_rom)) {
-		buxn_metadata_t metadata = buxn_metadata_parse_from_rom(
-			&app.vm->memory[BUXN_RESET_VECTOR], app.vm->memory_size - 256
-		);
-
-		if (metadata.content_len != 0) {
-			apply_metadata(metadata);
-		} else if (app.argc >= 2) {
-			sapp_set_window_title(app.argv[1]);
-		}
-		buxn_console_init(app.vm, &app.devices.console, app.argc - 2, app.argv + 2);
-		buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
-		buxn_console_send_args(app.vm, &app.devices.console);
-		buxn_console_send_input(app.vm, &app.devices.console, '\n');
-		buxn_console_send_input_end(app.vm, &app.devices.console);
-		app.rom_loaded = true;
+	if (!load_boot_rom()) {
+		BLOG_FATAL("Could not load boot rom");
+		sapp_quit();
 	}
 
 	app.last_frame = stm_now();
@@ -821,27 +799,6 @@ event(const sapp_event* event) {
 				buxn_controller_send_char(app.vm, &app.devices.controller, ch);
 			}
 		} break;
-		case SAPP_EVENTTYPE_FILES_DROPPED:
-			if (
-				!app.rom_loaded
-				&& sapp_get_num_dropped_files() == 1
-				&& try_load_rom(sapp_get_dropped_file_path(0))
-			) {
-				buxn_vm_reset(
-					app.vm,
-					BUXN_VM_RESET_STACK
-					| BUXN_VM_RESET_DEVICE
-					| BUXN_VM_RESET_ZERO_PAGE
-				);
-				sapp_set_window_title(sapp_get_dropped_file_path(0));
-				buxn_console_init(app.vm, &app.devices.console, 0, NULL);
-				buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
-				buxn_console_send_args(app.vm, &app.devices.console);
-				buxn_console_send_input(app.vm, &app.devices.console, '\n');
-				buxn_console_send_input_end(app.vm, &app.devices.console);
-				app.rom_loaded = true;
-			}
-			break;
 		default:
 			break;
 	}
@@ -854,15 +811,19 @@ event(const sapp_event* event) {
 
 sapp_desc
 sokol_main(int argc, char* argv[]) {
+	memset(&app, 0, sizeof(app));
+	app.args = (args_t){
+		.argc = argc,
+		.argv = (const char**)argv,
+	};
+	platform_parse_args(&app.args);
+
 	blog_init(&(blog_options_t){
 		.current_filename = __FILE__,
 		.current_depth_in_project = 1,
 	});
 	platform_init_log();
-
-	memset(&app, 0, sizeof(app));
-	app.argc = argc;
-	app.argv = (const char**)argv;
+	platform_init_fs();
 
 	return (sapp_desc){
 		.init_cb = init,
@@ -872,8 +833,6 @@ sokol_main(int argc, char* argv[]) {
 		.width = 640,
 		.height = 480,
 		.sample_count = 1,
-		.max_dropped_files = 1,
-		.enable_dragndrop = true,
 		.window_title = "buxn-gui",
 		.icon.sokol_default = true,
 		.logger.func = sokol_log,

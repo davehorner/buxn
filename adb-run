@@ -1,0 +1,7 @@
+#!/bin/sh -e
+
+adb install -r $1
+adb shell am start \
+	-n "com.bullno1.buxn/android.app.NativeActivity" \
+	-a android.intent.action.MAIN \
+	-c android.intent.category.LAUNCHER
