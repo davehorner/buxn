@@ -25,4 +25,7 @@ buxn_system_debug(struct buxn_vm_s* vm, uint8_t value);
 extern void
 buxn_system_set_metadata(struct buxn_vm_s* vm, uint16_t address);
 
+extern void
+buxn_system_theme_changed(struct buxn_vm_s* vm);
+
 #endif

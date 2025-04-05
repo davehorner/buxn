@@ -72,6 +72,11 @@ buxn_system_deo(struct buxn_vm_s* vm, uint8_t address) {
 		case 0x07:
 			buxn_system_set_metadata(vm, buxn_vm_dev_load2(vm, 0x06));
 			break;
+		case 0x09:
+		case 0x0b:
+		case 0x0d:
+			buxn_system_theme_changed(vm);
+			break;
 		case 0x0e:
 			if (vm->device[address]) {
 				buxn_system_debug(vm, vm->device[address]);

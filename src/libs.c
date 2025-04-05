@@ -12,5 +12,4 @@
 #include <sokol_gp.h>
 
 #define BLIB_IMPLEMENTATION
-#include <bspscq.h>
 #include <blog.h>

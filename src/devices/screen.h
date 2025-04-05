@@ -70,6 +70,9 @@ buxn_screen_dei(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address);
 void
 buxn_screen_deo(struct buxn_vm_s* vm, buxn_screen_t* device, uint8_t address);
 
+void
+buxn_screen_force_refresh(buxn_screen_t* device);
+
 // Must be provided by the host program
 
 extern buxn_screen_t*

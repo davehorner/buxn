@@ -265,3 +265,9 @@ buxn_screen_update(struct buxn_vm_s* vm) {
 	uint16_t vector_addr = buxn_vm_dev_load2(vm, 0x20);
 	if (vector_addr != 0) { buxn_vm_execute(vm, vector_addr); }
 }
+
+void
+buxn_screen_force_refresh(buxn_screen_t* device) {
+	buxn_screen_dirty(&device->bg_dirty_rect, 0, 0, device->width, device->height);
+	buxn_screen_dirty(&device->fg_dirty_rect, 0, 0, device->width, device->height);
+}

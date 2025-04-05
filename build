@@ -273,6 +273,7 @@ compile_common() {
 }
 
 compile() {
+	mkdir -p $OBJ_DIR
 	echo ./compile "$@" >> $OBJ_DIR/commands
 }
 

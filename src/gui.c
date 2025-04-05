@@ -7,7 +7,6 @@
 #include <sokol_gfx.h>
 #include <sokol_glue.h>
 #include <sokol_gp.h>
-#include <bspscq.h>
 #include <blog.h>
 #include <physfs.h>
 #include <math.h>
@@ -79,10 +78,7 @@ static struct {
 	layer_texture_t background_texture;
 	layer_texture_t foreground_texture;
 
-	bspscq_t audio_queue;
-	void* audio_queue_storage[BUXN_NUM_AUDIO_DEVICES];
-	buxn_audio_message_t audio_queue_messages[BUXN_NUM_AUDIO_DEVICES + 2];
-	int audio_message_index;
+	mtx_t audio_lock;
 	atomic_int audio_finished_count[BUXN_NUM_AUDIO_DEVICES];
 	int audio_finished_ack[BUXN_NUM_AUDIO_DEVICES];
 
@@ -282,6 +278,12 @@ buxn_system_set_metadata(buxn_vm_t* vm, uint16_t address) {
 	apply_metadata(metadata);
 }
 
+void
+buxn_system_theme_changed(buxn_vm_t* vm) {
+	(void)vm;
+	buxn_screen_force_refresh(app.devices.screen);
+}
+
 static void
 get_draw_info(draw_info_t* out) {
 	int actual_width = sapp_width();
@@ -443,27 +445,22 @@ try_load_rom(const char* path) {
 void
 buxn_audio_send(buxn_vm_t* vm, const buxn_audio_message_t* message) {
 	(void)vm;
-	int message_index = app.audio_message_index = (app.audio_message_index + 1) % (BUXN_NUM_AUDIO_DEVICES + 2);
-	buxn_audio_message_t* buf = &app.audio_queue_messages[message_index];
-	*buf = *message;
-	bspscq_produce(&app.audio_queue, buf, true);
+	mtx_lock(&app.audio_lock);
+	buxn_audio_receive(message);
+	mtx_unlock(&app.audio_lock);
 }
 
 static void
 audio_callback(float* buffer, int num_frames, int num_channels) {
-	// Pull all pending messages
-	buxn_audio_message_t* message = NULL;
-	while ((message = bspscq_consume(&app.audio_queue, false)) != NULL) {
-		buxn_audio_receive(message);
-	}
-
 	// Render audio
+	mtx_lock(&app.audio_lock);
 	memset(buffer, 0, sizeof(float) * num_frames * num_channels);
 	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
 		if (buxn_audio_render(&app.devices.audio[i], buffer, num_frames, num_channels) == BUXN_AUDIO_FINISHED) {
 			atomic_fetch_add_explicit(&app.audio_finished_count[i], 1, memory_order_relaxed);
 		}
 	}
+	mtx_unlock(&app.audio_lock);
 }
 
 #ifdef __ANDROID__
@@ -511,10 +508,8 @@ init(void) {
 	});
 	sgp_setup(&(sgp_desc){ 0 });
 
-	bspscq_init(&app.audio_queue, app.audio_queue_storage, BUXN_NUM_AUDIO_DEVICES);
-	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
-		app.devices.audio[i].sample_frequency = BUXN_AUDIO_PREFERRED_SAMPLE_RATE;
-	}
+	mtx_init(&app.audio_lock, mtx_plain);
+	mtx_lock(&app.audio_lock);
 	saudio_setup(&(saudio_desc){
 		.num_channels = BUXN_AUDIO_PREFERRED_NUM_CHANNELS,
 		.sample_rate = BUXN_AUDIO_PREFERRED_SAMPLE_RATE,
@@ -525,6 +520,7 @@ init(void) {
 	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
 		app.devices.audio[i].sample_frequency = audio_sample_rate;
 	}
+	mtx_unlock(&app.audio_lock);
 	BLOG_INFO(
 		"Audio initalized with sample rate %d Hz and %d channel(s)",
 		audio_sample_rate,
@@ -589,7 +585,7 @@ cleanup(void) {
 	cleanup_layer_texture(&app.background_texture);
 
 	saudio_shutdown();
-	bspscq_cleanup(&app.audio_queue);
+	mtx_destroy(&app.audio_lock);
 
 	free(app.vm);
 
@@ -616,8 +612,8 @@ frame(void) {
 	app.last_frame = now;
 	app.frame_time_accumulator += time_diff;
 
-	bool should_redraw = app.frame_time_accumulator >= FRAME_TIME_US;
-	while (app.frame_time_accumulator >= FRAME_TIME_US) {
+	bool should_redraw = app.frame_time_accumulator >= 0;
+	while (app.frame_time_accumulator >= 0) {
 		app.frame_time_accumulator -= FRAME_TIME_US;
 		buxn_screen_update(app.vm);
 	}
@@ -692,6 +688,7 @@ frame(void) {
 			sgp_viewport(0, 0, draw_info.actual_width, draw_info.actual_height);
 			sgp_project(0.f, (float)draw_info.actual_width, 0.f, (float)draw_info.actual_height);
 			sgp_set_blend_mode(SGP_BLENDMODE_BLEND);
+			sgp_clear();
 
 			sgp_set_sampler(0, app.sampler);
 

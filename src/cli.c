@@ -72,6 +72,11 @@ buxn_system_set_metadata(buxn_vm_t* vm, uint16_t address) {
 }
 
 void
+buxn_system_theme_changed(buxn_vm_t* vm) {
+	(void)vm;
+}
+
+void
 buxn_console_handle_write(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
 	(void)vm;
 	(void)device;
