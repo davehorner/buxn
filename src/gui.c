@@ -81,6 +81,7 @@ static struct {
 	mtx_t audio_lock;
 	atomic_int audio_finished_count[BUXN_NUM_AUDIO_DEVICES];
 	int audio_finished_ack[BUXN_NUM_AUDIO_DEVICES];
+	buxn_audio_message_t incoming_audio[BUXN_NUM_AUDIO_DEVICES];
 
 	bool rom_loaded;
 	bool should_set_icon;
@@ -445,22 +446,38 @@ try_load_rom(const char* path) {
 void
 buxn_audio_send(buxn_vm_t* vm, const buxn_audio_message_t* message) {
 	(void)vm;
-	mtx_lock(&app.audio_lock);
-	buxn_audio_receive(message);
-	mtx_unlock(&app.audio_lock);
+	if (mtx_trylock(&app.audio_lock) == thrd_success) {
+		int device_index = message->device - app.devices.audio;
+		app.incoming_audio[device_index] = *message;
+		mtx_unlock(&app.audio_lock);
+	} else {
+		BLOG_WARN("Dropped audio sample");
+	}
 }
 
 static void
 audio_callback(float* buffer, int num_frames, int num_channels) {
+	// Process incoming audio
+	if (mtx_trylock(&app.audio_lock) == thrd_success) {
+		for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
+			buxn_audio_message_t* message = &app.incoming_audio[i];
+			if (message->device != NULL) {
+				buxn_audio_receive(message);
+				message->device = NULL;
+			}
+		}
+		mtx_unlock(&app.audio_lock);
+	} else {
+		BLOG_WARN("Skipped audio sample");
+	}
+
 	// Render audio
-	mtx_lock(&app.audio_lock);
 	memset(buffer, 0, sizeof(float) * num_frames * num_channels);
 	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
 		if (buxn_audio_render(&app.devices.audio[i], buffer, num_frames, num_channels) == BUXN_AUDIO_FINISHED) {
 			atomic_fetch_add_explicit(&app.audio_finished_count[i], 1, memory_order_relaxed);
 		}
 	}
-	mtx_unlock(&app.audio_lock);
 }
 
 #ifdef __ANDROID__
