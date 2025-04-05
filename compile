@@ -1,20 +1,21 @@
 #!/bin/sh -e
 
-source="$1"
-shift 1
+cc="$1"
+cxx="$2"
+source="$3"
+object="$4"
+shift 4
 flags="$@"
-
-object="$OBJ_DIR/$source.o"
 
 if [ ! -f "$object" ] || [ "$source" -nt "$object" ] || [ "./build" -nt "$object" ]
 then
 	mkdir -p $(dirname "$object")
 	case "$source" in
 		*.c)
-			exec $CC $flags -c "$source" -o "$object"
+			exec $cc $flags -c "$source" -o "$object"
 			;;
 		*.cpp)
-			exec $CXX $flags -c "$source" -o "$object"
+			exec $cxx $flags -c "$source" -o "$object"
 			;;
 		*)
 			echo "Cannot compile $source"

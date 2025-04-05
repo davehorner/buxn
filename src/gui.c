@@ -508,13 +508,6 @@ init(void) {
 	const char* write_dir = PHYSFS_getPrefDir("bullno1.com", "buxn");
 	PHYSFS_setWriteDir(write_dir);
 	PHYSFS_mount(write_dir, "/", 1);
-
-	PHYSFS_File* file = PHYSFS_openWrite("test");
-	if (file != NULL) {
-		PHYSFS_writeBytes(file, "hello", sizeof("hello"));
-		PHYSFS_close(file);
-		BLOG_INFO("Wrote file");
-	}
 #else
 	PHYSFS_init(app.argv[0]);
 	PHYSFS_mount(".", "", 1);
