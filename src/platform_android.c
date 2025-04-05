@@ -3,6 +3,7 @@
 #include <physfs.h>
 #include <sokol_app.h>
 #include <android/native_activity.h>
+#include <android/window.h>
 
 static struct {
 	blog_android_logger_options_t log_options;
@@ -16,6 +17,9 @@ physfs_read(void* handle, void* buffer, uint64_t num_bytes) {
 void
 platform_parse_args(args_t* args) {
 	(void)args;  // No op
+
+	ANativeActivity* activity = (ANativeActivity*)sapp_android_get_native_activity();
+	ANativeActivity_setWindowFlags(activity, AWINDOW_FLAG_FULLSCREEN, 0);
 }
 
 void

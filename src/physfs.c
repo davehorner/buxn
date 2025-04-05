@@ -25,6 +25,9 @@ buxn_file_fopen(struct buxn_vm_s* vm, const char* path, buxn_file_mode_t mode) {
 	(void)vm;
 
 	BLOG_DEBUG("Opening %s with mode %d", path, mode);
+	if (strncmp(path, "./", 2) == 0) {
+		path += 2;
+	}
 
 	switch (mode) {
 		case BUXN_FILE_MODE_READ:
@@ -66,6 +69,9 @@ buxn_file_opendir(struct buxn_vm_s* vm, const char* path) {
 	(void)vm;
 
 	BLOG_DEBUG("Opening directory %s", path);
+	if (strncmp(path, "./", 2) == 0) {
+		path += 2;
+	}
 
 	for (int i = 0; i < BUXN_NUM_FILE_DEVICES; ++i) {
 		if (dir_buf[i].files == NULL) {
@@ -124,6 +130,9 @@ buxn_file_stat(struct buxn_vm_s* vm, const char* path) {
 	(void)vm;
 
 	BLOG_DEBUG("Stating %s", path);
+	if (strncmp(path, "./", 2) == 0) {
+		path += 2;
+	}
 
 	PHYSFS_Stat stat;
 	if (strcmp(path, "/") == 0 || strcmp(path, ".") == 0) {
