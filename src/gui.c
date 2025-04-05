@@ -25,7 +25,9 @@
 #include "devices/audio.h"
 #include "devices/file.h"
 
-#if defined(__linux__)
+// TODO: Move platform-specific code to their own files
+
+#if defined(__linux__) && !defined(__ANDROID__)
 #include <X11/Xlib.h>
 #endif
 
@@ -341,17 +343,22 @@ buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) 
 	buxn_console_putc(BLOG_LEVEL_ERROR, &app.console_err_buf, c);
 }
 
+#if defined(__linux__) && !defined(__ANDROID__)
 static void
 linux_resize_window(uint16_t width, uint16_t height) {
 	Display* display = (Display*)sapp_x11_get_display();
 	Window window = (Window)sapp_x11_get_window();
 	XResizeWindow(display, window, width, height);
 }
+#endif
 
 static void
 resize_window(uint16_t width, uint16_t height) {
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 	linux_resize_window(width, height);
+#else
+	(void)width;
+	(void)height;
 #endif
 }
 
@@ -424,10 +431,37 @@ audio_callback(float* buffer, int num_frames, int num_channels) {
 	}
 }
 
+#ifdef __ANDROID__
+#include <android/native_activity.h>
+#endif
+
 static void
 init(void) {
+#ifdef __ANDROID__
+	const ANativeActivity* activity = sapp_android_get_native_activity();
+
+	JNIEnv* jenv;
+	JavaVM* jvm = activity->vm;
+    (*jvm)->AttachCurrentThread(jvm, &jenv, NULL);
+	PHYSFS_init((void*)&(struct PHYSFS_AndroidInit){
+		.jnienv = jenv,
+		.context = activity->clazz,
+	});
+    (*jvm)->DetachCurrentThread(jvm);
+
+	const char* base_dir = PHYSFS_getBaseDir();
+	if (!PHYSFS_mount(base_dir, "/", 1)) {
+		BLOG_ERROR("Error while mounting apk: %s", PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
+	}
+	PHYSFS_setRoot(base_dir, "/assets");
+
+	char** files = PHYSFS_enumerateFiles("/");
+	for (int i = 0; files[i] != NULL; ++i) {
+		BLOG_DEBUG("Found: %s", files[i]);
+	}
+	PHYSFS_freeList(files);
+#else
 	PHYSFS_init(app.argv[0]);
-#ifdef __linux__
 	PHYSFS_mount(".", "", 1);
 	PHYSFS_setWriteDir(".");
 #endif
@@ -814,13 +848,20 @@ sokol_main(int argc, char* argv[]) {
 		.current_filename = __FILE__,
 		.current_depth_in_project = 1,
 	});
+#if defined(__ANDROID__)
+	static blog_android_logger_options_t options;
+	options.tag = "buxn";
+	blog_add_android_logger(BLOG_LEVEL_DEBUG, &options);
+#else
 	static blog_file_logger_options_t options;
 	options.file = stderr;
 	options.with_colors = true;
-#ifdef _DEBUG
+
+#	ifdef _DEBUG
 	blog_add_file_logger(BLOG_LEVEL_TRACE, &options);
-#else
+#	else
 	blog_add_file_logger(BLOG_LEVEL_INFO, &options);
+#	endif
 #endif
 
 	memset(&app, 0, sizeof(app));

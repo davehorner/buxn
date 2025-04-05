@@ -34,6 +34,7 @@ build_linux() {
 	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1"
 
 	compile_common
+	compile src/gui.c $PROGRAM_FLAGS
 	compile src/libs.c $PROGRAM_FLAGS
 	compile deps/physfs/src/physfs_platform_unix.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_platform_posix.c $PHYSFS_FLAGS
@@ -63,6 +64,152 @@ build_linux() {
 		-o ${BIN_DIR}/buxn-gui
 
 	echo "Done"
+}
+
+build_android() {
+	# TODO: Drop this as low as possible
+	ANDROID_API_LEVEL=${ANDROID_API_LEVEL:-34}
+	detect_android_sdk
+
+	ANDROID_BUILD_HOST=${ANDROID_BUILD_HOST:-linux-x86_64}
+	ANDROID_ABIS=${ANDROID_ABIS:-"x86_64 arm64-v8a"}
+
+	SAVED_OBJ_DIR=$OBJ_DIR
+	SAVED_BIN_DIR=$BIN_DIR
+	for abi in $ANDROID_ABIS
+	do
+		OBJ_DIR=$SAVED_OBJ_DIR/$abi
+		BIN_DIR=$SAVED_OBJ_DIR/apk/lib/$abi
+		mkdir -p $OBJ_DIR
+		mkdir -p $BIN_DIR
+		build_android_for $abi
+	done
+
+	OBJ_DIR=$SAVED_OBJ_DIR
+	BIN_DIR=$SAVED_BIN_DIR
+
+	ANDROID_PLATFORM="$ANDROID_SDK/platforms/android-$ANDROID_API_LEVEL"
+
+	"$ANDROID_BUILD_TOOLS/aapt" package \
+		-f \
+		-M src/android/AndroidManifest.xml \
+		-S src/android/res/ \
+		-I "$ANDROID_PLATFORM/android.jar" \
+		-F $OBJ_DIR/buxn.unsigned.apk \
+		$OBJ_DIR/apk \
+		src/android/apk
+
+	"$ANDROID_BUILD_TOOLS/zipalign" -f -p 4 \
+		$OBJ_DIR/buxn.unsigned.apk \
+		$OBJ_DIR/buxn.aligned.apk
+
+	# TODO: release key?
+	ANDROID_KEYSTORE=~/.android/debug.keystore
+	if [ ! -f $KEYSTORE ]
+	then
+		keytool -genkeypair -v \
+			-keystore $KEYSTORE \
+			-alias androiddebugkey \
+			-keyalg RSA \
+			-keysize 2048 \
+			-validity 10000 \
+			-storepass android \
+			-keypass android \
+			-dname "CN=Android Debug,O=Android,C=US"
+	fi
+	"$ANDROID_BUILD_TOOLS/apksigner" sign \
+		--ks $ANDROID_KEYSTORE \
+		--ks-key-alias androiddebugkey \
+		--ks-pass pass:android \
+		--key-pass pass:android \
+		--out $BIN_DIR/buxn.apk \
+		$OBJ_DIR/buxn.aligned.apk
+}
+
+build_android_for() {
+	abi=$1
+	case $abi in
+		"x86_64")
+			triplet="x86_64-linux-android"
+			;;
+		"arm64-v8a")
+			triplet="aarch64-linux-android"
+			;;
+		*)
+			echo "Unsupported ABI: $abi"
+			exit 1
+			;;
+	esac
+
+
+	export CC=$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$ANDROID_BUILD_HOST/bin/$triplet$ANDROID_API_LEVEL-clang
+	export CXX=$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$ANDROID_BUILD_HOST/bin/$triplet$ANDROID_API_LEVEL-clang++
+
+	echo "Building for $abi using:"
+	echo "CC=$CC"
+	echo "CXX=$CXX"
+
+	if [ ! -f $CC ] || [ ! -f $CXX ]
+	then
+		echo "Could not find compilers"
+		exit 1
+	fi
+
+	Release="-fPIC -g -O3 -flto -DNDEBUG"
+	Debug="-fPIC -g -fno-omit-frame-pointer -D_DEBUG"
+	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
+
+	DEV_FLAGS="-Wall -Wextra -pedantic -Werror"
+	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -DSOKOL_GLES3"
+	VM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS}"
+	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1"
+
+	compile_common
+	compile src/gui.c $PROGRAM_FLAGS
+	compile src/libs.c $PROGRAM_FLAGS
+	compile deps/physfs/src/physfs_platform_unix.c $PHYSFS_FLAGS
+	compile deps/physfs/src/physfs_platform_posix.c $PHYSFS_FLAGS
+	compile deps/physfs/src/physfs_platform_android.c $PHYSFS_FLAGS
+	cat .build/commands | parallel $PARALLEL_FLAGS --max-procs $(nproc)
+
+	$CC \
+		-lm -landroid -lEGL -lGLESv3 -laaudio -llog \
+		-Wl,--no-undefined \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/{gui.c.o,vm.c.o,physfs.c.o,metadata.c.o,libs.c.o} \
+		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o,screen.c.o,mouse.c.o,audio.c.o,controller.c.o} \
+		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o,physfs_platform_android.c.o} \
+		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
+		-shared -o $BIN_DIR/libbuxn.so
+
+	#if [ "$BUILD_TYPE" = "Debug" ]
+	#then
+		#cp src/android/wrap.sh $BIN_DIR
+		#cp $ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$ANDROID_BUILD_HOST/lib/clang/*/lib/linux/libclang_rt.hwasan-*.so $BIN_DIR/
+	#fi
+}
+
+detect_android_sdk() {
+	ANDROID_SDK=${ANDROID_SDK:-~/Android/Sdk}
+	if [ ! -f "$ANDROID_SDK/platform-tools/adb" ]
+	then
+		echo "Android SDK not found, please set the environment variables ANDROID_SDK"
+		exit 1
+	fi
+	echo "Found Android SDK at: $ANDROID_SDK"
+
+	ANDROID_BUILD_TOOLS=$(echo $ANDROID_SDK/build-tools/$ANDROID_API_LEVEL.* | sort -r | head -1)
+	echo "Using build tools at: $ANDROID_BUILD_TOOLS"
+
+	ANDROID_NDK_VERSION=${ANDROID_NDK_VERSION:-*}
+	ANDROID_NDK=${ANDROID_NDK:-$ANDROID_SDK/ndk}
+	ANDROID_NDK_ROOT=$(echo $ANDROID_NDK/$ANDROID_NDK_VERSION | sort -r | head -1)
+	if [ ! -f "$ANDROID_NDK_ROOT/ndk-build" ]
+	then
+		echo "Android NDK not found, please set the environment variables ANDROID_NDK and ANDROID_NDK_VERSION"
+		exit 1
+	fi
+	echo "Found Android NDK at: $ANDROID_NDK_ROOT"
 }
 
 build_cosmo() {
@@ -102,9 +249,7 @@ build_cosmo() {
 
 compile_common() {
 	# Program
-	compile src/cli.c $PROGRAM_FLAGS
 	compile src/physfs.c $PROGRAM_FLAGS
-	compile src/gui.c $PROGRAM_FLAGS
 
 	# VM
 	compile src/vm.c $VM_FLAGS
