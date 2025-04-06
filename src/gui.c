@@ -10,7 +10,6 @@
 #include <blog.h>
 #include <physfs.h>
 #include <math.h>
-#include <threads.h>
 #include <stdatomic.h>
 #include "vm.h"
 #include "metadata.h"
@@ -72,10 +71,13 @@ static struct {
 	layer_texture_t background_texture;
 	layer_texture_t foreground_texture;
 
-	mtx_t audio_lock;
 	atomic_int audio_finished_count[BUXN_NUM_AUDIO_DEVICES];
 	int audio_finished_ack[BUXN_NUM_AUDIO_DEVICES];
-	buxn_audio_message_t incoming_audio[BUXN_NUM_AUDIO_DEVICES];
+	buxn_audio_message_t audio_submission_buffer_a[BUXN_NUM_AUDIO_DEVICES];
+	buxn_audio_message_t audio_submission_buffer_b[BUXN_NUM_AUDIO_DEVICES];
+	atomic_uintptr_t incoming_audio_ptr;
+	uintptr_t outgoing_audio_ptr;
+	bool should_submit_audio;
 
 	bool should_set_icon;
 	uint8_t paletted_icon[24 * 24];
@@ -412,32 +414,52 @@ load_boot_rom(void) {
 	return true;
 }
 
+static bool
+try_submit_audio(void) {
+	// Attempt to submit the buffer
+	uintptr_t null = 0;
+	bool submitted = atomic_compare_exchange_weak_explicit(
+		&app.incoming_audio_ptr, &null, app.outgoing_audio_ptr,
+		memory_order_release, memory_order_relaxed
+	);
+
+	// If successful, swap the buffer
+	if (submitted) {
+		app.outgoing_audio_ptr = app.outgoing_audio_ptr == (uintptr_t)&app.audio_submission_buffer_a
+			? (uintptr_t)&app.audio_submission_buffer_b
+			: (uintptr_t)&app.audio_submission_buffer_a;
+		memset((void*)app.outgoing_audio_ptr, 0, sizeof(buxn_audio_message_t) * BUXN_NUM_AUDIO_DEVICES);
+	}
+
+	app.should_submit_audio = !submitted;
+	return submitted;
+}
+
 void
 buxn_audio_send(buxn_vm_t* vm, const buxn_audio_message_t* message) {
 	(void)vm;
-	if (mtx_trylock(&app.audio_lock) == thrd_success) {
-		int device_index = message->device - app.devices.audio;
-		app.incoming_audio[device_index] = *message;
-		mtx_unlock(&app.audio_lock);
-	} else {
-		BLOG_WARN("Dropped audio sample");
-	}
+	// Write the message into the staging buffer
+	int device_index = message->device - app.devices.audio;
+	buxn_audio_message_t* outgoing_audio = (void*)app.outgoing_audio_ptr;
+	outgoing_audio[device_index] = *message;
+	// Try to submit
+	try_submit_audio();
 }
 
 static void
 audio_callback(float* buffer, int num_frames, int num_channels) {
 	// Process incoming audio
-	if (mtx_trylock(&app.audio_lock) == thrd_success) {
+	buxn_audio_message_t* incoming_audio = (void*)atomic_load_explicit(
+		&app.incoming_audio_ptr, memory_order_acquire
+	);
+	if (incoming_audio != NULL) {
 		for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
-			buxn_audio_message_t* message = &app.incoming_audio[i];
+			const buxn_audio_message_t* message = &incoming_audio[i];
 			if (message->device != NULL) {
 				buxn_audio_receive(message);
-				message->device = NULL;
 			}
 		}
-		mtx_unlock(&app.audio_lock);
-	} else {
-		BLOG_WARN("Skipped audio sample");
+		atomic_store_explicit(&app.incoming_audio_ptr, 0, memory_order_release);
 	}
 
 	// Render audio
@@ -453,16 +475,14 @@ static void
 init(void) {
 	app.devices = (devices_t){ 0 };
 
+	// Time
 	stm_setup();
 
-	sg_setup(&(sg_desc){
-		.environment = sglue_environment(),
-		.logger.func = sokol_log,
-	});
-	sgp_setup(&(sgp_desc){ 0 });
-
-	mtx_init(&app.audio_lock, mtx_plain);
-	mtx_lock(&app.audio_lock);
+	// Audio
+	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
+		app.devices.audio[i].sample_frequency = BUXN_AUDIO_PREFERRED_SAMPLE_RATE;
+	}
+	app.outgoing_audio_ptr = (uintptr_t)&app.audio_submission_buffer_a;
 	saudio_setup(&(saudio_desc){
 		.num_channels = BUXN_AUDIO_PREFERRED_NUM_CHANNELS,
 		.sample_rate = BUXN_AUDIO_PREFERRED_SAMPLE_RATE,
@@ -473,12 +493,18 @@ init(void) {
 	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
 		app.devices.audio[i].sample_frequency = audio_sample_rate;
 	}
-	mtx_unlock(&app.audio_lock);
 	BLOG_INFO(
 		"Audio initalized with sample rate %d Hz and %d channel(s)",
 		audio_sample_rate,
 		saudio_channels()
 	);
+
+	// Graphic
+	sg_setup(&(sg_desc){
+		.environment = sglue_environment(),
+		.logger.func = sokol_log,
+	});
+	sgp_setup(&(sgp_desc){ 0 });
 
 	int width = sapp_width();
 	int height = sapp_height();
@@ -499,6 +525,7 @@ init(void) {
 		.label = "uxn.screen",
 	});
 
+	// VM
 	app.vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
 	app.vm->userdata = &app.devices;
 	app.vm->memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS;
@@ -521,7 +548,6 @@ cleanup(void) {
 	cleanup_layer_texture(&app.background_texture);
 
 	saudio_shutdown();
-	mtx_destroy(&app.audio_lock);
 
 	free(app.vm);
 
@@ -534,6 +560,8 @@ cleanup(void) {
 static void
 frame(void) {
 	if (buxn_system_exit_code(app.vm) > 0) { sapp_quit(); }
+
+	if (app.should_submit_audio) { try_submit_audio(); }
 
 	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
 		int num_finished = atomic_load_explicit(&app.audio_finished_count[i], memory_order_relaxed);

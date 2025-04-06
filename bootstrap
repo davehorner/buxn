@@ -1,0 +1,4 @@
+#!/bin/sh -e
+
+git submodule sync
+git submodule update --init
