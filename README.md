@@ -1,4 +1,4 @@
-# buxn
+# buxn ![example workflow](https://github.com/github/docs/actions/workflows/build.yml/badge.svg)
 
 Implementation of the [uxn virtual machine](https://wiki.xxiivv.com/site/uxn.html) and the [varvara system](https://wiki.xxiivv.com/site/varvara.html).
 
@@ -16,8 +16,8 @@ The general syntax for the build script is: `./build <type> <platform>`.
 
 `type` can be one of:
 
-* `Debug`: Defines `_DEBUG` and enable sanitizer.
-* `Release`: Enable optimization.
+* `Debug`: Defines `_DEBUG` and enable sanitizers (`-fsanitize=undefined,address`).
+* `Release`: Defines `NDEBUG` and enable optimizations (`-O3 -flto`).
 
 `platform` can be one of:
 
