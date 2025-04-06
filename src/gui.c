@@ -418,7 +418,7 @@ static bool
 try_submit_audio(void) {
 	// Attempt to submit the buffer
 	uintptr_t null = 0;
-	bool submitted = atomic_compare_exchange_weak_explicit(
+	bool submitted = atomic_compare_exchange_strong_explicit(
 		&app.incoming_audio_ptr, &null, app.outgoing_audio_ptr,
 		memory_order_release, memory_order_relaxed
 	);
@@ -442,8 +442,7 @@ buxn_audio_send(buxn_vm_t* vm, const buxn_audio_message_t* message) {
 	int device_index = message->device - app.devices.audio;
 	buxn_audio_message_t* outgoing_audio = (void*)app.outgoing_audio_ptr;
 	outgoing_audio[device_index] = *message;
-	// Try to submit
-	try_submit_audio();
+	app.should_submit_audio = true;
 }
 
 static void
@@ -836,6 +835,8 @@ event(const sapp_event* event) {
 		buxn_mouse_update(app.vm);
 		app.devices.mouse.scroll_x = app.devices.mouse.scroll_y = 0;
 	}
+
+	if (app.should_submit_audio) { try_submit_audio(); }
 }
 
 sapp_desc
