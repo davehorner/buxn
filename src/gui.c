@@ -622,11 +622,22 @@ frame(void) {
 
 		if (app.should_set_icon) {
 			BLOG_DEBUG("Changing app icon");
-			uint32_t rendered_icon[24 * 24];
 
+			// If there is a splashscreen, use a default theme
+			if (
+				palette[1] == palette[2]
+				&& palette[2] == palette[3]
+			) {
+				palette[1] = 0xff777700;
+				palette[2] = 0xff000000;
+				palette[3] = 0xffffffff;
+			}
+
+			uint32_t rendered_icon[24 * 24];
 			for (int i = 0; i < (int)sizeof(app.paletted_icon); ++i) {
 				rendered_icon[i] = palette[app.paletted_icon[i]];
 			}
+
 			sapp_set_icon(&(sapp_icon_desc){
 				.images[0] = {
 					.width = 24,
