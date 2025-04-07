@@ -408,8 +408,6 @@ load_boot_rom(void) {
 	buxn_console_init(app.vm, &app.devices.console, app.args.argc, app.args.argv);
 	buxn_vm_execute(app.vm, BUXN_RESET_VECTOR);
 	buxn_console_send_args(app.vm, &app.devices.console);
-	buxn_console_send_input(app.vm, &app.devices.console, '\n');
-	buxn_console_send_input_end(app.vm, &app.devices.console);
 
 	return true;
 }

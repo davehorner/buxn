@@ -4,6 +4,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define BUXN_CONSOLE_STDIN    0x1
+#define BUXN_CONSOLE_ARG      0x2
+#define BUXN_CONSOLE_ARG_SEP  0x3
+#define BUXN_CONSOLE_END      0x4
+
 typedef struct {
 	int argc;
 	const char** argv;

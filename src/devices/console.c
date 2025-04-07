@@ -33,11 +33,11 @@ buxn_console_send_args(struct buxn_vm_s* vm, buxn_console_t* device) {
 			char arg_ch = *ch;
 
 			if (arg_ch != 0) {
-				buxn_console_send_data(vm, device, 2, arg_ch);
+				buxn_console_send_data(vm, device, BUXN_CONSOLE_ARG, arg_ch);
 			} else if (device->argc == 1) {
-				buxn_console_send_data(vm, device, 4, 0);
+				buxn_console_send_data(vm, device, BUXN_CONSOLE_END, '\n');
 			} else {
-				buxn_console_send_data(vm, device, 3, 0);
+				buxn_console_send_data(vm, device, BUXN_CONSOLE_ARG_SEP, '\n');
 			}
 
 			if (arg_ch != 0) {
@@ -75,10 +75,10 @@ buxn_console_should_send_input(struct buxn_vm_s* vm) {
 
 void
 buxn_console_send_input(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
-	buxn_console_send_data(vm, device, 1, c);
+	buxn_console_send_data(vm, device, BUXN_CONSOLE_STDIN, c);
 }
 
 void
 buxn_console_send_input_end(struct buxn_vm_s* vm, buxn_console_t* device) {
-	buxn_console_send_data(vm, device, 4, 0);
+	buxn_console_send_data(vm, device, BUXN_CONSOLE_END, 0);
 }
