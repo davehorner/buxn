@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
 #include <sokol_app.h>
 #include <sokol_audio.h>
@@ -66,6 +65,7 @@ static struct {
 
 	console_buf_t console_out_buf;
 	console_buf_t console_err_buf;
+	bool stdin_closed;
 
 	sg_sampler sampler;
 	layer_texture_t background_texture;
@@ -556,8 +556,24 @@ cleanup(void) {
 
 static void
 frame(void) {
+	// Exit
 	if (buxn_system_exit_code(app.vm) > 0) { sapp_quit(); }
 
+	// Console
+	char ch[256];
+	int num_chars;
+	while (!app.stdin_closed && (num_chars = platform_poll_stdin(ch, sizeof(ch))) != 0) {
+		for (int i = 0; i < num_chars; ++i) {
+			buxn_console_send_input(app.vm, &app.devices.console, ch[i]);
+		}
+
+		if (num_chars < 0) {
+			app.stdin_closed = true;
+			buxn_console_send_input_end(app.vm, &app.devices.console);
+		}
+	}
+
+	// Audio
 	if (app.should_submit_audio) { try_submit_audio(); }
 
 	for (int i = 0; i < BUXN_NUM_AUDIO_DEVICES; ++i) {
@@ -568,6 +584,7 @@ frame(void) {
 		}
 	}
 
+	// Screen
 	uint64_t now = stm_now();
 	double time_diff = stm_us(stm_diff(now, app.last_frame));
 	app.last_frame = now;

@@ -8,6 +8,7 @@
 #include <string.h>
 #include <X11/Xlib.h>
 #include <unistd.h>
+#include <poll.h>
 
 static struct {
 	blog_file_logger_options_t log_options;
@@ -83,4 +84,24 @@ platform_resize_window(uint16_t width, uint16_t height) {
 	Display* display = (Display*)sapp_x11_get_display();
 	Window window = (Window)sapp_x11_get_window();
 	XResizeWindow(display, window, width, height);
+}
+
+int
+platform_poll_stdin(char* ch, int size) {
+	int fd = fileno(stdin);
+	struct pollfd pfd = {
+		.fd = fd,
+		.events = POLLIN,
+	};
+
+	if (poll(&pfd, 1, 0) > 0) {
+		int c = read(fd, ch, size);
+		if (c == 0) {
+			return -1;
+		} else {
+			return c;
+		}
+	} else {
+		return 0;
+	}
 }

@@ -142,7 +142,7 @@ main(int argc, const char* argv[]) {
 		buxn_system_exit_code(vm) < 0
 		&& buxn_console_should_send_input(vm)
 	) {
-		char ch = fgetc(stdin);
+		int ch = fgetc(stdin);
 		if (ch != EOF) {
 			buxn_console_send_input(vm, &devices.console, ch);
 		} else {
