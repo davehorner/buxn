@@ -1,11 +1,11 @@
 # =uxn
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Build status](https://github.com/bullno1/buxn/actions/workflows/build.yml/badge.svg)](https://github.com/bullno1/buxn/actions/workflows/build.yml)
+
 \> be me
 
 \> be uxn
-
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Build status](https://github.com/bullno1/buxn/actions/workflows/build.yml/badge.svg)](https://github.com/bullno1/buxn/actions/workflows/build.yml)
 
 Implementation of the [uxn virtual machine](https://wiki.xxiivv.com/site/uxn.html) and the [varvara system](https://wiki.xxiivv.com/site/varvara.html).
 
