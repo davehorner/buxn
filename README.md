@@ -1,4 +1,7 @@
-# buxn
+# =uxn
+
+> be me
+> be uxn
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Build status](https://github.com/bullno1/buxn/actions/workflows/build.yml/badge.svg)](https://github.com/bullno1/buxn/actions/workflows/build.yml)
