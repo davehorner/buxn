@@ -503,10 +503,12 @@ init(void) {
 	});
 	sgp_setup(&(sgp_desc){ 0 });
 
-	int width = sapp_width();
-	int height = sapp_height();
+	float render_scale = platform_render_scale();
+	int width = (int)((float)sapp_width() * render_scale);
+	int height = (int)((float)sapp_height() * render_scale);
 
 	BLOG_INFO("DPI scale: %f", sapp_dpi_scale());
+	BLOG_INFO("Render scale: %f", render_scale);
 	buxn_screen_info_t screen_info = buxn_screen_info(width, height);
 	app.devices.screen = malloc(screen_info.screen_mem_size),
 	memset(app.devices.screen, 0, sizeof(*app.devices.screen));

@@ -105,3 +105,8 @@ platform_poll_stdin(char* ch, int size) {
 		return 0;
 	}
 }
+
+float
+platform_render_scale(void) {
+	return 1.0f;
+}

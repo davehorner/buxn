@@ -16,6 +16,7 @@ typedef struct {
 	const char** argv;
 } args_t;
 
+// TODO: rename this to: platform_init and and platform_cleanup
 void
 platform_parse_args(args_t* args);
 
@@ -39,5 +40,8 @@ platform_resize_window(uint16_t width, uint16_t height);
 
 int
 platform_poll_stdin(char* ch, int size);
+
+float
+platform_render_scale(void);
 
 #endif
