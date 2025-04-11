@@ -734,16 +734,18 @@ process_touch(sapp_event_type type, const sapp_touchpoint* touch) {
 					buxn_mouse_set_button(&app.devices.mouse, 0, true);
 				}
 
-				accum_drag_x += touch->pos_x - last_drag_x;
-				accum_drag_y += touch->pos_y - last_drag_y;
+				float touch_dx = touch->pos_x - last_drag_x;
+				float touch_dy = touch->pos_y - last_drag_y;
 				last_drag_x = touch->pos_x;
 				last_drag_y = touch->pos_y;
-				float dx = floorf(accum_drag_x);
-				float dy = floorf(accum_drag_y);
-				accum_drag_x -= dx;
-				accum_drag_y -= dy;
-				float mouse_x = (float)app.devices.mouse.x + (dx * 2.f) / draw_info.draw_scale;
-				float mouse_y = (float)app.devices.mouse.y + (dy * 2.f) / draw_info.draw_scale;
+				accum_drag_x += touch_dx * 2.f / draw_info.draw_scale;
+				accum_drag_y += touch_dy * 2.f / draw_info.draw_scale;
+				float mouse_dx = floorf(accum_drag_x);
+				float mouse_dy = floorf(accum_drag_y);
+				accum_drag_x -= mouse_dx;
+				accum_drag_y -= mouse_dy;
+				float mouse_x = (float)app.devices.mouse.x + mouse_dx;
+				float mouse_y = (float)app.devices.mouse.y + mouse_dy;
 				app.devices.mouse.x = (uint16_t)clamp(mouse_x, 0.f, (float)app.devices.screen->width);
 				app.devices.mouse.y = (uint16_t)clamp(mouse_y, 0.f, (float)app.devices.screen->height);
 				buxn_mouse_update(app.vm);
