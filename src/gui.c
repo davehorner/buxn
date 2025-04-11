@@ -25,6 +25,9 @@
 #define FRAME_TIME_US (1000000.0 / 60.0)
 #define CONSOLE_BUFFER_SIZE 256
 
+#define DEFAULT_WIDTH 512
+#define DEFAULT_HEIGHT 320
+
 typedef struct {
 	buxn_console_t console;
 	buxn_mouse_t mouse;
@@ -60,6 +63,7 @@ static struct {
 
 	buxn_vm_t* vm;
 	devices_t devices;
+	bool control_enabled;
 	uint64_t last_frame;
 	double frame_time_accumulator;
 
@@ -443,6 +447,11 @@ buxn_audio_send(buxn_vm_t* vm, const buxn_audio_message_t* message) {
 	app.should_submit_audio = true;
 }
 
+void
+app_enable_control(bool enable) {
+	app.control_enabled = enable;
+}
+
 static void
 audio_callback(float* buffer, int num_frames, int num_channels) {
 	// Process incoming audio
@@ -503,12 +512,14 @@ init(void) {
 	});
 	sgp_setup(&(sgp_desc){ 0 });
 
-	float render_scale = platform_render_scale();
-	int width = (int)((float)sapp_width() * render_scale);
-	int height = (int)((float)sapp_height() * render_scale);
+	float x_scale = sapp_widthf() / (float)DEFAULT_WIDTH;
+	float y_scale = sapp_heightf() / (float)DEFAULT_HEIGHT;
+	float draw_scale = floorf(x_scale > y_scale ? x_scale : y_scale);
+	int width = sapp_widthf() / draw_scale;
+	int height = sapp_heightf() / draw_scale;
 
 	BLOG_INFO("DPI scale: %f", sapp_dpi_scale());
-	BLOG_INFO("Render scale: %f", render_scale);
+	BLOG_INFO("Default scale: %f", draw_scale);
 	buxn_screen_info_t screen_info = buxn_screen_info(width, height);
 	app.devices.screen = malloc(screen_info.screen_mem_size),
 	memset(app.devices.screen, 0, sizeof(*app.devices.screen));
@@ -554,6 +565,8 @@ cleanup(void) {
 	sg_shutdown();
 
 	PHYSFS_deinit();
+
+	platform_cleanup();
 }
 
 static void
@@ -874,7 +887,7 @@ sokol_main(int argc, char* argv[]) {
 		.argc = argc,
 		.argv = (const char**)argv,
 	};
-	platform_parse_args(&app.args);
+	platform_init(&app.args);
 
 	blog_init(&(blog_options_t){
 		.current_filename = __FILE__,
@@ -888,8 +901,8 @@ sokol_main(int argc, char* argv[]) {
 		.frame_cb = frame,
 		.event_cb = event,
 		.cleanup_cb = cleanup,
-		.width = 640,
-		.height = 480,
+		.width = DEFAULT_WIDTH,
+		.height = DEFAULT_HEIGHT,
 		.sample_count = 1,
 		.window_title = "buxn-gui",
 		.icon.sokol_default = true,

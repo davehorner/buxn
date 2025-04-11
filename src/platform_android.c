@@ -14,7 +14,6 @@
 static struct {
 	blog_android_logger_options_t log_options;
 	jobject intent_uri;
-	float render_scale;
 } platform_android = { 0 };
 
 typedef struct {
@@ -34,7 +33,7 @@ parcel_read(void* handle, void* buffer, uint64_t num_bytes) {
 }
 
 void
-platform_parse_args(args_t* args) {
+platform_init(args_t* args) {
 	(void)args;  // No op
 
 	ANativeActivity* activity = (ANativeActivity*)sapp_android_get_native_activity();
@@ -56,22 +55,10 @@ platform_parse_args(args_t* args) {
 
 		(*jenv)->PopLocalFrame(jenv, NULL);
 	}
+}
 
-	AConfiguration* config = AConfiguration_new();
-	AConfiguration_fromAssetManager(config, activity->assetManager);
-	int density = AConfiguration_getDensity(config);
-	AConfiguration_delete(config);
-
-	platform_android.render_scale = 1.0f;
-	if (density >= ACONFIGURATION_DENSITY_XXXHIGH) {
-		platform_android.render_scale = 1.f / 4.0f;
-	} else if (density >= ACONFIGURATION_DENSITY_XXHIGH) {
-		platform_android.render_scale = 1.f / 3.0f;
-	} else if (density >= ACONFIGURATION_DENSITY_XHIGH) {
-		platform_android.render_scale = 1.f / 2.0f;
-	} else if (density >= ACONFIGURATION_DENSITY_HIGH) {
-		platform_android.render_scale = 1.f / 1.5f;
-	}
+void
+platform_cleanup(void) {
 }
 
 void
@@ -210,9 +197,4 @@ platform_poll_stdin(char* ch, int size) {
 	(void)ch;
 	(void)size;
 	return -1;
-}
-
-float
-platform_render_scale(void) {
-	return platform_android.render_scale;
 }

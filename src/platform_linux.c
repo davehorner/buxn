@@ -12,6 +12,7 @@
 
 static struct {
 	blog_file_logger_options_t log_options;
+	blog_level_t log_level;
 	const char* argv0;
 	const char* boot_rom_file;
 } platform_linux = { 0 };
@@ -21,31 +22,86 @@ stdio_read(void* handle, void* buffer, uint64_t size) {
 	return fread(buffer, 1, size, handle);
 }
 
+static const char*
+get_arg(const char* arg, const char* prefix) {
+	size_t len = strlen(prefix);
+	if (strncmp(arg, prefix, len) == 0) {
+		return arg + len;
+	} else {
+		return NULL;
+	}
+}
+
 void
-platform_parse_args(args_t* args) {
-	if (args->argc > 0) {
-		platform_linux.argv0 = args->argv[0];
-		++args->argv;
-		--args->argc;
+platform_init(args_t* args) {
+	int argc = args->argc;
+	const char** argv = args->argv;
+
+#ifdef _DEBUG
+	platform_linux.log_level = BLOG_LEVEL_TRACE;
+#else
+	platform_linux.log_level = BLOG_LEVEL_INFO;
+#endif
+
+	if (argc > 0) {
+		platform_linux.argv0 = argv[0];
+		++argv;
+		--argc;
 	}
 
-	if (args->argc > 0) {
-		platform_linux.boot_rom_file = args->argv[0];
-		++args->argv;
-		--args->argc;
+	int i;
+	for (i = 0; i < argc; ++i) {
+		const char* arg = argv[i];
+		const char* value;
+		if ((value = get_arg(arg, "-control=")) != NULL) {
+			if (strcmp(value, "on") == 0) {
+				app_enable_control(true);
+			} else {
+				app_enable_control(false);
+			}
+		} else if ((value = get_arg(arg, "-log-level=")) != NULL) {
+			if (strcmp(value, "trace") == 0) {
+				platform_linux.log_level = BLOG_LEVEL_TRACE;
+			} else if (strcmp(value, "debug") == 0) {
+				platform_linux.log_level = BLOG_LEVEL_DEBUG;
+			} else if (strcmp(value, "info") == 0) {
+				platform_linux.log_level = BLOG_LEVEL_INFO;
+			} else if (strcmp(value, "warn") == 0) {
+				platform_linux.log_level = BLOG_LEVEL_WARN;
+			} else if (strcmp(value, "error") == 0) {
+				platform_linux.log_level = BLOG_LEVEL_ERROR;
+			} else if (strcmp(value, "fatal") == 0) {
+				platform_linux.log_level = BLOG_LEVEL_FATAL;
+			}
+		} else if (strcmp(arg, "--") == 0) {
+			++i;
+			break;
+		} else {
+			break;
+		}
 	}
+	argc -= i;
+	argv += i;
+
+	if (argc > 0) {
+		platform_linux.boot_rom_file = argv[0];
+		++argv;
+		--argc;
+	}
+
+	args->argc = argc;
+	args->argv = argv;
+}
+
+void
+platform_cleanup(void) {
 }
 
 void
 platform_init_log(void) {
 	platform_linux.log_options.file = stderr;
 	platform_linux.log_options.with_colors = isatty(fileno(stderr));
-
-#ifdef _DEBUG
-	blog_add_file_logger(BLOG_LEVEL_TRACE, &platform_linux.log_options);
-#else
-	blog_add_file_logger(BLOG_LEVEL_INFO, &platform_linux.log_options);
-#endif
+	blog_add_file_logger(platform_linux.log_level, &platform_linux.log_options);
 }
 
 void
@@ -104,9 +160,4 @@ platform_poll_stdin(char* ch, int size) {
 	} else {
 		return 0;
 	}
-}
-
-float
-platform_render_scale(void) {
-	return 1.0f;
 }

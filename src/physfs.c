@@ -107,6 +107,10 @@ buxn_file_readdir(
 	const char* path = *dir_buf->current;
 	if (path == NULL) { return NULL; }
 
+	// TODO: Fix this for subdir
+	// The path must be prepended with the base path
+	// Check with potato.rom or left.rom
+	// ../ may be needed too
 	*stat = buxn_file_stat(vm, path);
 
 	++dir_buf->current;
