@@ -82,9 +82,6 @@ static struct {
 	atomic_uintptr_t incoming_audio_ptr;
 	uintptr_t outgoing_audio_ptr;
 	bool should_submit_audio;
-
-	bool should_set_icon;
-	uint8_t paletted_icon[24 * 24];
 } app;
 
 static void
@@ -162,17 +159,39 @@ apply_metadata(buxn_metadata_t metadata) {
 
 		switch (ext.id) {
 			case BUXN_METADATA_EXT_ICON_CHR: {
+				uint8_t paletted_icon[24 * 24];
 				for (int y = 0; y < 3; ++y) {
 					for (int x = 0; x < 3; ++x) {
 						draw_chr(
-							app.paletted_icon,
+							paletted_icon,
 							x * 8, y * 8,
 							ext.value + (x + (y * 3)) * 16
 						);
 					}
 				}
 
-				app.should_set_icon = true;
+				uint32_t rendered_icon[24 * 24];
+				// Using potato default theme
+				uint32_t palette[4];
+				palette[0] = 0;
+				palette[1] = 0xff777700;
+				palette[2] = 0xff000000;
+				palette[3] = 0xffffffff;
+
+				for (int i = 0; i < (int)sizeof(paletted_icon); ++i) {
+					rendered_icon[i] = palette[paletted_icon[i]];
+				}
+
+				sapp_set_icon(&(sapp_icon_desc){
+					.images[0] = {
+						.width = 24,
+						.height = 24,
+						.pixels = {
+							.ptr = rendered_icon,
+							.size = sizeof(rendered_icon),
+						},
+					}
+				});
 			} break;
 		}
 	}
@@ -648,37 +667,6 @@ frame(void) {
 					},
 				}
 			);
-		}
-
-		if (app.should_set_icon) {
-			BLOG_DEBUG("Changing app icon");
-
-			// If there is a splashscreen, use a default theme
-			if (
-				palette[1] == palette[2]
-				&& palette[2] == palette[3]
-			) {
-				palette[1] = 0xff777700;
-				palette[2] = 0xff000000;
-				palette[3] = 0xffffffff;
-			}
-
-			uint32_t rendered_icon[24 * 24];
-			for (int i = 0; i < (int)sizeof(app.paletted_icon); ++i) {
-				rendered_icon[i] = palette[app.paletted_icon[i]];
-			}
-
-			sapp_set_icon(&(sapp_icon_desc){
-				.images[0] = {
-					.width = 24,
-					.height = 24,
-					.pixels = {
-						.ptr = rendered_icon,
-						.size = sizeof(rendered_icon),
-					},
-				}
-			});
-			app.should_set_icon = false;
 		}
 	}
 
