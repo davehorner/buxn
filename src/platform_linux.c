@@ -53,13 +53,7 @@ platform_init(args_t* args) {
 	for (i = 0; i < argc; ++i) {
 		const char* arg = argv[i];
 		const char* value;
-		if ((value = get_arg(arg, "-control=")) != NULL) {
-			if (strcmp(value, "on") == 0) {
-				app_enable_control(true);
-			} else {
-				app_enable_control(false);
-			}
-		} else if ((value = get_arg(arg, "-log-level=")) != NULL) {
+		if ((value = get_arg(arg, "-log-level=")) != NULL) {
 			if (strcmp(value, "trace") == 0) {
 				platform_linux.log_level = BLOG_LEVEL_TRACE;
 			} else if (strcmp(value, "debug") == 0) {

@@ -43,7 +43,4 @@ platform_resize_window(uint16_t width, uint16_t height);
 int
 platform_poll_stdin(char* ch, int size);
 
-extern
-void app_enable_control(bool enable);
-
 #endif

@@ -33,4 +33,10 @@ buxn_mouse_set_button(buxn_mouse_t* device, uint8_t button, bool down) {
 	}
 }
 
+static inline bool
+buxn_mouse_check_button(buxn_mouse_t* device, uint8_t button) {
+	uint8_t mask = 1 << button;
+	return (device->state & mask) > 0;
+}
+
 #endif

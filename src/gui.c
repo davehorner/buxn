@@ -63,7 +63,6 @@ static struct {
 
 	buxn_vm_t* vm;
 	devices_t devices;
-	bool control_enabled;
 	uint64_t last_frame;
 	double frame_time_accumulator;
 
@@ -466,11 +465,6 @@ buxn_audio_send(buxn_vm_t* vm, const buxn_audio_message_t* message) {
 	app.should_submit_audio = true;
 }
 
-void
-app_enable_control(bool enable) {
-	app.control_enabled = enable;
-}
-
 static void
 audio_callback(float* buffer, int num_frames, int num_channels) {
 	// Process incoming audio
@@ -709,6 +703,73 @@ clamp(float val, float min, float max) {
 }
 
 static void
+process_touch(sapp_event_type type, const sapp_touchpoint* touch) {
+	static uintptr_t first_touch = 0;
+	static bool has_first_touch = false;
+	static float last_drag_x = 0.f;
+	static float last_drag_y = 0.f;
+	static float accum_drag_x = 0.f;
+	static float accum_drag_y = 0.f;
+	static uintptr_t second_touch = 0;
+	static bool has_second_touch = false;
+
+	draw_info_t draw_info;
+	get_draw_info(&draw_info);
+
+	switch (type) {
+		case SAPP_EVENTTYPE_TOUCHES_BEGAN:
+			if (!has_first_touch) {
+				has_first_touch = true;
+				first_touch = touch->identifier;
+				last_drag_x = touch->pos_x;
+				last_drag_y = touch->pos_y;
+			} else if (!has_second_touch) {
+				has_second_touch = true;
+				second_touch = touch->identifier;
+			}
+			break;
+		case SAPP_EVENTTYPE_TOUCHES_MOVED:
+			if (has_first_touch && touch->identifier == first_touch) {
+				if (has_second_touch) {
+					buxn_mouse_set_button(&app.devices.mouse, 0, true);
+				}
+
+				accum_drag_x += touch->pos_x - last_drag_x;
+				accum_drag_y += touch->pos_y - last_drag_y;
+				last_drag_x = touch->pos_x;
+				last_drag_y = touch->pos_y;
+				float dx = floorf(accum_drag_x);
+				float dy = floorf(accum_drag_y);
+				accum_drag_x -= dx;
+				accum_drag_y -= dy;
+				float mouse_x = (float)app.devices.mouse.x + (dx * 2.f) / draw_info.draw_scale;
+				float mouse_y = (float)app.devices.mouse.y + (dy * 2.f) / draw_info.draw_scale;
+				app.devices.mouse.x = (uint16_t)clamp(mouse_x, 0.f, (float)app.devices.screen->width);
+				app.devices.mouse.y = (uint16_t)clamp(mouse_y, 0.f, (float)app.devices.screen->height);
+				buxn_mouse_update(app.vm);
+			}
+			break;
+		case SAPP_EVENTTYPE_TOUCHES_ENDED:
+		case SAPP_EVENTTYPE_TOUCHES_CANCELLED:
+			if (has_first_touch && touch->identifier == first_touch) {
+				has_first_touch = false;
+			} else if (has_second_touch && touch->identifier == second_touch) {
+				has_second_touch = false;
+				if (!buxn_mouse_check_button(&app.devices.mouse, 0)) {
+					buxn_mouse_set_button(&app.devices.mouse, 0, true);
+					buxn_mouse_update(app.vm);
+				}
+
+				buxn_mouse_set_button(&app.devices.mouse, 0, false);
+				buxn_mouse_update(app.vm);
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+static void
 event(const sapp_event* event) {
 	bool update_mouse = false;
 	switch (event->type) {
@@ -755,21 +816,15 @@ event(const sapp_event* event) {
 			update_mouse = true;
 		} break;
 		case SAPP_EVENTTYPE_TOUCHES_BEGAN:
-		case SAPP_EVENTTYPE_TOUCHES_ENDED: {
-			draw_info_t draw_info;
-			get_draw_info(&draw_info);
-
-			float mouse_x = (float)(event->touches[0].pos_x - draw_info.x_margin) / draw_info.draw_scale;
-			float mouse_y = (float)(event->touches[0].pos_y - draw_info.y_margin) / draw_info.draw_scale;
-
-			app.devices.mouse.x = (uint16_t)clamp(mouse_x, 0.f, (float)app.devices.screen->width);
-			app.devices.mouse.y = (uint16_t)clamp(mouse_y, 0.f, (float)app.devices.screen->height);
-			buxn_mouse_set_button(
-				&app.devices.mouse,
-				0,
-				event->type == SAPP_EVENTTYPE_TOUCHES_BEGAN
-			);
-			update_mouse = true;
+		case SAPP_EVENTTYPE_TOUCHES_ENDED:
+		case SAPP_EVENTTYPE_TOUCHES_MOVED:
+		case SAPP_EVENTTYPE_TOUCHES_CANCELLED: {
+			for (int i = 0; i < event->num_touches; ++i) {
+				const sapp_touchpoint* touch = &event->touches[i];
+				if (event->touches[i].changed) {
+					process_touch(event->type, touch);
+				}
+			}
 		} break;
 		case SAPP_EVENTTYPE_KEY_DOWN:
 		case SAPP_EVENTTYPE_KEY_UP: {
