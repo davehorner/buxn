@@ -121,6 +121,7 @@ bool
 buxn_file_delete(struct buxn_vm_s* vm, const char* path) {
 	(void)vm;
 
+	if (strncmp(path, "./", 2) == 0) { path += 2; }
 	BLOG_DEBUG("Deleting %s", path);
 	bool success = PHYSFS_delete(path);
 	if (!success) {
