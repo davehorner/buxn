@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <sokol_app.h>
 
 typedef int64_t (*read_fn_t)(void* handle, void* buffer, uint64_t num_bytes);
 
@@ -21,6 +22,9 @@ platform_init(args_t* args);
 
 void
 platform_cleanup(void);
+
+sapp_icon_desc
+platform_icon(void);
 
 void
 platform_init_log(void);

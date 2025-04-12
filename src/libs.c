@@ -13,3 +13,9 @@
 
 #define BLIB_IMPLEMENTATION
 #include <blog.h>
+
+#define QOI_IMPLEMENTATION
+#include <qoi.h>
+
+#define XINCBIN_IMPLEMENTATION
+#include "resources.h"

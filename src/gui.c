@@ -950,7 +950,7 @@ sokol_main(int argc, char* argv[]) {
 		.height = DEFAULT_HEIGHT,
 		.sample_count = 1,
 		.window_title = "buxn-gui",
-		.icon.sokol_default = true,
+		.icon = platform_icon(),
 		.logger.func = sokol_log,
 	};
 }

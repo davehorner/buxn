@@ -9,12 +9,16 @@
 #include <X11/Xlib.h>
 #include <unistd.h>
 #include <poll.h>
+#include <stdlib.h>
+#include <qoi.h>
+#include "resources.h"
 
 static struct {
 	blog_file_logger_options_t log_options;
 	blog_level_t log_level;
 	const char* argv0;
 	const char* boot_rom_file;
+	sapp_icon_desc icon;
 } platform_linux = { 0 };
 
 static int64_t
@@ -85,10 +89,39 @@ platform_init(args_t* args) {
 
 	args->argc = argc;
 	args->argv = argv;
+
+	// Icon
+	xincbin_data_t logo_qoi = XINCBIN_GET(logo);
+	struct qoidecoder decoder = qoidecoder(logo_qoi.data, logo_qoi.size);
+	int num_pixels = decoder.count;
+	size_t icon_size = sizeof(unsigned) * num_pixels;
+	unsigned* pixels = malloc(icon_size);
+	for (int i = 0; i < num_pixels; ++i) {
+		pixels[i] = qoidecode(&decoder);
+	}
+
+	if (!decoder.error) {
+		platform_linux.icon.images[0] = (sapp_image_desc){
+			.width = decoder.width,
+			.height = decoder.height,
+			.pixels = {
+				.ptr = pixels,
+				.size = icon_size,
+			},
+		};
+	} else {
+		platform_linux.icon.sokol_default = true;
+	}
 }
 
 void
 platform_cleanup(void) {
+	free((void*)platform_linux.icon.images[0].pixels.ptr);
+}
+
+sapp_icon_desc
+platform_icon(void) {
+	return platform_linux.icon;
 }
 
 void

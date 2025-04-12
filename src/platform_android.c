@@ -57,6 +57,11 @@ platform_init(args_t* args) {
 	}
 }
 
+sapp_icon_desc
+platform_icon(void) {
+	return (sapp_icon_desc){ .sokol_default = true };
+}
+
 void
 platform_cleanup(void) {
 }
