@@ -54,7 +54,7 @@ When a ROM exposes [metadata](https://wiki.xxiivv.com/site/metadata.html) the fo
 
 * General metadata: The first line will be set as the window's title.
 * Icon: The icon will be set as the window's icon.
-  Take note that it will be drawn using the [system's theme](https://wiki.xxiivv.com/site/varvara.html#set-theme) with the color 0 being transparent.
+  Take note that it will be drawn using [potato's default theme](https://git.sr.ht/~rabbits/potato/tree/325083af9dbde3c39e27e67e75b026ed4b98c8f0/item/src/potato.tal#L31) with the color 0 being transparent.
 
 ### Android
 
