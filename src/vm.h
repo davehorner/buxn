@@ -40,11 +40,16 @@
 #define BUXN_DEV_ADDR_MASK 0x00ff
 #define BUXN_DEV_PRIV_ADDR_MASK 0x000f
 
-typedef struct buxn_vm_s {
+typedef struct buxn_vm_s buxn_vm_t;
+
+typedef void (*buxn_vm_exec_hook_t)(buxn_vm_t* vm, uint16_t pc);
+
+struct buxn_vm_s {
 	// User config, not touched by buxn
 	// Everything else will be reset
 	void* userdata;
 	uint32_t memory_size;
+	buxn_vm_exec_hook_t exec_hook;
 
 	// VM state
 	uint8_t wsp;
@@ -53,7 +58,7 @@ typedef struct buxn_vm_s {
 	uint8_t rs[BUXN_STACK_SIZE];
 	uint8_t device[BUXN_DEVICE_MEM_SIZE];
 	uint8_t memory[];
-} buxn_vm_t;
+};
 
 void
 buxn_vm_reset(buxn_vm_t* vm, uint8_t reset_flags);
