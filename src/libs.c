@@ -17,5 +17,9 @@
 #define QOI_IMPLEMENTATION
 #include <qoi.h>
 
+#ifndef __ANDROID__
+
 #define XINCBIN_IMPLEMENTATION
 #include "resources.h"
+
+#endif

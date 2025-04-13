@@ -45,7 +45,7 @@ build_linux() {
 
 	echo "Linking..."
 
-	$CXX \
+	$CC \
 		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
 		${BUILD_TYPE_FLAGS} \
@@ -55,10 +55,10 @@ build_linux() {
 		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
 		-o ${BIN_DIR}/buxn-cli
 
-	$CXX \
+	$CC \
 		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
-		-lGL -lX11 -lXcursor -lXi -lasound \
+		-lGL -lm -lX11 -lXcursor -lXi -lasound \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{gui.c.o,vm.c.o,physfs.c.o,metadata.c.o,libs.c.o,platform_linux.c.o} \
 		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o,screen.c.o,mouse.c.o,audio.c.o,controller.c.o} \
