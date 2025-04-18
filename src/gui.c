@@ -552,6 +552,7 @@ init(void) {
 	app.vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
 	app.vm->userdata = &app.devices;
 	app.vm->memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS;
+	app.vm->exec_hook = NULL;
 	buxn_vm_reset(app.vm, BUXN_VM_RESET_ALL);
 
 	if (!load_boot_rom()) {

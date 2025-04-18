@@ -109,6 +109,7 @@ main(int argc, const char* argv[]) {
 	buxn_vm_t* vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
 	vm->userdata = &devices;
 	vm->memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS;
+	vm->exec_hook = NULL;
 	buxn_vm_reset(vm, BUXN_VM_RESET_ALL);
 
 	FILE* rom_file;

@@ -10,3 +10,6 @@
 [submodule "deps/physfs"]
 	path = deps/physfs
 	url = https://github.com/icculus/physfs.git
+[submodule "deps/chibihash"]
+	path = deps/chibihash
+	url = https://github.com/N-R-K/ChibiHash.git
