@@ -782,7 +782,7 @@ buxn_asm_emit_lambda_ref(
 	return true;
 }
 
-static uint16_t
+static int32_t
 buxn_asm_calculate_addr(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
@@ -798,11 +798,11 @@ buxn_asm_calculate_addr(
 					"Taking zero-address of a label past page zero"
 				);
 			}
-			return to_addr & 0xff;
+			return (int32_t)(to_addr & 0xff);
 		case BUXN_ASM_LABEL_REF_ABS:
-			return to_addr;
+			return (int32_t)to_addr;
 		case BUXN_ASM_LABEL_REF_REL:
-			return (uint16_t)(int)(from_addr + 2) - (int)to_addr;
+			return (int32_t)(int)to_addr - (int)(from_addr + 2);
 		default:
 			assert(0 && "Invalid address reference type");
 			return 0;
@@ -813,26 +813,30 @@ static bool
 buxn_asm_emit_addr(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
+	buxn_asm_label_ref_type_t type,
 	buxn_asm_label_ref_size_t size,
-	uint16_t addr,
+	int32_t addr,
 	const buxn_asm_token_t* token_at_addr,
 	const buxn_asm_sym_t* sym
 ) {
 	uint16_t write_addr = basm->write_addr;
 	switch (size) {
 		case BUXN_ASM_LABEL_REF_BYTE:
-			if (size == BUXN_ASM_LABEL_REF_BYTE && addr > UINT8_MAX) {
+			if (
+				type == BUXN_ASM_LABEL_REF_REL
+				&& (addr > INT8_MAX || addr < INT8_MIN)
+			) {
 				return buxn_asm_error2(
 					basm,
 					token, "Referenced address is too far",
 					token_at_addr, "Label defined here"
 				);
 			}
-			if (!buxn_asm_emit(basm, token, addr & 0xff)) { return false; }
+			if (!buxn_asm_emit(basm, token, (uint16_t)addr & 0xff)) { return false; }
 			if (sym != NULL) { buxn_asm_put_symbol(basm->ctx, write_addr, sym); }
 			break;
 		case BUXN_ASM_LABEL_REF_SHORT:
-			if (!buxn_asm_emit2(basm, token, addr)) { return false; }
+			if (!buxn_asm_emit2(basm, token, (uint16_t)addr)) { return false; }
 			if (sym != NULL) { buxn_asm_put_symbol2(basm->ctx, write_addr, sym); }
 			break;
 	}
@@ -852,7 +856,7 @@ buxn_asm_emit_backward_ref(
 	assert((label->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) && "Invalid symbol type");
 
 	uint16_t write_addr = basm->write_addr;
-	uint16_t addr = buxn_asm_calculate_addr(
+	int32_t addr = buxn_asm_calculate_addr(
 		basm, token,
 		type,
 		write_addr, label->label_address
@@ -869,7 +873,7 @@ buxn_asm_emit_backward_ref(
 
 	return buxn_asm_emit_addr(
 		basm, token,
-		size,
+		type, size,
 		addr,
 		&label->token,
 		with_symbol ? &sym : NULL
@@ -1299,15 +1303,23 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	}
 
 	uint16_t current_addr = basm->write_addr;
-	uint16_t addr = buxn_asm_calculate_addr(
+	int32_t addr = buxn_asm_calculate_addr(
 		basm, &ref->token,
 		ref->type,
 		ref->addr, current_addr
 	);
 
-	if (!buxn_asm_emit_addr(basm, &ref->token, ref->size, addr, token, NULL)) {
+	basm->write_addr = ref->addr;
+	if (!buxn_asm_emit_addr(
+		basm, &ref->token,
+		ref->type, ref->size,
+		addr,
+		token,
+		NULL
+	)) {
 		return false;
 	}
+	basm->write_addr = current_addr;
 
 	basm->lambdas = ref->next;
 	ref->next = basm->ref_pool;
