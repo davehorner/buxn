@@ -11,7 +11,7 @@
 #define BUXN_ASM_MAX_TOKEN_LEN 63
 #define BUXN_ASM_DEFAULT_LABEL_SCOPE "RESET"
 #define BUXN_ASM_RESET_VECTOR 0x0100
-#define BUXN_ASM_MAX_MACRO_DEPTH 8
+#define BUXN_ASM_MAX_PREPROCESSOR_DEPTH 32
 
 typedef struct {
 	const char* chars;
@@ -125,7 +125,7 @@ typedef struct {
 	void* ctx;
 	uint16_t write_addr;
 
-	int macro_depth;
+	int preprocessor_depth;
 	buxn_asm_macro_unit_t* current_macro;
 	char token_buf[BUXN_ASM_MAX_TOKEN_LEN + 1];
 	char name_buf[BUXN_ASM_MAX_TOKEN_LEN + 1];
@@ -1246,8 +1246,8 @@ buxn_asm_expand_macro(
 	const buxn_asm_token_t* token,
 	buxn_asm_macro_unit_t* macro
 ) {
-	if (basm->macro_depth >= BUXN_ASM_MAX_MACRO_DEPTH) {
-		return buxn_asm_error(basm, token, "Max macro expansion depth reached");
+	if (basm->preprocessor_depth >= BUXN_ASM_MAX_PREPROCESSOR_DEPTH) {
+		return buxn_asm_error(basm, token, "Max preprocessor_depth depth reached");
 	}
 
 	if (macro->expanding) {
@@ -1256,12 +1256,12 @@ buxn_asm_expand_macro(
 
 	macro->expanding = true;
 	macro->current = macro->first;
-	++basm->macro_depth;
+	++basm->preprocessor_depth;
 	bool success = buxn_asm_process_unit(basm, &(buxn_asm_unit_t){
 		.type = BUXN_ASM_UNIT_MACRO,
 		.macro = macro,
 	});
-	--basm->macro_depth;
+	--basm->preprocessor_depth;
 	macro->current = NULL;
 	macro->expanding = false;
 
@@ -1401,7 +1401,17 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 				}
 				break;
 			case '~': {
-				if (!buxn_asm_process_file(basm, buxn_asm_str_pop_front(token.lexeme))) {
+				if (basm->preprocessor_depth >= BUXN_ASM_MAX_PREPROCESSOR_DEPTH) {
+					return buxn_asm_error(basm, &token, "Max preprocessor_depth depth reached");
+				}
+
+				++basm->preprocessor_depth;
+				bool success = buxn_asm_process_file(
+					basm,
+					buxn_asm_str_pop_front(token.lexeme)
+				);
+				--basm->preprocessor_depth;
+				if (!success) {
 					// Append another error to explain include chain
 					return buxn_asm_error(basm, &token, "Error while processing include");
 				}

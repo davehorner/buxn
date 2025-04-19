@@ -5,6 +5,8 @@
 
 struct buxn_asm_ctx_s {
 	uint16_t rom_size;
+	uint16_t num_macros;
+	uint16_t num_labels;
 	char rom[UINT16_MAX];
 	barena_t arena;
 };
@@ -24,29 +26,30 @@ buxn_asm_put_rom(buxn_asm_ctx_t* ctx, uint16_t address, uint8_t value) {
 void
 buxn_asm_put_string(buxn_asm_ctx_t* ctx, uint16_t id, const char* str, int len) {
 	(void)ctx;
-	BLOG_DEBUG("String #%d = \"%.*s\"", id, len, str);
+	(void)id;
+	(void)str;
+	(void)len;
 }
 
 void
 buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sym) {
-	(void)ctx;
-	BLOG_DEBUG("Symbol 0x%04x = { .type = %d, .id = %d }", addr, sym->type, sym->id);
+	(void)addr;
+	if (sym->type == BUXN_ASM_SYM_MACRO) {
+		++ctx->num_macros;
+	} else if (sym->type == BUXN_ASM_SYM_LABEL) {
+		++ctx->num_labels;
+	}
 }
 
 buxn_asm_file_t*
 buxn_asm_fopen(buxn_asm_ctx_t* ctx, const char* filename) {
 	(void)ctx;
-	FILE* file = fopen(filename, "rb");
-	BLOG_DEBUG("Opening %s -> %p", filename, (void*)file);
-
-	return (void*)file;
+	return (void*)fopen(filename, "rb");
 }
 
 void
 buxn_asm_fclose(buxn_asm_ctx_t* ctx, buxn_asm_file_t* file) {
 	(void)ctx;
-
-	BLOG_DEBUG("Closing %p", (void*)file);
 	fclose((void*)file);
 }
 
@@ -91,7 +94,7 @@ int
 main(int argc, const char* argv[]) {
 	blog_level_t log_level;
 #ifdef _DEBUG
-	log_level = BLOG_LEVEL_TRACE;
+	log_level = BLOG_LEVEL_DEBUG;
 #else
 	log_level = BLOG_LEVEL_INFO;
 #endif
@@ -121,7 +124,13 @@ main(int argc, const char* argv[]) {
 	barena_pool_cleanup(&arena_pool);
 
 	if (success) {
-		BLOG_INFO("Assembled in %s %d bytes", argv[2], ctx.rom_size);
+		BLOG_INFO(
+			"Assembled %s in %d byte(s), %d label(s), %d macro(s)",
+			argv[2],
+			ctx.rom_size,
+			ctx.num_labels,
+			ctx.num_macros
+		);
 	}
 
 	return success ? 0 : 1;
