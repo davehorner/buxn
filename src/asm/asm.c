@@ -894,6 +894,7 @@ buxn_asm_emit_label_ref(
 	if (symbol == NULL) {
 		return buxn_asm_emit_forward_ref(basm, token, type, size, interned_name);
 	} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) {
+		symbol->referenced = true;
 		return buxn_asm_emit_backward_ref(basm, token, type, size, symbol, true);
 	} else {
 		return buxn_asm_error(basm, token, "Invalid reference");
