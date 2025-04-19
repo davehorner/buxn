@@ -1,5 +1,5 @@
 #define _GNU_SOURCE
-#include "platform.h"
+#include "../platform.h"
 #include <blog.h>
 #include <sokol_app.h>
 #include <stdio.h>
@@ -11,7 +11,7 @@
 #include <poll.h>
 #include <stdlib.h>
 #include <qoi.h>
-#include "resources.h"
+#include "../resources.h"
 
 static struct {
 	blog_file_logger_options_t log_options;

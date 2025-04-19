@@ -1,4 +1,4 @@
-#include "platform.h"
+#include "../platform.h"
 #include <blog.h>
 #include <physfs.h>
 #include <sokol_app.h>

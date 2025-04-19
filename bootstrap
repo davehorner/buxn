@@ -1,4 +1,53 @@
-#!/bin/sh -e
+#!/bin/bash -e
 
-git submodule sync
-git submodule update --init
+main() {
+	sync_deps
+
+	if detect_android_sdk
+	then
+		setup_clangd_for_ndk
+	fi
+}
+
+sync_deps() {
+	git submodule sync
+	git submodule update --init
+}
+
+detect_android_sdk() {
+	ANDROID_HOME=${ANDROID_HOME:-~/Android/Sdk}
+	if [ ! -f "$ANDROID_HOME/platform-tools/adb" ]
+	then
+		echo "Android SDK not found, please set the environment variables ANDROID_HOME"
+		return 1
+	fi
+	echo "Found Android SDK at: $ANDROID_HOME"
+
+	if [ -z "$ANDROID_NDK_ROOT" ]
+	then
+		ANDROID_NDK_VERSION=${ANDROID_NDK_VERSION:-*}
+		ANDROID_NDK_ROOT=$(echo $ANDROID_HOME/ndk/$ANDROID_NDK_VERSION | sort -r | head -1)
+	fi
+
+	if [ ! -f "$ANDROID_NDK_ROOT/ndk-build" ]
+	then
+		echo "Android NDK not found, please set the environment variables ANDROID_NDK_ROOT"
+		return 1
+	fi
+	echo "Found Android NDK at: $ANDROID_NDK_ROOT"
+}
+
+setup_clangd_for_ndk() {
+	cat <<- DOT_CLANGD > src/android/.clangd
+	---
+	CompileFlags:
+	  Add:
+	    - -D__ANDROID__
+	    - -isystem
+	    - ${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include
+	  Remove:
+	    - -DSOKOL_GLCORE
+	DOT_CLANGD
+}
+
+main
