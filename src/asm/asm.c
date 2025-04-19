@@ -587,7 +587,11 @@ buxn_asm_resolve_label_ref(
 	if (ref.len == 0) {
 		return buxn_asm_error(basm, token, "Invalid reference");
 	} else if (ref.chars[0] == '&' || ref.chars[0] == '/') {
-		return buxn_asm_resolve_local_name(basm, token, ref, name_out);
+		return buxn_asm_resolve_local_name(
+			basm, token,
+			buxn_asm_str_pop_front(ref),
+			name_out
+		);
 	} else {
 		*name_out = ref;
 		return true;
