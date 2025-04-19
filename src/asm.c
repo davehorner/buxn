@@ -890,6 +890,10 @@ buxn_asm_emit_label_ref(
 		return false;
 	}
 
+	if (full_name.len == 0 || buxn_asm_is_runic(full_name.chars[0])) {
+		return buxn_asm_error(basm, token, "Invalid reference");
+	}
+
 	const buxn_asm_strpool_node_t* interned_name = buxn_asm_strintern(basm, full_name);
 	buxn_asm_symtab_node_t* symbol = buxn_asm_find_symbol(basm, interned_name);
 	if (symbol == NULL) {
