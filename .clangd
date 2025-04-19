@@ -13,3 +13,4 @@ CompileFlags:
     - -I./deps/physfs/src
     - -I./deps/chibihash
     - -DSOKOL_GLCORE
+    - -D_DEBUG
