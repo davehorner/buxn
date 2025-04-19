@@ -917,6 +917,10 @@ buxn_asm_emit_jsi(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 
 static bool
 buxn_asm_resolve(buxn_asm_t* basm) {
+	if (basm->lambdas != NULL) {
+		buxn_asm_error(basm, &basm->lambdas->token, "Unbalanced lambda");
+	}
+
 	for (
 		buxn_asm_forward_ref_t* itr = basm->forward_refs;
 		itr != NULL;
@@ -1261,7 +1265,7 @@ static bool
 buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	buxn_asm_forward_ref_t* ref = basm->lambdas;
 	if (ref == NULL) {
-		return buxn_asm_error(basm, token, "Unbalanced '}'");
+		return buxn_asm_error(basm, token, "Unbalanced lambda");
 	}
 
 	uint16_t current_addr = basm->write_addr;
