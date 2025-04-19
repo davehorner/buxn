@@ -105,8 +105,8 @@ typedef enum {
 } buxn_asm_label_ref_type_t;
 
 typedef enum {
-	BUXN_ASM_LABEL_REF_BYTE,
-	BUXN_ASM_LABEL_REF_SHORT,
+	BUXN_ASM_LABEL_REF_BYTE  = 1,
+	BUXN_ASM_LABEL_REF_SHORT = 2,
 } buxn_asm_label_ref_size_t;
 
 typedef struct buxn_asm_forward_ref_s buxn_asm_forward_ref_t;
@@ -137,6 +137,8 @@ typedef struct {
 	buxn_asm_symtab_t* symtab;
 	buxn_asm_str_t label_scope;
 	buxn_asm_forward_ref_t* forward_refs;
+	buxn_asm_forward_ref_t* lambdas;
+	buxn_asm_forward_ref_t* ref_pool;
 } buxn_asm_t;
 
 static bool
@@ -166,6 +168,24 @@ buxn_asm_error(
 			.message = message,
 			.token = token->lexeme.chars,
 			.region = &token->region,
+		}
+	);
+}
+
+static bool
+buxn_asm_error2(
+	buxn_asm_t* basm,
+	const buxn_asm_token_t* token,
+	const char* message,
+	const buxn_asm_token_t* related_token
+) {
+	return buxn_asm_error_ex(
+		basm,
+		&(buxn_asm_report_t){
+			.message = message,
+			.token = token->lexeme.chars,
+			.region = &token->region,
+			.related_region = &related_token->region,
 		}
 	);
 }
@@ -468,15 +488,7 @@ buxn_asm_register_symbol(
 	BHAMT_SEARCH(basm->symtab->root, itr, node, interned_name->hash, interned_name, buxn_asm_ptr_eq);
 
 	if (node != NULL) {
-		buxn_asm_error_ex(
-			basm,
-			&(buxn_asm_report_t){
-				.message = "Duplicated definition",
-				.token = token->lexeme.chars,
-				.region = &token->region,
-				.related_region = &node->token.region,
-			}
-		);
+		buxn_asm_error2(basm, token, "Duplicated definition", &node->token);
 		return NULL;
 	}
 
@@ -653,17 +665,32 @@ buxn_asm_emit_short(buxn_asm_t* basm, const buxn_asm_token_t* token, uint16_t sh
 	return true;
 }
 
+static buxn_asm_forward_ref_t*
+buxn_asm_alloc_forward_ref(buxn_asm_t* basm) {
+	buxn_asm_forward_ref_t* ref;
+	if (basm->ref_pool != NULL) {
+		ref = basm->ref_pool;
+		basm->ref_pool = ref->next;
+	} else {
+		ref = buxn_asm_alloc(
+			basm->ctx,
+			sizeof(buxn_asm_forward_ref_t), _Alignof(buxn_asm_forward_ref_t)
+		);
+	}
+
+	return ref;
+}
+
 static bool
-buxn_asm_emit_forward_ref(
+buxn_asm_emit_addr_placeholder(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
-	buxn_asm_label_ref_type_t type,
 	buxn_asm_label_ref_size_t size,
 	const buxn_asm_strpool_node_t* label_name
 ) {
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
-		.name_id = buxn_asm_strexport(basm, label_name),
+		.name_id = label_name != NULL ? buxn_asm_strexport(basm, label_name) : 0,
 		.region = {
 			.source_id = buxn_asm_strexport(basm, token->filename),
 			.range = token->region.range,
@@ -682,10 +709,23 @@ buxn_asm_emit_forward_ref(
 			break;
 	}
 
-	buxn_asm_forward_ref_t* ref = buxn_asm_alloc(
-		basm,
-		sizeof(buxn_asm_forward_ref_t), _Alignof(buxn_asm_forward_ref_t)
-	);
+	return true;
+}
+
+static bool
+buxn_asm_emit_forward_ref(
+	buxn_asm_t* basm,
+	const buxn_asm_token_t* token,
+	buxn_asm_label_ref_type_t type,
+	buxn_asm_label_ref_size_t size,
+	const buxn_asm_strpool_node_t* label_name
+) {
+	uint16_t addr = basm->write_addr;
+	if (!buxn_asm_emit_addr_placeholder(basm, token, size, label_name)) {
+		return false;
+	}
+
+	buxn_asm_forward_ref_t* ref = buxn_asm_alloc_forward_ref(basm);
 	*ref = (buxn_asm_forward_ref_t){
 		.next = basm->forward_refs,
 		.label_name = label_name,
@@ -700,39 +740,119 @@ buxn_asm_emit_forward_ref(
 }
 
 static bool
-buxn_asm_emit_backward_ref(
+buxn_asm_emit_lambda_ref(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_type_t type,
-	buxn_asm_label_ref_size_t size,
-	bool with_symbol,
-	const buxn_asm_symtab_node_t* label
+	buxn_asm_label_ref_size_t size
 ) {
-	assert((label->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) && "Invalid symbol type");
+	uint16_t addr = basm->write_addr;
+	if (!buxn_asm_emit_addr_placeholder(basm, token, size, NULL)) {
+		return false;
+	}
 
-	uint16_t write_addr = basm->write_addr;
-	uint16_t addr;
+	buxn_asm_forward_ref_t* ref = buxn_asm_alloc_forward_ref(basm);
+	*ref = (buxn_asm_forward_ref_t){
+		.next = basm->lambdas,
+		.token = *token,
+		.addr = addr,
+		.type = type,
+		.size = size,
+	};
+	basm->lambdas = ref;
+
+	return true;
+}
+
+static bool
+buxn_asm_calculate_addr(
+	buxn_asm_t* basm,
+	const buxn_asm_token_t* token,
+	buxn_asm_label_ref_type_t type,
+	uint16_t from_addr,
+	uint16_t to_addr,
+	const buxn_asm_token_t* token_at_to_addr,
+	uint16_t* out
+) {
 	switch (type) {
 		case BUXN_ASM_LABEL_REF_ZERO:
-			if (label->label_address > 0xff) {
+			if (to_addr > 0xff) {
 				buxn_asm_warning(
 					basm, token,
 					"Taking zero-address of a label past page zero"
 				);
 			}
-			addr = label->label_address & 0xff;
-			break;
+			*out = to_addr & 0xff;
+			return true;
 		case BUXN_ASM_LABEL_REF_ABS:
-			addr = label->label_address;
-			break;
+			*out = to_addr;
+			return true;
 		case BUXN_ASM_LABEL_REF_REL: {
-			int diff = (int)(write_addr + 2) - (int)label->label_address;
+			int diff = (int)(from_addr + 2) - (int)to_addr;
 			if (diff > INT16_MAX || diff < INT16_MIN) {
-				return buxn_asm_error(basm, token, "Target address is too far");
+				return buxn_asm_error2(
+					basm, token, "Referenced address is too far", token_at_to_addr
+				);
 			} else {
-				addr = (uint16_t)diff;
+				*out = (uint16_t)diff;
+				return true;
 			}
 		} break;
+		default:
+			return buxn_asm_error(basm, token, "Invalid address reference type");
+	}
+}
+
+static bool
+buxn_asm_emit_addr(
+	buxn_asm_t* basm,
+	const buxn_asm_token_t* token,
+	buxn_asm_label_ref_size_t size,
+	uint16_t addr,
+	const buxn_asm_token_t* token_at_addr,
+	const buxn_asm_sym_t* sym
+) {
+	uint16_t write_addr = basm->write_addr;
+	switch (size) {
+		case BUXN_ASM_LABEL_REF_BYTE:
+			if (size == BUXN_ASM_LABEL_REF_BYTE && addr > UINT8_MAX) {
+				return buxn_asm_error2(
+					basm, token, "Referenced address is too far", token_at_addr
+				);
+			}
+			if (!buxn_asm_emit(basm, token, addr & 0xff)) { return false; }
+			if (sym != NULL) { buxn_asm_put_symbol(basm->ctx, write_addr, sym); }
+			break;
+		case BUXN_ASM_LABEL_REF_SHORT:
+			if (!buxn_asm_emit2(basm, token, addr)) { return false; }
+			if (sym != NULL) { buxn_asm_put_symbol2(basm->ctx, write_addr, sym); }
+			break;
+	}
+
+	return true;
+}
+
+static bool
+buxn_asm_emit_backward_ref(
+	buxn_asm_t* basm,
+	const buxn_asm_token_t* token,
+	buxn_asm_label_ref_type_t type,
+	buxn_asm_label_ref_size_t size,
+	const buxn_asm_symtab_node_t* label,
+	bool with_symbol
+) {
+	assert((label->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) && "Invalid symbol type");
+
+	uint16_t write_addr = basm->write_addr;
+	uint16_t addr;
+	if (!buxn_asm_calculate_addr(
+		basm, token,
+		type,
+		write_addr, label->label_address,
+		&label->token,
+		&addr
+	)) {
+		return false;
 	}
 
 	buxn_asm_sym_t sym = {
@@ -743,21 +863,14 @@ buxn_asm_emit_backward_ref(
 			.range = token->region.range,
 		},
 	};
-	switch (size) {
-		case BUXN_ASM_LABEL_REF_BYTE:
-			if (size == BUXN_ASM_LABEL_REF_BYTE && addr > UINT8_MAX) {
-				return buxn_asm_error(basm, token, "Target address is too far");
-			}
-			if (!buxn_asm_emit(basm, token, addr)) { return false; }
-			if (with_symbol) { buxn_asm_put_symbol(basm->ctx, write_addr, &sym); }
-			break;
-		case BUXN_ASM_LABEL_REF_SHORT:
-			if (!buxn_asm_emit2(basm, token, addr)) { return false; }
-			if (with_symbol) { buxn_asm_put_symbol2(basm->ctx, write_addr, &sym); }
-			break;
-	}
 
-	return true;
+	return buxn_asm_emit_addr(
+		basm, token,
+		size,
+		addr,
+		&label->token,
+		with_symbol ? &sym : NULL
+	);
 }
 
 static bool
@@ -768,6 +881,10 @@ buxn_asm_emit_label_ref(
 	buxn_asm_label_ref_size_t size,
 	buxn_asm_str_t label_name
 ) {
+	if (label_name.len == 1 && label_name.chars[0] == '{') {
+		return buxn_asm_emit_lambda_ref(basm, token, type, size);
+	}
+
 	buxn_asm_str_t full_name;
 	if (!buxn_asm_resolve_label_ref(basm, token, label_name, &full_name)) {
 		return false;
@@ -778,7 +895,7 @@ buxn_asm_emit_label_ref(
 	if (symbol == NULL) {
 		return buxn_asm_emit_forward_ref(basm, token, type, size, interned_name);
 	} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) {
-		return buxn_asm_emit_backward_ref(basm, token, type, size, true, symbol);
+		return buxn_asm_emit_backward_ref(basm, token, type, size, symbol, true);
 	} else {
 		return buxn_asm_error(basm, token, "Invalid reference");
 	}
@@ -815,8 +932,8 @@ buxn_asm_resolve(buxn_asm_t* basm) {
 		buxn_asm_emit_backward_ref(
 			basm, &itr->token,
 			itr->type, itr->size,
-			false,
-			symbol
+			symbol,
+			false
 		);
 		symbol->referenced = true;
 	}
@@ -888,14 +1005,11 @@ buxn_asm_process_macro(
 
 		switch (token.lexeme.chars[0]) {
 			case '%':
-				return buxn_asm_error_ex(
+				return buxn_asm_error2(
 					basm,
-					&(buxn_asm_report_t){
-						.message = "A macro cannot be defined inside another macro",
-						.token = token.lexeme.chars,
-						.region = &token.region,
-						.related_region = &start->region,
-					}
+					&token,
+					"A macro cannot be defined inside another macro",
+					start
 				);
 			case '{':
 				if (token.lexeme.len == 1) { ++depth; }
@@ -1144,6 +1258,36 @@ buxn_asm_expand_macro(
 }
 
 static bool
+buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
+	buxn_asm_forward_ref_t* ref = basm->lambdas;
+	if (ref == NULL) {
+		return buxn_asm_error(basm, token, "Unbalanced '}'");
+	}
+
+	uint16_t current_addr = basm->write_addr;
+	uint16_t addr;
+	if (!buxn_asm_calculate_addr(
+		basm, &ref->token,
+		ref->type,
+		ref->addr, current_addr,
+		token,
+		&addr
+	)) {
+		return false;
+	}
+
+	if (!buxn_asm_emit_addr(basm, &ref->token, ref->size, addr, token, NULL)) {
+		return false;
+	}
+
+	basm->lambdas = ref->next;
+	ref->next = basm->ref_pool;
+	basm->ref_pool = ref;
+
+	return true;
+}
+
+static bool
 buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	// Inline buxn_asm_strfind here so we get the hash
 	BHAMT_HASH_TYPE initial_hash = chibihash64(token->lexeme.chars, token->lexeme.len, 0);
@@ -1185,8 +1329,8 @@ buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 			return buxn_asm_emit_backward_ref(
 				basm, token,
 				BUXN_ASM_LABEL_REF_REL, BUXN_ASM_LABEL_REF_SHORT,
-				true,
-				symbol
+				symbol,
+				true
 			);
 		} else {
 			return buxn_asm_error(basm, token, "Unknown symbol type");
@@ -1240,7 +1384,19 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 					return false;
 				}
 				break;
+			case '}':
+				if (token.lexeme.len != 1) {
+					return buxn_asm_error(basm, &token, "Invalid runic token");
+				}
+				if (!buxn_asm_process_lambda_close(basm, &token)) {
+					return false;
+				}
+				break;
 			case '{':
+				if (token.lexeme.len != 1) {
+					return buxn_asm_error(basm, &token, "Invalid runic token");
+				}
+				// fall-through
 			case '/':
 				if (!buxn_asm_emit_jsi(basm, &token)) {
 					return false;
@@ -1354,7 +1510,7 @@ buxn_asm_process_file(buxn_asm_t* basm, buxn_asm_str_t path) {
 }
 
 bool
-buxn_asm(void* ctx, const char* filename) {
+buxn_asm(buxn_asm_ctx_t* ctx, const char* filename) {
 	buxn_asm_t basm = {
 		.ctx = ctx,
 		.write_addr = BUXN_ASM_RESET_VECTOR,

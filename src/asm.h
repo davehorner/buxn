@@ -8,7 +8,8 @@
 #define BUXN_ASM_IO_EOF   -1
 #define BUXN_ASM_IO_ERROR -2
 
-typedef void buxn_asm_file_t;
+typedef struct buxn_asm_file_s buxn_asm_file_t;
+typedef struct buxn_asm_ctx_s buxn_asm_ctx_t;
 
 typedef struct {
 	int line;
@@ -59,32 +60,32 @@ typedef struct {
 } buxn_asm_report_t;
 
 bool
-buxn_asm(void* ctx, const char* filename);
+buxn_asm(buxn_asm_ctx_t* ctx, const char* filename);
 
 // Must be provided by the host program
 
 extern void*
-buxn_asm_alloc(void* ctx, size_t size, size_t alignment);
+buxn_asm_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment);
 
 extern void
-buxn_asm_report(void* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report);
+buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report);
 
 extern void
-buxn_asm_put_rom(void* ctx, uint16_t addr, uint8_t value);
+buxn_asm_put_rom(buxn_asm_ctx_t* ctx, uint16_t addr, uint8_t value);
 
 extern void
-buxn_asm_put_symbol(void* ctx, uint16_t addr, const buxn_asm_sym_t* sym);
+buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sym);
 
 extern void
-buxn_asm_put_string(void* ctx, uint16_t id, const char* str, int len);
+buxn_asm_put_string(buxn_asm_ctx_t* ctx, uint16_t id, const char* str, int len);
 
 extern buxn_asm_file_t*
-buxn_asm_fopen(void* ctx, const char* filename);
+buxn_asm_fopen(buxn_asm_ctx_t* ctx, const char* filename);
 
 extern void
-buxn_asm_fclose(void* ctx, buxn_asm_file_t* file);
+buxn_asm_fclose(buxn_asm_ctx_t* ctx, buxn_asm_file_t* file);
 
 extern int
-buxn_asm_fgetc(void* ctx, buxn_asm_file_t* file);
+buxn_asm_fgetc(buxn_asm_ctx_t* ctx, buxn_asm_file_t* file);
 
 #endif
