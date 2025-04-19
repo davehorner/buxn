@@ -122,7 +122,7 @@ struct buxn_asm_forward_ref_s {
 };
 
 typedef struct {
-	void* ctx;
+	buxn_asm_ctx_t* ctx;
 	uint16_t write_addr;
 
 	int preprocessor_depth;
@@ -603,7 +603,7 @@ buxn_asm_resolve_label_ref(
 // Codegen {{{
 
 static void
-buxn_asm_put_symbol2(void* ctx, uint16_t addr, const buxn_asm_sym_t* sym) {
+buxn_asm_put_symbol2(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sym) {
 	buxn_asm_put_symbol(ctx, addr, sym);
 	buxn_asm_put_symbol(ctx, addr + 1, sym);
 }
@@ -955,7 +955,7 @@ buxn_asm_resolve(buxn_asm_t* basm) {
 				&& buxn_asm_is_uppercased(itr->key->key.chars[0])
 			)
 		) {
-			buxn_asm_warning(basm->ctx, &itr->token, "Unreferenced symbol");
+			buxn_asm_warning(basm, &itr->token, "Unreferenced symbol");
 		}
 	}
 
@@ -1203,7 +1203,7 @@ buxn_asm_process_rel_padding(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 	uint16_t old_addr = basm->write_addr;
 	uint16_t new_addr = basm->write_addr += padding;
 	if (new_addr < old_addr) {
-		buxn_asm_warning(basm->ctx, start, "Relative padding caused wrap around");
+		buxn_asm_warning(basm, start, "Relative padding caused wrap around");
 	}
 
 	return true;
