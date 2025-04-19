@@ -978,7 +978,13 @@ buxn_asm_process_comment(
 	}
 
 	if (depth != 0) {
-		return buxn_asm_error(basm, start, "Unbalanced comment");
+		return buxn_asm_error_ex(
+			basm,
+			&(buxn_asm_report_t){
+				.message = "Unbalanced comment",
+				.region = &start->region,
+			}
+		);
 	}
 
 	return true;
@@ -1241,7 +1247,7 @@ buxn_asm_expand_macro(
 	buxn_asm_macro_unit_t* macro
 ) {
 	if (basm->preprocessor_depth >= BUXN_ASM_MAX_PREPROCESSOR_DEPTH) {
-		return buxn_asm_error(basm, token, "Max preprocessor_depth depth reached");
+		return buxn_asm_error(basm, token, "Max preprocessor depth depth reached");
 	}
 
 	if (macro->expanding) {
@@ -1391,7 +1397,7 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 				break;
 			case '~': {
 				if (basm->preprocessor_depth >= BUXN_ASM_MAX_PREPROCESSOR_DEPTH) {
-					return buxn_asm_error(basm, &token, "Max preprocessor_depth depth reached");
+					return buxn_asm_error(basm, &token, "Max preprocessor depth depth reached");
 				}
 
 				const buxn_asm_pstr_t* included_filename = buxn_asm_strintern(

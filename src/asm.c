@@ -13,6 +13,7 @@ typedef struct {
 } str_t;
 
 typedef BHASH_TABLE(uint16_t, str_t) str_table_t;
+typedef BHASH_TABLE(const char*, FILE*) file_table_t;
 
 struct buxn_asm_ctx_s {
 	uint16_t rom_size;
@@ -22,6 +23,7 @@ struct buxn_asm_ctx_s {
 	FILE* sym_file;
 	barena_t arena;
 	str_table_t str_table;
+	file_table_t file_table;
 };
 
 void*
@@ -92,9 +94,63 @@ buxn_asm_fgetc(buxn_asm_ctx_t* ctx, buxn_asm_file_t* file) {
 	}
 }
 
+static FILE*
+open_file(buxn_asm_ctx_t* ctx, const char* filename) {
+	bhash_index_t index = bhash_find(&ctx->file_table, filename);
+	if (bhash_is_valid(index)) {
+		return ctx->file_table.values[index];
+	} else {
+		FILE* file = fopen(filename, "rb");
+		bhash_put(&ctx->file_table, filename, file);
+		return file;
+	}
+}
+
+static void
+print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_report_region_t* region) {
+	FILE* file = open_file(ctx, region->filename);
+	if (file == NULL) { return; }
+
+	// Seek to the beginning of the line starting from the start byte offset
+	for (int i = region->range.start.byte; i >= 0; --i) {
+		fseek(file, i, SEEK_SET);
+
+		if (i > 0) {
+			char ch = 0;
+			fread(&ch, 1, 1, file);
+			if (ch == '\r' || ch == '\n') {
+				fseek(file, i + 1, SEEK_SET);
+				break;
+			}
+		}
+	}
+
+	// Print the line
+	fprintf(stderr, "      | ");
+	while (true) {
+		int ch = fgetc(file);
+		if (ch < 0 || ch == '\r' || ch == '\n') {
+			break;
+		}
+		fputc(ch, stderr);
+	}
+	fputc('\n', stderr);
+
+	// Print the squiggly pointer
+	fprintf(stderr, "      | ");
+	for (int i = 0; i < region->range.start.col - 1; ++i) {
+		fprintf(stderr, " ");
+	}
+	fprintf(stderr, "^");
+	int length = region->range.end.col - region->range.start.col - 1;
+	for (int i = 0; i < length; ++i) {
+		fprintf(stderr, "~");
+	}
+	fprintf(stderr, "\n");
+}
+
 void
 buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
-	// TODO: diagnostic line
 	(void)ctx;
 	blog_level_t level = BLOG_LEVEL_INFO;
 	switch (type) {
@@ -115,12 +171,17 @@ buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm
 		);
 	}
 
+	if (report->region->range.start.line != 0) {
+		print_file_region(ctx, report->region);
+	}
+
 	if (report->related_region) {
 		blog_write(
 			level,
 			report->related_region->filename, report->related_region->range.start.line,
 			"<-- See also"
 		);
+		print_file_region(ctx, report->related_region);
 	}
 }
 
@@ -153,7 +214,7 @@ end:
 }
 
 // https://nullprogram.com/blog/2018/07/31/
-static uint64_t
+static bhash_hash_t
 prospector32(const void* data, size_t size) {
 	(void)size;
 	uint32_t x = *(const uint16_t*)data;
@@ -163,6 +224,14 @@ prospector32(const void* data, size_t size) {
 	x *= 0x297a2d39U;
 	x ^= x >> 15;
 	return x;
+}
+
+static bhash_hash_t
+str_hash(const void* data, size_t size) {
+	(void)size;
+	const char* str = *(const char**)data;
+	size_t len = strlen(str);
+	return bhash_hash(str, len);
 }
 
 int
@@ -198,6 +267,11 @@ main(int argc, const char* argv[]) {
 	config.hash = prospector32;
 	bhash_init(&ctx.str_table, config);
 
+	config = bhash_config_default();
+	config.removable = false;
+	config.hash = str_hash;
+	bhash_init(&ctx.file_table, config);
+
 	// temp buf for extra filenames
 	const char* rom_filename = argv[2];
 	size_t rom_filename_len = strlen(rom_filename);
@@ -215,6 +289,10 @@ main(int argc, const char* argv[]) {
 
 	bool success = buxn_asm(&ctx, argv[1]);
 
+	for (bhash_index_t i = 0; i < bhash_len(&ctx.file_table); ++i) {
+		fclose(ctx.file_table.values[i]);
+	}
+	bhash_cleanup(&ctx.file_table);
 	bhash_cleanup(&ctx.str_table);
 	barena_reset(&ctx.arena);
 	barena_pool_cleanup(&arena_pool);
