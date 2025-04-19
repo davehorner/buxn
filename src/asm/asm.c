@@ -18,18 +18,18 @@ typedef struct {
 	int len;
 } buxn_asm_str_t;
 
-typedef struct buxn_asm_strpool_node_s buxn_asm_strpool_node_t;
+typedef struct buxn_asm_pstr_s buxn_asm_pstr_t;
 
-struct buxn_asm_strpool_node_s {
+struct buxn_asm_pstr_s {
 	buxn_asm_str_t key;
-	struct buxn_asm_strpool_node_s* children[BHAMT_NUM_CHILDREN];
+	buxn_asm_pstr_t* children[BHAMT_NUM_CHILDREN];
 
 	BHAMT_HASH_TYPE hash;
 	uint16_t export_id;
 };
 
 typedef struct {
-	buxn_asm_strpool_node_t* root;
+	buxn_asm_pstr_t* root;
 	uint16_t num_exported;
 } buxn_asm_strpool_t;
 
@@ -40,7 +40,7 @@ typedef enum {
 
 typedef struct {
 	buxn_asm_str_t lexeme;
-	const buxn_asm_strpool_node_t* filename;
+	const buxn_asm_pstr_t* filename;
 	buxn_asm_report_region_t region;
 } buxn_asm_token_t;
 
@@ -53,7 +53,7 @@ struct buxn_asm_token_link_s {
 
 typedef struct {
 	buxn_asm_file_t* file;
-	const buxn_asm_strpool_node_t* path;
+	const buxn_asm_pstr_t* path;
 	buxn_asm_file_pos_t pos;
 } buxn_asm_file_unit_t;
 
@@ -80,7 +80,7 @@ typedef enum {
 typedef struct buxn_asm_symtab_node_s buxn_asm_symtab_node_t;
 
 struct buxn_asm_symtab_node_s {
-	const buxn_asm_strpool_node_t* key;
+	const buxn_asm_pstr_t* key;
 	buxn_asm_symtab_node_t* children[BHAMT_NUM_CHILDREN];
 	buxn_asm_symtab_node_t* next;
 	buxn_asm_token_t token;
@@ -114,7 +114,7 @@ typedef struct buxn_asm_forward_ref_s buxn_asm_forward_ref_t;
 
 struct buxn_asm_forward_ref_s {
 	buxn_asm_forward_ref_t* next;
-	const buxn_asm_strpool_node_t* label_name;
+	const buxn_asm_pstr_t* label_name;
 	buxn_asm_token_t token;
 	uint16_t addr;
 	buxn_asm_label_ref_type_t type;
@@ -143,7 +143,7 @@ typedef struct {
 } buxn_asm_t;
 
 static bool
-buxn_asm_process_file(buxn_asm_t* basm, buxn_asm_str_t path);
+buxn_asm_process_file(buxn_asm_t* basm, const buxn_asm_pstr_t* path);
 
 static bool
 buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit);
@@ -407,11 +407,11 @@ buxn_asm_str_eq(buxn_asm_str_t lhs, buxn_asm_str_t rhs) {
 		&& memcmp(lhs.chars, rhs.chars, lhs.len) == 0;
 }
 
-static const buxn_asm_strpool_node_t*
+static const buxn_asm_pstr_t*
 buxn_asm_strintern(buxn_asm_t* basm, buxn_asm_str_t str) {
 	BHAMT_HASH_TYPE hash = chibihash64(str.chars, str.len, 0);
-	buxn_asm_strpool_node_t** itr;
-	buxn_asm_strpool_node_t* node;
+	buxn_asm_pstr_t** itr;
+	buxn_asm_pstr_t* node;
 	BHAMT_SEARCH(basm->strpool.root, itr, node, hash, str, buxn_asm_str_eq);
 
 	if (node != NULL) { return node; }
@@ -426,7 +426,7 @@ buxn_asm_strintern(buxn_asm_t* basm, buxn_asm_str_t str) {
 	memcpy(chars, str.chars, str.len);
 	chars[str.len] = '\0';
 
-	*node = (buxn_asm_strpool_node_t){
+	*node = (buxn_asm_pstr_t){
 		.key = { .chars = chars, .len = str.len },
 		.hash = hash,
 	};
@@ -434,20 +434,20 @@ buxn_asm_strintern(buxn_asm_t* basm, buxn_asm_str_t str) {
 	return node;
 }
 
-static const buxn_asm_strpool_node_t*
+static const buxn_asm_pstr_t*
 buxn_asm_strfind(buxn_asm_t* basm, buxn_asm_str_t str) {
 	BHAMT_HASH_TYPE hash = chibihash64(str.chars, str.len, 0);
-	buxn_asm_strpool_node_t* node;
+	buxn_asm_pstr_t* node;
 	BHAMT_GET(basm->strpool.root, node, hash, str, buxn_asm_str_eq);
 	return node;
 }
 
 static uint16_t
-buxn_asm_strexport(buxn_asm_t* basm, const buxn_asm_strpool_node_t* str) {
+buxn_asm_strexport(buxn_asm_t* basm, const buxn_asm_pstr_t* str) {
 	if (str->export_id != 0) { return str->export_id; }
 
 
-	uint16_t id = ((buxn_asm_strpool_node_t*)str)->export_id = ++basm->strpool.num_exported;
+	uint16_t id = ((buxn_asm_pstr_t*)str)->export_id = ++basm->strpool.num_exported;
 	buxn_asm_put_string(basm->ctx, id, str->key.chars, str->key.len);
 	return str->export_id;
 }
@@ -483,7 +483,7 @@ buxn_asm_register_symbol(
 		return NULL;
 	}
 
-	const buxn_asm_strpool_node_t* interned_name = buxn_asm_strintern(basm, name);
+	const buxn_asm_pstr_t* interned_name = buxn_asm_strintern(basm, name);
 	buxn_asm_symtab_node_t** itr;
 	buxn_asm_symtab_node_t* node;
 	BHAMT_SEARCH(basm->symtab.root, itr, node, interned_name->hash, interned_name, buxn_asm_ptr_eq);
@@ -515,7 +515,7 @@ buxn_asm_register_symbol(
 }
 
 static buxn_asm_symtab_node_t*
-buxn_asm_find_symbol(buxn_asm_t* basm, const buxn_asm_strpool_node_t* name) {
+buxn_asm_find_symbol(buxn_asm_t* basm, const buxn_asm_pstr_t* name) {
 	buxn_asm_symtab_node_t* node;
 	BHAMT_GET(basm->symtab.root, node, name->hash, name, buxn_asm_ptr_eq);
 	return node;
@@ -689,7 +689,7 @@ buxn_asm_emit_addr_placeholder(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_size_t size,
-	const buxn_asm_strpool_node_t* label_name
+	const buxn_asm_pstr_t* label_name
 ) {
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
@@ -721,7 +721,7 @@ buxn_asm_emit_forward_ref(
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_type_t type,
 	buxn_asm_label_ref_size_t size,
-	const buxn_asm_strpool_node_t* label_name
+	const buxn_asm_pstr_t* label_name
 ) {
 	uint16_t addr = basm->write_addr;
 	if (!buxn_asm_emit_addr_placeholder(basm, token, size, label_name)) {
@@ -897,7 +897,7 @@ buxn_asm_emit_label_ref(
 		return buxn_asm_error(basm, token, "Invalid reference");
 	}
 
-	const buxn_asm_strpool_node_t* interned_name = buxn_asm_strintern(basm, full_name);
+	const buxn_asm_pstr_t* interned_name = buxn_asm_strintern(basm, full_name);
 	buxn_asm_symtab_node_t* symbol = buxn_asm_find_symbol(basm, interned_name);
 	if (symbol == NULL) {
 		return buxn_asm_emit_forward_ref(basm, token, type, size, interned_name);
@@ -1160,7 +1160,7 @@ buxn_asm_resolve_padding(
 			return false;
 		}
 
-		const buxn_asm_strpool_node_t* interned_name = buxn_asm_strfind(basm, padding_label);
+		const buxn_asm_pstr_t* interned_name = buxn_asm_strfind(basm, padding_label);
 		if (interned_name == NULL) {
 			return buxn_asm_error(basm, token, "Undeclared label is used for padding");
 		}
@@ -1308,7 +1308,7 @@ buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	assert((!buxn_asm_is_runic(token->lexeme.chars[0])) && "Runic word encountered");
 	// Inline buxn_asm_strfind here so we get the hash
 	BHAMT_HASH_TYPE initial_hash = chibihash64(token->lexeme.chars, token->lexeme.len, 0);
-	const buxn_asm_strpool_node_t* interned_name;
+	const buxn_asm_pstr_t* interned_name;
 	BHAMT_GET(basm->strpool.root, interned_name, initial_hash, token->lexeme, buxn_asm_str_eq);
 	if (interned_name == NULL) {
 		// Check whether it's an opcode using the pre-calculated
@@ -1405,15 +1405,24 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 					return buxn_asm_error(basm, &token, "Max preprocessor_depth depth reached");
 				}
 
-				++basm->preprocessor_depth;
-				bool success = buxn_asm_process_file(
-					basm,
-					buxn_asm_str_pop_front(token.lexeme)
+				const buxn_asm_pstr_t* included_filename = buxn_asm_strintern(
+					basm, buxn_asm_str_pop_front(token.lexeme)
 				);
+				++basm->preprocessor_depth;
+				bool success = buxn_asm_process_file(basm, included_filename);
 				--basm->preprocessor_depth;
+
 				if (!success) {
 					// Append another error to explain include chain
-					return buxn_asm_error(basm, &token, "Error while processing include");
+					return buxn_asm_error(
+						basm,
+						&(buxn_asm_token_t){
+							.filename = token.filename,
+							.lexeme = included_filename->key,
+							.region = token.region,
+						},
+						"Error while processing include"
+					);
 				}
 			} break;
 			case '%':
@@ -1558,14 +1567,14 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 }
 
 static bool
-buxn_asm_process_file(buxn_asm_t* basm, buxn_asm_str_t path) {
-	buxn_asm_file_t* file = buxn_asm_fopen(basm->ctx, path.chars);
+buxn_asm_process_file(buxn_asm_t* basm, const buxn_asm_pstr_t* path) {
+	buxn_asm_file_t* file = buxn_asm_fopen(basm->ctx, path->key.chars);
 	if (file == NULL) {
 		return buxn_asm_error_ex(
 			basm,
 			&(buxn_asm_report_t) {
 				.message = "Could not open file",
-				.region = &(buxn_asm_report_region_t){ .filename = path.chars }
+				.region = &(buxn_asm_report_region_t){ .filename = path->key.chars }
 			}
 		);
 	}
@@ -1574,7 +1583,7 @@ buxn_asm_process_file(buxn_asm_t* basm, buxn_asm_str_t path) {
 		.type = BUXN_ASM_UNIT_FILE,
 		.file = &(buxn_asm_file_unit_t){
 			.file = file,
-			.path = buxn_asm_strintern(basm, path),
+			.path = path,
 			.pos = {
 				.line = 1,
 				.col = 1,
@@ -1600,10 +1609,11 @@ buxn_asm(buxn_asm_ctx_t* ctx, const char* filename) {
 		},
 	};
 
-	if (!buxn_asm_process_file(
+	const buxn_asm_pstr_t* interned_name = buxn_asm_strintern(
 		&basm,
-		(buxn_asm_str_t){ .chars = filename, .len = strlen(filename) })
-	) {
+		(buxn_asm_str_t){.chars = filename, .len = strlen(filename) }
+	);
+	if (!buxn_asm_process_file(&basm, interned_name)) {
 		return basm.success;
 	}
 
