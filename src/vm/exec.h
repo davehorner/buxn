@@ -336,7 +336,6 @@
 		BUXN_SAVE_STATE(); \
 		BUXN_POLY_DEV_OUT(S_)(a, b); \
 		BUXN_LOAD_STATE(); \
-		if (dev[0x0f] != 0) { return; } \
 	}
 
 // a b -- a BIN_OP b
