@@ -772,15 +772,13 @@ buxn_asm_emit_lambda_ref(
 	return true;
 }
 
-static bool
+static uint16_t
 buxn_asm_calculate_addr(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_type_t type,
 	uint16_t from_addr,
-	uint16_t to_addr,
-	const buxn_asm_token_t* token_at_to_addr,
-	uint16_t* out
+	uint16_t to_addr
 ) {
 	switch (type) {
 		case BUXN_ASM_LABEL_REF_ZERO:
@@ -790,24 +788,14 @@ buxn_asm_calculate_addr(
 					"Taking zero-address of a label past page zero"
 				);
 			}
-			*out = to_addr & 0xff;
-			return true;
+			return to_addr & 0xff;
 		case BUXN_ASM_LABEL_REF_ABS:
-			*out = to_addr;
-			return true;
-		case BUXN_ASM_LABEL_REF_REL: {
-			int diff = (int)(from_addr + 2) - (int)to_addr;
-			if (diff > INT16_MAX || diff < INT16_MIN) {
-				return buxn_asm_error2(
-					basm, token, "Referenced address is too far", token_at_to_addr
-				);
-			} else {
-				*out = (uint16_t)diff;
-				return true;
-			}
-		} break;
+			return to_addr;
+		case BUXN_ASM_LABEL_REF_REL:
+			return (uint16_t)(int)(from_addr + 2) - (int)to_addr;
 		default:
-			return buxn_asm_error(basm, token, "Invalid address reference type");
+			assert(0 && "Invalid address reference type");
+			return 0;
 	}
 }
 
@@ -852,16 +840,11 @@ buxn_asm_emit_backward_ref(
 	assert((label->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) && "Invalid symbol type");
 
 	uint16_t write_addr = basm->write_addr;
-	uint16_t addr;
-	if (!buxn_asm_calculate_addr(
+	uint16_t addr = buxn_asm_calculate_addr(
 		basm, token,
 		type,
-		write_addr, label->label_address,
-		&label->token,
-		&addr
-	)) {
-		return false;
-	}
+		write_addr, label->label_address
+	);
 
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
@@ -1292,16 +1275,11 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	}
 
 	uint16_t current_addr = basm->write_addr;
-	uint16_t addr;
-	if (!buxn_asm_calculate_addr(
+	uint16_t addr = buxn_asm_calculate_addr(
 		basm, &ref->token,
 		ref->type,
-		ref->addr, current_addr,
-		token,
-		&addr
-	)) {
-		return false;
-	}
+		ref->addr, current_addr
+	);
 
 	if (!buxn_asm_emit_addr(basm, &ref->token, ref->size, addr, token, NULL)) {
 		return false;
