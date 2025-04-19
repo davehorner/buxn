@@ -114,7 +114,10 @@ typedef struct buxn_asm_forward_ref_s buxn_asm_forward_ref_t;
 
 struct buxn_asm_forward_ref_s {
 	buxn_asm_forward_ref_t* next;
-	const buxn_asm_pstr_t* label_name;
+	union {
+		const buxn_asm_pstr_t* label_name;
+		uint16_t id;
+	};
 	buxn_asm_token_t token;
 	uint16_t addr;
 	buxn_asm_label_ref_type_t type;
@@ -134,6 +137,7 @@ typedef struct {
 	bool has_read_buf;
 	bool success;
 
+	uint16_t num_lambdas;
 	buxn_asm_strpool_t strpool;
 	buxn_asm_symtab_t symtab;
 	buxn_asm_str_t label_scope;
@@ -772,6 +776,7 @@ buxn_asm_emit_lambda_ref(
 	buxn_asm_forward_ref_t* ref = buxn_asm_alloc_forward_ref(basm);
 	*ref = (buxn_asm_forward_ref_t){
 		.next = basm->lambdas,
+		.id = basm->num_lambdas++,
 		.token = *token,
 		.addr = addr,
 		.type = type,
@@ -1320,6 +1325,41 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 		return false;
 	}
 	basm->write_addr = current_addr;
+
+	// Generate a name for the lambda to make debuggin easier
+	char lambda_name[sizeof("λffff")];
+	// Write the λ character
+	memcpy(lambda_name, "λ", sizeof("λ") - 1);
+	char* name_ptr = lambda_name + sizeof("λ") - 1;
+	// Write the digits
+	{
+		uint16_t lambda_id = ref->id;
+		bool start_write = false;
+		for (int i = 0; i < 4; ++i) {
+			uint8_t digit = (lambda_id >> ((3 - i) * 4)) & 0x0f;
+			if (start_write || digit != 0 || i >= 2) {
+				start_write = true;
+				if (digit < 10) {
+					*name_ptr++ = '0' + digit;
+				} else {
+					*name_ptr++ = 'a' + (digit - 10);
+				}
+			}
+		}
+	}
+
+	// Export the string without interning
+	// Then immediately put the symbol before `lambda_name` is invalidated
+	uint16_t str_id = ++basm->strpool.num_exported;
+	buxn_asm_put_string(basm->ctx, str_id, lambda_name, name_ptr - lambda_name);
+	buxn_asm_put_symbol(basm->ctx, current_addr, &(buxn_asm_sym_t){
+		.type = BUXN_ASM_SYM_LABEL,
+		.id = str_id,
+		.region = {
+			.source_id = buxn_asm_strexport(basm, token->filename),
+			.range = token->region.range,
+		},
+	});
 
 	basm->lambdas = ref->next;
 	ref->next = basm->ref_pool;
