@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <barena.h>
 #include <bhash.h>
+#include <barray.h>
 #include <errno.h>
 #include <blog.h>
 #include "asm/asm.h"
@@ -24,6 +25,7 @@ struct buxn_asm_ctx_s {
 	barena_t arena;
 	str_table_t str_table;
 	file_table_t file_table;
+	barray(char) line_buf;
 };
 
 void*
@@ -112,7 +114,6 @@ print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_report_region_t* region) {
 	if (file == NULL) { return; }
 
 	// Seek to the beginning of the line starting from the start byte offset
-	int num_tabs = 0;
 	for (int i = region->range.start.byte; i >= 0; --i) {
 		fseek(file, i, SEEK_SET);
 
@@ -120,10 +121,7 @@ print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_report_region_t* region) {
 			char ch = 0;
 			fread(&ch, 1, 1, file);
 
-			if (ch == '\t') {
-				// Count preceding tab to account for their width
-				++num_tabs;
-			} else if (ch == '\r' || ch == '\n') {
+			if (ch == '\r' || ch == '\n') {
 				fseek(file, i + 1, SEEK_SET);
 				break;
 			}
@@ -131,6 +129,7 @@ print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_report_region_t* region) {
 	}
 
 	// Print the line
+	barray_clear(ctx->line_buf);
 	fprintf(stderr, "      | ");
 	while (true) {
 		int ch = fgetc(file);
@@ -138,16 +137,20 @@ print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_report_region_t* region) {
 			break;
 		}
 		fputc(ch, stderr);
+		barray_push(ctx->line_buf, ch, NULL);
 	}
 	fputc('\n', stderr);
 
 	// Print the squiggly pointer
 	fprintf(stderr, "      | ");
-	for (int i = 0; i < region->range.start.col - 1 - num_tabs; ++i) {
-		fprintf(stderr, " ");
-	}
-	for (int i = 0; i < num_tabs; ++i) {
-		fprintf(stderr, "\t");
+	for (int i = 0; i < region->range.start.col - 1; ++i) {
+		// Replay the characters in the exact order with space replacing any
+		// non-tab characters
+		if (ctx->line_buf[i] == '\t') {
+			fprintf(stderr, "\t");
+		} else {
+			fprintf(stderr, " ");
+		}
 	}
 	fprintf(stderr, "^");
 	int length = region->range.end.col - region->range.start.col - 1;
@@ -297,6 +300,7 @@ main(int argc, const char* argv[]) {
 
 	bool success = buxn_asm(&ctx, argv[1]);
 
+	barray_free(NULL, ctx.line_buf);
 	for (bhash_index_t i = 0; i < bhash_len(&ctx.file_table); ++i) {
 		fclose(ctx.file_table.values[i]);
 	}
@@ -332,3 +336,4 @@ main(int argc, const char* argv[]) {
 #include <barena.h>
 #include <blog.h>
 #include <bhash.h>
+#include <barray.h>
