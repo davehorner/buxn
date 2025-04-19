@@ -61,6 +61,7 @@ typedef struct {
 	buxn_asm_token_link_t* first;
 	buxn_asm_token_link_t* last;
 	buxn_asm_token_link_t* current;
+	bool expanding;
 } buxn_asm_macro_unit_t;
 
 typedef struct {
@@ -1249,10 +1250,11 @@ buxn_asm_expand_macro(
 		return buxn_asm_error(basm, token, "Max macro expansion depth reached");
 	}
 
-	if (macro->current != NULL) {
+	if (macro->expanding) {
 		return buxn_asm_error(basm, token, "Macro recursion detected");
 	}
 
+	macro->expanding = true;
 	macro->current = macro->first;
 	++basm->macro_depth;
 	bool success = buxn_asm_process_unit(basm, &(buxn_asm_unit_t){
@@ -1261,6 +1263,7 @@ buxn_asm_expand_macro(
 	});
 	--basm->macro_depth;
 	macro->current = NULL;
+	macro->expanding = false;
 
 	// Append an error to explain expansion chain
 	if (!success) {
