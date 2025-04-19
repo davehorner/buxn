@@ -283,6 +283,11 @@ buxn_asm_is_runic(char ch) {
 }
 
 static bool
+buxn_asm_is_uppercased(char ch) {
+	return 'A' <= ch && ch <= 'Z';
+}
+
+static bool
 buxn_asm_is_sep(int ch) {
 	return ch == ' '
 		|| ch == '\n'
@@ -956,7 +961,13 @@ buxn_asm_resolve(buxn_asm_t* basm) {
 		itr != NULL;
 		itr = itr->next
 	) {
-		if (!itr->referenced) {
+		if (
+			!itr->referenced
+			&& !(
+				itr->key->key.len > 0
+				&& buxn_asm_is_uppercased(itr->key->key.chars[0])
+			)
+		) {
 			buxn_asm_warning(basm->ctx, &itr->token, "Unreferenced symbol");
 		}
 	}
