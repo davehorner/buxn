@@ -112,13 +112,18 @@ print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_report_region_t* region) {
 	if (file == NULL) { return; }
 
 	// Seek to the beginning of the line starting from the start byte offset
+	int num_tabs = 0;
 	for (int i = region->range.start.byte; i >= 0; --i) {
 		fseek(file, i, SEEK_SET);
 
 		if (i > 0) {
 			char ch = 0;
 			fread(&ch, 1, 1, file);
-			if (ch == '\r' || ch == '\n') {
+
+			if (ch == '\t') {
+				// Count preceding tab to account for their width
+				++num_tabs;
+			} else if (ch == '\r' || ch == '\n') {
 				fseek(file, i + 1, SEEK_SET);
 				break;
 			}
@@ -138,8 +143,11 @@ print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_report_region_t* region) {
 
 	// Print the squiggly pointer
 	fprintf(stderr, "      | ");
-	for (int i = 0; i < region->range.start.col - 1; ++i) {
+	for (int i = 0; i < region->range.start.col - 1 - num_tabs; ++i) {
 		fprintf(stderr, " ");
+	}
+	for (int i = 0; i < num_tabs; ++i) {
+		fprintf(stderr, "\t");
 	}
 	fprintf(stderr, "^");
 	int length = region->range.end.col - region->range.start.col - 1;
