@@ -186,11 +186,11 @@ buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm
 		print_file_region(ctx, report->region);
 	}
 
-	if (report->related_region) {
+	if (report->related_message != NULL) {
 		blog_write(
-			level,
+			BLOG_LEVEL_INFO,
 			report->related_region->filename, report->related_region->range.start.line,
-			"<-- See also"
+			"%s:", report->related_message
 		);
 		print_file_region(ctx, report->related_region);
 	}

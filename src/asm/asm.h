@@ -56,6 +56,8 @@ typedef struct {
 	const char* message;
 	const char* token;
 	const buxn_asm_report_region_t* region;
+
+	const char* related_message;
 	const buxn_asm_report_region_t* related_region;
 } buxn_asm_report_t;
 

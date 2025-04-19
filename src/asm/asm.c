@@ -178,7 +178,8 @@ buxn_asm_error2(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
 	const char* message,
-	const buxn_asm_token_t* related_token
+	const buxn_asm_token_t* related_token,
+	const char* related_message
 ) {
 	return buxn_asm_error_ex(
 		basm,
@@ -186,6 +187,7 @@ buxn_asm_error2(
 			.message = message,
 			.token = token->lexeme.chars,
 			.region = &token->region,
+			.related_message = related_message,
 			.related_region = &related_token->region,
 		}
 	);
@@ -494,7 +496,11 @@ buxn_asm_register_symbol(
 	BHAMT_SEARCH(basm->symtab.root, itr, node, interned_name->hash, interned_name, buxn_asm_ptr_eq);
 
 	if (node != NULL) {
-		buxn_asm_error2(basm, token, "Duplicated definition", &node->token);
+		buxn_asm_error2(
+			basm,
+			token, "Duplicated definition",
+			&node->token, "Previously defined here"
+		);
 		return NULL;
 	}
 
@@ -817,7 +823,9 @@ buxn_asm_emit_addr(
 		case BUXN_ASM_LABEL_REF_BYTE:
 			if (size == BUXN_ASM_LABEL_REF_BYTE && addr > UINT8_MAX) {
 				return buxn_asm_error2(
-					basm, token, "Referenced address is too far", token_at_addr
+					basm,
+					token, "Referenced address is too far",
+					token_at_addr, "Label defined here"
 				);
 			}
 			if (!buxn_asm_emit(basm, token, addr & 0xff)) { return false; }
@@ -1025,9 +1033,8 @@ buxn_asm_process_macro(
 			case '%':
 				return buxn_asm_error2(
 					basm,
-					&token,
-					"A macro cannot be defined inside another macro",
-					start
+					&token, "Nested macro definition detected",
+					start, "In this macro definition"
 				);
 			case '{':
 				if (token.lexeme.len == 1) { ++depth; }
@@ -1058,7 +1065,13 @@ buxn_asm_process_macro(
 	}
 
 	if (depth != 0) {
-		return buxn_asm_error(basm, start, "Macro has unbalanced `{`");
+		return buxn_asm_error_ex(
+			basm,
+			&(buxn_asm_report_t){
+				.message = "Macro has unbalanced `{`",
+				.region = &start->region,
+			}
+		);
 	}
 
 	buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
