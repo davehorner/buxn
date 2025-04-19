@@ -98,6 +98,34 @@ buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm
 	}
 }
 
+static bool
+write_rom(buxn_asm_ctx_t* ctx, const char* rom_path) {
+	FILE* rom_file = NULL;
+	bool success = true;
+	rom_file = fopen(rom_path, "wb");
+	if (rom_file == NULL) {
+		perror("Error while opening rom file");
+		success = false;
+		goto end;
+	}
+
+	if (fwrite(ctx->rom, ctx->rom_size, 1, rom_file) < 0) {
+		perror("Error while writing rom file");
+		success = false;
+		goto end;
+	}
+
+	if (fflush(rom_file) != 0) {
+		perror("Error while writing rom file");
+		success = false;
+		goto end;
+	}
+
+end:
+	if (rom_file != NULL) { fclose(rom_file); }
+	return success;
+}
+
 int
 main(int argc, const char* argv[]) {
 	blog_level_t log_level;
@@ -130,6 +158,8 @@ main(int argc, const char* argv[]) {
 
 	barena_reset(&ctx.arena);
 	barena_pool_cleanup(&arena_pool);
+
+	success &= write_rom(&ctx, argv[2]);
 
 	if (success) {
 		BLOG_INFO(
