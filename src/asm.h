@@ -33,7 +33,7 @@ typedef enum {
 	BUXN_ASM_SYM_LABEL_REF,
 	BUXN_ASM_SYM_OPCODE,
 	BUXN_ASM_SYM_NUMBER,
-	BUXN_ASM_SYM_STRING,
+	BUXN_ASM_SYM_TEXT,
 } buxn_asm_sym_type_t;
 
 typedef struct {
@@ -43,7 +43,7 @@ typedef struct {
 
 typedef struct {
 	buxn_asm_sym_type_t type;
-	uint16_t name_id;
+	uint16_t id;
 	buxn_asm_source_region_t region;
 } buxn_asm_sym_t;
 

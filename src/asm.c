@@ -539,7 +539,7 @@ buxn_asm_register_label(
 
 	buxn_asm_put_symbol(basm->ctx, write_addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_LABEL,
-		.name_id = buxn_asm_strexport(basm, symbol->key),
+		.id = buxn_asm_strexport(basm, symbol->key),
 		.region = {
 			.source_id = buxn_asm_strexport(basm, token->filename),
 			.range = token->region.range,
@@ -640,6 +640,7 @@ buxn_asm_emit_byte(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t byte
 
 	buxn_asm_put_symbol(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_NUMBER,
+		.id = byte,
 		.region = {
 			.source_id = buxn_asm_strexport(basm, token->filename),
 			.range = token->region.range,
@@ -656,6 +657,7 @@ buxn_asm_emit_short(buxn_asm_t* basm, const buxn_asm_token_t* token, uint16_t sh
 
 	buxn_asm_put_symbol2(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_NUMBER,
+		.id = short_,
 		.region = {
 			.source_id = buxn_asm_strexport(basm, token->filename),
 			.range = token->region.range,
@@ -690,7 +692,7 @@ buxn_asm_emit_addr_placeholder(
 ) {
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
-		.name_id = label_name != NULL ? buxn_asm_strexport(basm, label_name) : 0,
+		.id = label_name != NULL ? buxn_asm_strexport(basm, label_name) : 0,
 		.region = {
 			.source_id = buxn_asm_strexport(basm, token->filename),
 			.range = token->region.range,
@@ -857,7 +859,7 @@ buxn_asm_emit_backward_ref(
 
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
-		.name_id = buxn_asm_strexport(basm, label->key),
+		.id = buxn_asm_strexport(basm, label->key),
 		.region = {
 			.source_id = buxn_asm_strexport(basm, token->filename),
 			.range = token->region.range,
@@ -1048,7 +1050,7 @@ buxn_asm_process_macro(
 
 	buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_MACRO,
-		.name_id = buxn_asm_strexport(basm, symbol->key),
+		.id = buxn_asm_strexport(basm, symbol->key),
 		.region = {
 			.source_id = buxn_asm_strexport(basm, start->filename),
 			.range = start->region.range,
@@ -1344,6 +1346,26 @@ buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 }
 
 static bool
+buxn_asm_process_text(buxn_asm_t* basm, const buxn_asm_token_t* token) {
+	buxn_asm_sym_t sym = {
+		.type = BUXN_ASM_SYM_TEXT,
+		.region = {
+			.source_id = buxn_asm_strexport(basm, token->filename),
+			.range = token->region.range,
+		},
+	};
+	uint16_t addr = basm->write_addr;
+	for (int i = 1; i < token->lexeme.len; ++i) {
+		if (!buxn_asm_emit(basm, token, token->lexeme.chars[i])) {
+			return false;
+		}
+		buxn_asm_put_symbol(basm->ctx, addr + i - 1, &sym);
+	}
+
+	return true;
+}
+
+static bool
 buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 	buxn_asm_token_t token;
 	while (buxn_asm_next_token(basm, unit, &token)) {
@@ -1490,6 +1512,11 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 					BUXN_ASM_LABEL_REF_SHORT,
 					buxn_asm_str_pop_front(token.lexeme)
 				)) {
+					return false;
+				}
+				break;
+			case '"':
+				if (!buxn_asm_process_text(basm, &token)) {
 					return false;
 				}
 				break;
