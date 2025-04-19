@@ -272,12 +272,12 @@ buxn_asm_is_runic(char ch) {
 		|| ch == '(' || ch == ')'
 		|| ch == '|' || ch == '$'
 		|| ch == '#'
-		|| ch == '@' || ch == '&'
 		|| ch == '"'
+		|| ch == '@' || ch == '&' || ch == '/'
 		|| ch == ',' || ch == '_'
 		|| ch == '.' || ch == '-'
 		|| ch == ';' || ch == '='
-		|| ch == '!' || ch == '?' || ch == '/'
+		|| ch == '!' || ch == '?'
 		|| ch == '%' || ch == '~';
 }
 
@@ -904,15 +904,11 @@ buxn_asm_emit_label_ref(
 static bool
 buxn_asm_emit_jsi(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	if (!buxn_asm_emit_opcode(basm, token, 0x60)) { return false; }  // JSI
-	if (!buxn_asm_emit_label_ref(
+	return buxn_asm_emit_label_ref(
 		basm, token,
 		BUXN_ASM_LABEL_REF_REL, BUXN_ASM_LABEL_REF_SHORT,
 		token->lexeme
-	)) {
-		return false;
-	}
-
-	return true;
+	);
 }
 
 static bool
@@ -1289,6 +1285,7 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 
 static bool
 buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
+	assert((!buxn_asm_is_runic(token->lexeme.chars[0])) && "Runic word encountered");
 	// Inline buxn_asm_strfind here so we get the hash
 	BHAMT_HASH_TYPE initial_hash = chibihash64(token->lexeme.chars, token->lexeme.len, 0);
 	const buxn_asm_strpool_node_t* interned_name;
@@ -1381,6 +1378,32 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 				break;
 			case '&':
 				if (!buxn_asm_process_local_label(basm, &token)) {
+					return false;
+				}
+				break;
+			case '!':
+				if (!buxn_asm_emit_opcode(basm, &token, 0x40)) {  // JMI
+					return false;
+				}
+				if (!buxn_asm_emit_label_ref(
+					basm, &token,
+					BUXN_ASM_LABEL_REF_REL,
+					BUXN_ASM_LABEL_REF_SHORT,
+					buxn_asm_str_pop_front(token.lexeme)
+				)) {
+					return false;
+				}
+				break;
+			case '?':
+				if (!buxn_asm_emit_opcode(basm, &token, 0x20)) {  // JCI
+					return false;
+				}
+				if (!buxn_asm_emit_label_ref(
+					basm, &token,
+					BUXN_ASM_LABEL_REF_REL,
+					BUXN_ASM_LABEL_REF_SHORT,
+					buxn_asm_str_pop_front(token.lexeme)
+				)) {
 					return false;
 				}
 				break;
