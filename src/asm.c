@@ -207,6 +207,13 @@ write_rom(buxn_asm_ctx_t* ctx, const char* rom_path) {
 		goto end;
 	}
 
+	// Trim trailing zeros from rom
+	uint16_t rom_size = ctx->rom_size;
+	while (rom_size > 0 && ctx->rom[rom_size - 1] == 0) {
+		--rom_size;
+	}
+	ctx->rom_size = rom_size;
+
 	if (fwrite(ctx->rom, ctx->rom_size, 1, rom_file) != 1) {
 		BLOG_ERROR("Error while writing rom file: %s", strerror(errno));
 		success = false;
