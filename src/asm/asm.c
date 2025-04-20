@@ -1347,6 +1347,7 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 			}
 		}
 	}
+	*name_ptr = '\0';
 
 	// Export the string without interning
 	// Then immediately put the symbol before `lambda_name` is invalidated
