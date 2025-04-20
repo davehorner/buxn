@@ -31,6 +31,7 @@ The general syntax for the build script is: `./build <type> <platform>`.
 
 * `linux`
 * `android`
+* `cosmo`
 
 Without arguments, it will default to build with `Debug` and `linux`.
 The output will be placed in `bin/$type/$platform`.
