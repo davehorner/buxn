@@ -48,6 +48,7 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			break;
 		case BUXN_DEVICE_CONSOLE:
 			buxn_console_deo(vm, &devices->console, address);
+			break;
 		case BUXN_DEVICE_FILE_0:
 		case BUXN_DEVICE_FILE_1:
 			buxn_file_deo(
