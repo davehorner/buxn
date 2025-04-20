@@ -154,10 +154,8 @@ end:
 static int
 cli_main(int argc, const char* argv[]) {
 	PHYSFS_init(argv[0]);
-#ifdef __linux__
 	PHYSFS_mount(".", "", 1);
 	PHYSFS_setWriteDir(".");
-#endif
 
 	if (argc < 2) {
 		fprintf(stderr, "Usage: buxn-cli <rom>\n");
@@ -182,10 +180,8 @@ end:
 static int
 embd_main(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	PHYSFS_init(argv[0]);
-#ifdef __linux__
 	PHYSFS_mount(".", "", 1);
 	PHYSFS_setWriteDir(".");
-#endif
 
 	int exit_code = boot(argc - 1, argv + 1, rom_file, rom_size);
 
