@@ -1023,10 +1023,27 @@ buxn_asm_process_macro(
 	if (symbol == NULL) { return false; }
 
 	buxn_asm_token_t token;
-	if (
-		!buxn_asm_next_token(basm, unit, &token)
-		|| (token.lexeme.len != 1 && token.lexeme.chars[0] != '{')
-	) {
+	bool found_open_brace = false;
+	while (!found_open_brace && buxn_asm_next_token(basm, unit, &token)) {
+		if (token.lexeme.len == 1) {
+			switch (token.lexeme.chars[0]) {
+				case '(':
+					if (!buxn_asm_process_comment(basm, &token, unit)) {
+						return false;
+					}
+					break;
+				case '[':
+				case ']':
+					break;
+				case '{':
+					found_open_brace = true;
+					break;
+			}
+		} else {
+			return buxn_asm_error(basm, &token, "Macro must be followed by '{'");
+		}
+	}
+	if (!found_open_brace) {
 		return buxn_asm_error(basm, &token, "Macro must be followed by '{'");
 	}
 
