@@ -13,6 +13,7 @@ Current supported platforms:
 
 * Linux
 * Android
+* [Cosmopolitan](https://github.com/jart/cosmopolitan/)
 
 ## Building
 ### Common
@@ -56,6 +57,10 @@ When a ROM exposes [metadata](https://wiki.xxiivv.com/site/metadata.html) the fo
 * Icon: The icon will be set as the window's icon.
   Take note that it will be drawn using [potato's default theme](https://git.sr.ht/~rabbits/potato/tree/325083af9dbde3c39e27e67e75b026ed4b98c8f0/item/src/potato.tal#L31) with the color 0 being transparent.
 
+`buxn-asm` is an [uxntal assembler](https://wiki.xxiivv.com/site/uxntal.html).
+
+`buxn-rom2exe` is a program to convert a rom into a standalone executable.
+
 ### Android
 
 Make sure that Android SDK & NDK are installed.
@@ -80,6 +85,18 @@ This project is C only.
 
 However, it should not be too hard to add.
 The build pipeline was created based on: https://www.hanshq.net/command-line-android.html.
+
+### Cosmopolitan
+
+The [cosmopolitan toolchain](https://github.com/jart/cosmopolitan) has to be in your PATH, in particular `cosmocc` is needed.
+Use `./build <Release|Debug> cosmo` to build like other platform.
+Currently, only the following programs are supported:
+
+* buxn-cli
+* buxn-asm
+* buxn-rom2exe: Notably, this will create an actually portable executable.
+
+WIP: buxn-gui using [cosmo-sokol](https://github.com/bullno1/cosmo-sokol).
 
 ## Development tips and other notes
 ### Build on file change
