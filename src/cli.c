@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <physfs.h>
 #include "vm.h"
+#include "bembd.h"
 #include "devices/console.h"
 #include "devices/system.h"
 #include "devices/datetime.h"
@@ -90,20 +91,9 @@ buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) 
 	fputc(c, stderr);
 }
 
-int
-main(int argc, const char* argv[]) {
-	if (argc < 2) {
-		fprintf(stderr, "Usage: buxn-cli <rom>\n");
-		return 1;
-	}
+static int
+boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	int exit_code = 0;
-
-	PHYSFS_init(argv[0]);
-#ifdef __linux__
-	PHYSFS_mount(".", "", 1);
-	PHYSFS_setWriteDir(".");
-#endif
-
 	devices_t devices = { 0 };
 
 	buxn_vm_t* vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
@@ -112,22 +102,22 @@ main(int argc, const char* argv[]) {
 	vm->exec_hook = NULL;
 	buxn_vm_reset(vm, BUXN_VM_RESET_ALL);
 
-	FILE* rom_file;
-	if ((rom_file = fopen(argv[1], "rb")) == NULL) {
-		perror("Error while opening rom file");
-		exit_code = 1;
-		goto end;
-	}
-
-	uint8_t* read_pos = &vm->memory[BUXN_RESET_VECTOR];
-	while (read_pos < vm->memory + vm->memory_size) {
-		size_t num_bytes = fread(read_pos, 1, 1024, rom_file);
-		if (num_bytes == 0) { break; }
-		read_pos += num_bytes;
+	// Read rom
+	{
+		uint8_t* read_pos = &vm->memory[BUXN_RESET_VECTOR];
+		if (rom_size == 0) {
+			while (read_pos < vm->memory + vm->memory_size) {
+				size_t num_bytes = fread(read_pos, 1, 1024, rom_file);
+				if (num_bytes == 0) { break; }
+				read_pos += num_bytes;
+			}
+		} else {
+			fread(read_pos, rom_size, 1, rom_file);
+		}
 	}
 	fclose(rom_file);
 
-	buxn_console_init(vm, &devices.console, argc - 2, argv + 2);
+	buxn_console_init(vm, &devices.console, argc, argv);
 
 	buxn_vm_execute(vm, BUXN_RESET_VECTOR);
 	if ((exit_code = buxn_system_exit_code(vm)) > 0) {
@@ -158,6 +148,64 @@ end:
 	free(vm);
 	PHYSFS_deinit();
 	return exit_code;
+}
+
+static int
+cli_main(int argc, const char* argv[]) {
+	PHYSFS_init(argv[0]);
+#ifdef __linux__
+	PHYSFS_mount(".", "", 1);
+	PHYSFS_setWriteDir(".");
+#endif
+
+	if (argc < 2) {
+		fprintf(stderr, "Usage: buxn-cli <rom>\n");
+		return 1;
+	}
+	int exit_code = 0;
+
+	FILE* rom_file;
+	if ((rom_file = fopen(argv[1], "rb")) == NULL) {
+		perror("Error while opening rom file");
+		exit_code = 1;
+		goto end;
+	}
+
+	exit_code = boot(argc - 2, argv + 2, rom_file, 0);
+
+end:
+	PHYSFS_deinit();
+	return exit_code;
+}
+
+static int
+embd_main(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
+	PHYSFS_init(argv[0]);
+#ifdef __linux__
+	PHYSFS_mount(".", "", 1);
+	PHYSFS_setWriteDir(".");
+#endif
+
+	int exit_code = boot(argc - 1, argv + 1, rom_file, rom_size);
+
+	PHYSFS_deinit();
+	return exit_code;
+}
+
+int
+main(int argc, const char* argv[]) {
+	if (argc == 0) { return cli_main(argc, argv); }
+
+	FILE* self = fopen(argv[0], "rb");
+	if (self == NULL) { return cli_main(argc, argv); }
+
+	uint32_t rom_size = bembd_find(self);
+	if (rom_size == 0) {
+		fclose(self);
+		return cli_main(argc, argv);
+	} else {
+		return embd_main(argc, argv, self, rom_size);
+	}
 }
 
 #define BLIB_IMPLEMENTATION

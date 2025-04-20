@@ -39,6 +39,7 @@ build_linux() {
 	compile src/cli.c $PROGRAM_FLAGS
 	compile src/asm.c $PROGRAM_FLAGS
 	compile src/asm/asm.c $PROGRAM_FLAGS
+	compile src/rom2exe.c $PROGRAM_FLAGS
 	compile src/linux/platform.c $PROGRAM_FLAGS
 	compile src/libs.c $PROGRAM_FLAGS
 	compile deps/physfs/src/physfs_platform_unix.c $PHYSFS_FLAGS
@@ -64,6 +65,13 @@ build_linux() {
 		${OBJ_DIR}/src/asm.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
 		-o ${BIN_DIR}/buxn-asm
+
+	$CC \
+		-fuse-ld=mold \
+		-Wl,--separate-debug-file \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/rom2exe.c.o \
+		-o ${BIN_DIR}/buxn-rom2exe
 
 	$CC \
 		-fuse-ld=mold \

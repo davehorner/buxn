@@ -11,19 +11,31 @@
 #include <poll.h>
 #include <stdlib.h>
 #include <qoi.h>
+#include "../bembd.h"
 #include "../resources.h"
 
 static struct {
 	blog_file_logger_options_t log_options;
 	blog_level_t log_level;
 	const char* argv0;
-	const char* boot_rom_file;
+	FILE* boot_rom_file;
+	bool has_size_limit;
+	uint64_t rom_size;
+	int open_error;
 	sapp_icon_desc icon;
 } platform_linux = { 0 };
 
 static int64_t
 stdio_read(void* handle, void* buffer, uint64_t size) {
-	return fread(buffer, 1, size, handle);
+	if (platform_linux.has_size_limit) {
+		size = platform_linux.rom_size < size ? platform_linux.rom_size : size;
+	}
+
+	int64_t bytes_read = fread(buffer, 1, size, handle);
+	if (platform_linux.has_size_limit && bytes_read > 0) {
+		platform_linux.rom_size -= (uint64_t)bytes_read;
+	}
+	return bytes_read;
 }
 
 static const char*
@@ -36,22 +48,10 @@ get_arg(const char* arg, const char* prefix) {
 	}
 }
 
-void
-platform_init(args_t* args) {
+static void
+standalone_init(args_t* args) {
 	int argc = args->argc;
 	const char** argv = args->argv;
-
-#ifdef _DEBUG
-	platform_linux.log_level = BLOG_LEVEL_TRACE;
-#else
-	platform_linux.log_level = BLOG_LEVEL_INFO;
-#endif
-
-	if (argc > 0) {
-		platform_linux.argv0 = argv[0];
-		++argv;
-		--argc;
-	}
 
 	int i;
 	for (i = 0; i < argc; ++i) {
@@ -81,14 +81,34 @@ platform_init(args_t* args) {
 	argc -= i;
 	argv += i;
 
+	const char* boot_rom_filename = "boot.rom";
 	if (argc > 0) {
-		platform_linux.boot_rom_file = argv[0];
+		boot_rom_filename = argv[0];
 		++argv;
 		--argc;
 	}
+	platform_linux.boot_rom_file = fopen(boot_rom_filename, "rb");
+	platform_linux.open_error = errno;
 
 	args->argc = argc;
 	args->argv = argv;
+}
+
+static void
+embeded_init(args_t* args, FILE* rom_file, uint32_t rom_size) {
+	(void)args;
+	platform_linux.boot_rom_file = rom_file;
+	platform_linux.has_size_limit = true;
+	platform_linux.rom_size = rom_size;
+}
+
+void
+platform_init(args_t* args) {
+#ifdef _DEBUG
+	platform_linux.log_level = BLOG_LEVEL_TRACE;
+#else
+	platform_linux.log_level = BLOG_LEVEL_INFO;
+#endif
 
 	// Icon
 	xincbin_data_t logo_qoi = XINCBIN_GET(logo);
@@ -111,6 +131,25 @@ platform_init(args_t* args) {
 		};
 	} else {
 		platform_linux.icon.sokol_default = true;
+	}
+
+	if (args->argc > 0) {
+		platform_linux.argv0 = args->argv[0];
+		++args->argv;
+		--args->argc;
+	}
+
+	FILE* self = fopen(platform_linux.argv0, "rb");
+	if (self == NULL) {
+		standalone_init(args);
+		return;
+	}
+	uint32_t rom_size = bembd_find(self);
+	if (rom_size == 0) {
+		fclose(self);
+		standalone_init(args);
+	} else {
+		embeded_init(args, self, rom_size);
 	}
 }
 
@@ -140,13 +179,12 @@ platform_init_fs(void) {
 
 bool
 platform_open_boot_rom(stream_t* stream) {
-	FILE* rom_file = fopen(platform_linux.boot_rom_file, "rb");
-	if (rom_file == NULL) {
-		BLOG_ERROR("Could not open rom file: %s", strerror(errno));
+	if (platform_linux.boot_rom_file == NULL) {
+		BLOG_ERROR("Could not open rom file: %s", strerror(platform_linux.open_error));
 		return false;
 	}
 
-	stream->handle = rom_file;
+	stream->handle = platform_linux.boot_rom_file;
 	stream->read = stdio_read;
 	return true;
 }
