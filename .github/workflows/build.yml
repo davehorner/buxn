@@ -73,3 +73,20 @@ jobs:
           ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           ./build Release android
+  build-cosmo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        uses: daaku/gh-action-apt-install@v4
+        with:
+          packages: parallel
+      - name: Download cosmopolitan
+        uses: bjia56/setup-cosmocc@main
+        with:
+          version: "4.0.2"
+      - name: Build
+        run: ./build Release cosmo
