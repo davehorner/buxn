@@ -36,6 +36,8 @@ buxn_file_fopen(struct buxn_vm_s* vm, const char* path, buxn_file_mode_t mode) {
 			return buxn_file_log_open_error(path, PHYSFS_openWrite(path));
 		case BUXN_FILE_MODE_APPEND:
 			return buxn_file_log_open_error(path, PHYSFS_openAppend(path));
+		default:
+			return NULL;
 	}
 }
 
