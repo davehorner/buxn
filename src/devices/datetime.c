@@ -1,6 +1,6 @@
 #include "datetime.h"
 #include <time.h>
-#include "../vm.h"
+#include "../vm/vm.h"
 
 // Copied from: https://git.sr.ht/~rabbits/uxn/tree/main/item/src/devices/datetime.c
 

@@ -1,5 +1,5 @@
 #include "metadata.h"
-#include "vm.h"
+#include "vm/vm.h"
 
 static const buxn_metadata_t BUXN_NO_METADATA = { 0 };
 

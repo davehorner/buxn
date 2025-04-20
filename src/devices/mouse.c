@@ -1,5 +1,5 @@
 #include "mouse.h"
-#include "../vm.h"
+#include "../vm/vm.h"
 
 uint8_t
 buxn_mouse_dei(struct buxn_vm_s* vm, buxn_mouse_t* device, uint8_t address) {

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <physfs.h>
-#include "vm.h"
+#include "vm/vm.h"
 #include "bembd.h"
 #include "devices/console.h"
 #include "devices/system.h"

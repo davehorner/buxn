@@ -1,5 +1,5 @@
 #include "audio.h"
-#include "../vm.h"
+#include "../vm/vm.h"
 
 // Adapted from: https://git.sr.ht/~rabbits/uxn/tree/main/item/src/devices/audio.h
 /*

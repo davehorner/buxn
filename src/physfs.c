@@ -1,5 +1,5 @@
 #include "devices/file.h"
-#include "vm.h"
+#include "vm/vm.h"
 #include <physfs.h>
 #include <string.h>
 #include <blog.h>

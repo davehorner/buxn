@@ -1,4 +1,4 @@
-#include "../vm.h"
+#include "vm.h"
 #include <stdbool.h>
 #include "opcodes.h"
 

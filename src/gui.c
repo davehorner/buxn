@@ -10,7 +10,7 @@
 #include <physfs.h>
 #include <math.h>
 #include <stdatomic.h>
-#include "vm.h"
+#include "vm/vm.h"
 #include "metadata.h"
 #include "devices/system.h"
 #include "devices/console.h"

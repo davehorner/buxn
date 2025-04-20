@@ -1,5 +1,5 @@
 #include "console.h"
-#include "../vm.h"
+#include "../vm/vm.h"
 
 static inline void
 buxn_console_send_data(

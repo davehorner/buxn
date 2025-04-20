@@ -1,6 +1,6 @@
 #include <string.h>
 #include "screen.h"
-#include "../vm.h"
+#include "../vm/vm.h"
 
 // Adapted from: https://git.sr.ht/~rabbits/uxn/tree/main/item/src/devices/screen.h
 /*

@@ -49,7 +49,7 @@ buxn_vm_execute(buxn_vm_t* vm, uint16_t pc) {
 		goto *dispatch_table[opcode]; \
 	} while (0)
 #define buxn_vm_execute_internal buxn_vm_execute_without_hook
-#include "vm/exec.h"
+#include "exec.h"
 
 #undef BUXN_NEXT_OPCODE
 #undef buxn_vm_execute_internal
@@ -61,4 +61,4 @@ buxn_vm_execute(buxn_vm_t* vm, uint16_t pc) {
 		goto *dispatch_table[opcode]; \
 	} while (0)
 #define buxn_vm_execute_internal buxn_vm_execute_with_hook
-#include "vm/exec.h"
+#include "exec.h"
