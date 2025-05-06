@@ -63,8 +63,19 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 
 void
 buxn_system_debug(buxn_vm_t* vm, uint8_t value) {
-	(void)vm;
-	(void)value;
+	if (value == 0) { return; }
+
+	fprintf(stderr, "WST");
+	for (uint8_t i = 0; i < vm->wsp; ++i) {
+		fprintf(stderr, " %02hhX", vm->ws[i]);
+	}
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "RST");
+	for (uint8_t i = 0; i < vm->rsp; ++i) {
+		fprintf(stderr, " %02hhX", vm->rs[i]);
+	}
+	fprintf(stderr, "\n");
 }
 
 void
