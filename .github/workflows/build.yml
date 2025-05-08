@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         uses: daaku/gh-action-apt-install@v4
         with:
-          packages: parallel libgl-dev xorg-dev libasound-dev
+          packages: parallel libgl-dev libegl-dev libgles-dev xorg-dev libasound-dev
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@v2
         with:
