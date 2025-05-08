@@ -1,9 +1,10 @@
 #ifndef BUXN_TEST_COMMON_H
 #define BUXN_TEST_COMMON_H
 
-#include "../src/asm/asm.h"
 #include <xincbin.h>
 #include <barena.h>
+#include "../src/asm/asm.h"
+#include "../src/devices/console.h"
 
 typedef struct {
 	const char* name;
@@ -17,5 +18,9 @@ struct buxn_asm_ctx_s {
 	char rom[UINT16_MAX];
 	uint16_t rom_size;
 };
+
+typedef struct {
+	buxn_console_t console;
+} buxn_test_devices_t;
 
 #endif

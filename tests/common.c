@@ -1,4 +1,6 @@
 #include "common.h"
+#include "../src/vm/vm.h"
+#include "../src/devices/system.h"
 #include <string.h>
 #include <stdlib.h>
 #include <blog.h>
@@ -97,4 +99,63 @@ buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm
 			"%s:", report->related_message
 		);
 	}
+}
+
+uint8_t
+buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
+	buxn_test_devices_t* devices = vm->userdata;
+	uint8_t device_id = buxn_device_id(address);
+	switch (device_id) {
+		case BUXN_DEVICE_SYSTEM:
+			return buxn_system_dei(vm, address);
+		case BUXN_DEVICE_CONSOLE:
+			return buxn_console_dei(vm, &devices->console, address);
+		default:
+			return vm->device[address];
+	}
+}
+
+void
+buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
+	buxn_test_devices_t* devices = vm->userdata;
+	uint8_t device_id = buxn_device_id(address);
+	switch (device_id) {
+		case BUXN_DEVICE_SYSTEM:
+			buxn_system_deo(vm, address);
+			break;
+		case BUXN_DEVICE_CONSOLE:
+			buxn_console_deo(vm, &devices->console, address);
+			break;
+	}
+}
+
+void
+buxn_system_debug(buxn_vm_t* vm, uint8_t value) {
+	(void)vm;
+	(void)value;
+}
+
+void
+buxn_system_set_metadata(buxn_vm_t* vm, uint16_t address) {
+	(void)vm;
+	(void)address;
+}
+
+void
+buxn_system_theme_changed(buxn_vm_t* vm) {
+	(void)vm;
+}
+
+void
+buxn_console_handle_write(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
+	(void)vm;
+	(void)device;
+	fputc(c, stdout);
+}
+
+void
+buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) {
+	(void)vm;
+	(void)device;
+	fputc(c, stderr);
 }

@@ -32,6 +32,7 @@ $/p2 &p4
 	padabs/<test> padrel/<test> padlab/<test>
 	coment/<test>
 	rawhex/<test> lithex/<test>
+	opcode/<test>
 	rawasc/<test>
 	rawabs/<test> litabs/<test>
 	rawzep/<test> litzep/<test>
@@ -51,7 +52,10 @@ BRK
 	;&p3 ;&p4 EQU2
 		AND
 	.&p1 #0f EQU
-		AND ;&name !<validate>
+		AND
+	.&p5 #88 EQU
+		AND
+	;&name !<validate>
 	&name "padabs 2000
 
 @padrel/<test> ( -- )
@@ -68,8 +72,6 @@ BRK
 		AND ;&name !<validate>
 	&name "padrel 2000
 
-
-
 @rawhex/<test> ( -- )
 	LIT 12 LIT 34 ADD LIT 46 EQU
 	LIT2 1234 LIT2 1234 ADD2 LIT2 2468 EQU2
@@ -81,6 +83,12 @@ BRK
 	#1234 #1234 ADD2 #2468 EQU2
 		AND ;&name !<validate>
 	&name "lithex 2000
+
+@opcode/<test> ( -- )
+	( normal ) #1234 #0001 ADD2 #1235 EQU2
+	( suffixes ) LITr 12 INCkkrr ADDr LITr 25 EQUrrkk STHr POP2r
+		AND ;&name !<validate>
+	&name "opcode 2000
 
 @rawasc/<test> ( -- )
 	LIT "0 #30 EQU
@@ -184,6 +192,8 @@ BRK
 @Lut2
 	&a _{ "a "b &b _{ "c "d } &c "e "f } &d
 
+@padabs/marker |88 @padabs/p5 |&marker
+
 (
 @|References )
 
@@ -204,4 +214,3 @@ BRK
 	@rawabs/target
 	@litzep/target
 	@rawzep/target
-

@@ -1,6 +1,8 @@
 #include <btest.h>
 #include <string.h>
 #include "common.h"
+#include "../src/vm/vm.h"
+#include "../src/devices/system.h"
 #include "resources.h"
 
 static struct {
@@ -61,8 +63,22 @@ BTEST(basm, acid) {
 	};
 
 	BTEST_ASSERT(buxn_asm(basm, "acid.tal"));
-	// TODO: execute the ROM
-	// TODO: check against drifblim
+
+	// Load and execute rom
+	buxn_test_devices_t devices = { 0 };
+	buxn_vm_t* vm = barena_malloc(
+		&basm->arena,
+		sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE
+	);
+	vm->memory_size = BUXN_MEMORY_BANK_SIZE;
+	vm->userdata = &devices;
+	buxn_vm_reset(vm, BUXN_VM_RESET_ALL);
+	buxn_console_init(vm, &devices.console, 0, NULL);
+	memcpy(vm->memory + BUXN_RESET_VECTOR, basm->rom, basm->rom_size);
+	buxn_vm_execute(vm, BUXN_RESET_VECTOR);
+	BTEST_ASSERT(buxn_system_exit_code(vm) < 0);
+
+	// TODO: check against drifblim's output
 }
 
 BTEST(basm, empty) {
@@ -73,7 +89,7 @@ BTEST(basm, empty) {
 
 BTEST(basm, token) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
-	basm->suppress_report = false;
+	basm->suppress_report = true;
 
 	BTEST_ASSERT(!buxn_asm_str(basm, "@scope ; @end"));
 	BTEST_ASSERT(!buxn_asm_str(basm, "@scope . @end"));

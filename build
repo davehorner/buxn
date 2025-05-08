@@ -89,6 +89,8 @@ build_linux() {
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/tests/{main,asm,common}.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
+		${OBJ_DIR}/src/vm/vm.c.o \
+		${OBJ_DIR}/src/devices/{system,console}.c.o \
 		-o ${BIN_DIR}/tests
 
 	echo "Done"
@@ -334,6 +336,8 @@ build_cosmo() {
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/tests/{main,asm,common}.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
+		${OBJ_DIR}/src/vm/vm.c.o \
+		${OBJ_DIR}/src/devices/{system,console}.c.o \
 		-o ${BIN_DIR}/tests
 
 	echo "Done"
