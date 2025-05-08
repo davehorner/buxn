@@ -1,0 +1,6 @@
+#!/bin/bash -e
+
+BUILD_TYPE=${BUILD_TYPE:-Debug}
+PLATFORM=${PLATFORM:-linux}
+
+bin/$BUILD_TYPE/$PLATFORM/tests $@

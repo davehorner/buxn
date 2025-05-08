@@ -58,6 +58,8 @@ BTEST(basm, acid) {
 	};
 
 	BTEST_ASSERT(buxn_asm(basm, "acid.tal"));
+	// TODO: execute the ROM
+	// TODO: check against drifblim
 }
 
 BTEST(basm, empty) {

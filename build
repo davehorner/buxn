@@ -92,10 +92,6 @@ build_linux() {
 		-o ${BIN_DIR}/tests
 
 	echo "Done"
-
-	echo "Testing..."
-	${BIN_DIR}/tests
-	echo "Done"
 }
 
 build_android() {
