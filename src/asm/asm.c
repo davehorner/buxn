@@ -8,7 +8,7 @@
 #define BHAMT_HASH_TYPE uint64_t
 #include "hamt.h"
 
-#define BUXN_ASM_MAX_TOKEN_LEN 63
+#define BUXN_ASM_MAX_TOKEN_LEN 47
 #define BUXN_ASM_DEFAULT_LABEL_SCOPE "RESET"
 #define BUXN_ASM_RESET_VECTOR 0x0100
 #define BUXN_ASM_MAX_PREPROCESSOR_DEPTH 32
@@ -1113,8 +1113,29 @@ buxn_asm_process_macro(
 }
 
 static bool
+buxn_asm_is_number(buxn_asm_str_t str) {
+	if (str.len == 0) { return false; }
+
+	for (int i = 0; i < str.len; ++i) {
+		char ch = str.chars[i];
+		if (!(
+			('0' <= ch && ch <= '9')
+			|| ('a' <= ch && ch <= 'f')
+		)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static bool
 buxn_asm_process_global_label(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 	buxn_asm_str_t label_name = buxn_asm_str_pop_front(start->lexeme);
+	if (buxn_asm_is_number(label_name)) {
+		return buxn_asm_error(basm, start, "Invalid label name");
+	}
+
 	buxn_asm_symtab_node_t* label = buxn_asm_register_label(basm, start, label_name, basm->write_addr);
 	if (label == NULL) { return false; }
 
@@ -1141,23 +1162,6 @@ buxn_asm_process_local_label(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 	}
 
 	return buxn_asm_register_label(basm, start, label_name, basm->write_addr);
-}
-
-static bool
-buxn_asm_is_number(buxn_asm_str_t str) {
-	if (str.len == 0) { return false; }
-
-	for (int i = 0; i < str.len; ++i) {
-		char ch = str.chars[i];
-		if (!(
-			('0' <= ch && ch <= '9')
-			|| ('a' <= ch && ch <= 'f')
-		)) {
-			return false;
-		}
-	}
-
-	return true;
 }
 
 static bool
