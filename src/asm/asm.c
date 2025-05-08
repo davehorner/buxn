@@ -1440,6 +1440,10 @@ buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 
 static bool
 buxn_asm_process_text(buxn_asm_t* basm, const buxn_asm_token_t* token) {
+	if (token->lexeme.len <= 1) {
+		return buxn_asm_error(basm, token, "Invalid raw text");
+	}
+
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_TEXT,
 		.region = {
