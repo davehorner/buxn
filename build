@@ -29,7 +29,7 @@ build_linux() {
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
 
 	DEV_FLAGS="-Wall -Wextra -pedantic -Werror"
-	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -DSOKOL_GLCORE"
+	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -DSOKOL_GLES3"
 	VM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS}"
 	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1 -DPHYSFS_NO_CDROM_SUPPORT=1"
 
@@ -76,7 +76,7 @@ build_linux() {
 	$CC \
 		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
-		-lGL -lm -lX11 -lXcursor -lXi -lasound \
+		-lGL -lEGL -lm -lX11 -lXcursor -lXi -lasound \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{gui.c.o,vm/vm.c.o,physfs.c.o,metadata.c.o,libs.c.o,linux/platform.c.o} \
 		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o,screen.c.o,mouse.c.o,audio.c.o,controller.c.o} \
