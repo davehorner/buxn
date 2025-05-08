@@ -91,88 +91,88 @@ BTEST(basm, token) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 	basm->suppress_report = true;
 
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope ; @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope . @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope , @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope LIT2 = @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope LIT - @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope LIT _ @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope LIT | @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope \" @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope ! @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope ? @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope # @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA @end @AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope ; @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope . @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope , @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope LIT2 = @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope LIT - @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope LIT _ @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope LIT | @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope \" @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope ! @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope ? @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope # @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA @end @AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"));
 }
 
 BTEST(basm, comment) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 	basm->suppress_report = true;
 
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope ( BRK @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope #01 (BRK ) @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope ( BRK @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope #01 (BRK ) @end"));
 }
 
 BTEST(basm, writing) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 	basm->suppress_report = true;
 
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope |80 #1234 @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope |80 #1234 @end"));
 }
 
 BTEST(basm, symbol) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 	basm->suppress_report = true;
 
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope @foo @foo @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope @1234 @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope @LDA @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "%label { SUB } @label"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope &foo &foo @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@AAAAAAAAAAAAAAAAAAAAAAAAA &BBBBBBBBBBBBBBBBBBBBBBB @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope @foo @foo @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope @1234 @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope @LDA @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "%label { SUB } @label"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope &foo &foo @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@AAAAAAAAAAAAAAAAAAAAAAAAA &BBBBBBBBBBBBBBBBBBBBBBB @end"));
 }
 
 BTEST(basm, opcode) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 	basm->suppress_report = true;
 
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope ADD2q @end @ADD2q"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope ADD2q @end @ADD2q"));
 }
 
 BTEST(basm, number) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 	basm->suppress_report = true;
 
-	BTEST_ASSERT(!buxn_asm_str(basm, "2"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "123"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "12345"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "#2"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "#123"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "#12345"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope #1g"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope #123g"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "2"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "123"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "12345"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "#2"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "#123"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "#12345"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope #1g"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope #123g"));
 }
 
 BTEST(basm, macro) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 	basm->suppress_report = true;
 
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope %label { ADD } %label { SUB }"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope %label #1234"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope %test { BRK @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope %macro {BRK } #1234"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope %macro { BRK} #1234"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %label { ADD } %label { SUB }"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %label #1234"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %test { BRK @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %macro {BRK } #1234"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %macro { BRK} #1234"));
 }
 
 BTEST(basm, references) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 	basm->suppress_report = true;
 
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope LIT2 =label @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope ;label @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope .label @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope ,label @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope LIT _label @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@scope ,next $81 @next @end"));
-	BTEST_ASSERT(!buxn_asm_str(basm, "@back $7e @scope ,back @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope LIT2 =label @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope ;label @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope .label @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope ,label @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope LIT _label @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope ,next $81 @next @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@back $7e @scope ,back @end"));
 }
