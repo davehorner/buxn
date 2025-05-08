@@ -1478,21 +1478,29 @@ static bool
 buxn_asm_process_opcode(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t opcode) {
 	assert((token->lexeme.len >= 3) && "Word is too short");
 
+	bool has_redundant_flag = false;
 	for (int i = 0; i < token->lexeme.len - 3; ++i) {
 		char flag = token->lexeme.chars[i + 3];
 		switch (flag) {
 			case '2':
+				has_redundant_flag |= (opcode & 0x20) > 0;
 				opcode |= (1 << 5);
 				break;
 			case 'r':
+				has_redundant_flag |= (opcode & 0x40) > 0;
 				opcode |= (1 << 6);
 				break;
 			case 'k':
+				has_redundant_flag |= (opcode & 0x80) > 0;
 				opcode |= (1 << 7);
 				break;
 			default:
 				return buxn_asm_error(basm, token, "Invalid opcode");
 		}
+	}
+
+	if (has_redundant_flag) {
+		buxn_asm_warning(basm, token, "Opcode contains redundant flags");
 	}
 
 	return buxn_asm_emit_opcode(basm, token, opcode);
