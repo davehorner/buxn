@@ -12,6 +12,10 @@
 #define BUXN_ASM_RESET_VECTOR 0x0100
 #define BUXN_ASM_MAX_PREPROCESSOR_DEPTH 32
 
+#define BUXN_ASM_OP_FLAG_2 0x20
+#define BUXN_ASM_OP_FLAG_R 0x40
+#define BUXN_ASM_OP_FLAG_K 0x80
+
 // Turn the 3 chars into a single number to make comparison faster
 #define BUXN_OP_REF_CODE(A, B, C) \
 	(uint32_t)(((uint32_t)A << 16) | ((uint32_t)B << 8) | ((uint32_t)C << 0))
@@ -1483,16 +1487,16 @@ buxn_asm_process_opcode(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t
 		char flag = token->lexeme.chars[i + 3];
 		switch (flag) {
 			case '2':
-				has_redundant_flag |= (opcode & 0x20) > 0;
-				opcode |= (1 << 5);
+				has_redundant_flag |= (opcode & BUXN_ASM_OP_FLAG_2) > 0;
+				opcode |= BUXN_ASM_OP_FLAG_2;
 				break;
 			case 'r':
-				has_redundant_flag |= (opcode & 0x40) > 0;
-				opcode |= (1 << 6);
+				has_redundant_flag |= (opcode & BUXN_ASM_OP_FLAG_R) > 0;
+				opcode |= BUXN_ASM_OP_FLAG_R;
 				break;
 			case 'k':
-				has_redundant_flag |= (opcode & 0x80) > 0;
-				opcode |= (1 << 7);
+				has_redundant_flag |= (opcode & BUXN_ASM_OP_FLAG_K) > 0;
+				opcode |= BUXN_ASM_OP_FLAG_K;
 				break;
 			default:
 				return buxn_asm_error(basm, token, "Invalid opcode");
