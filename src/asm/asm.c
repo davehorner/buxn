@@ -4,7 +4,6 @@
 #include <string.h>
 #include <assert.h>
 #include <chibihash64.h>
-#include "opcode_hash.h"
 #define BHAMT_HASH_TYPE uint64_t
 #include "hamt.h"
 
@@ -12,6 +11,47 @@
 #define BUXN_ASM_DEFAULT_LABEL_SCOPE "RESET"
 #define BUXN_ASM_RESET_VECTOR 0x0100
 #define BUXN_ASM_MAX_PREPROCESSOR_DEPTH 32
+
+// Turn the 3 chars into a single number to make comparison faster
+#define BUXN_OP_REF_CODE(A, B, C) \
+	(uint32_t)(((uint32_t)A << 16) | ((uint32_t)B << 8) | ((uint32_t)C << 0))
+
+static const uint32_t BUXN_BASE_OPCODE_REFS[] = {
+	BUXN_OP_REF_CODE('L', 'I', 'T'),
+	BUXN_OP_REF_CODE('I', 'N', 'C'),
+	BUXN_OP_REF_CODE('P', 'O', 'P'),
+	BUXN_OP_REF_CODE('N', 'I', 'P'),
+	BUXN_OP_REF_CODE('S', 'W', 'P'),
+	BUXN_OP_REF_CODE('R', 'O', 'T'),
+	BUXN_OP_REF_CODE('D', 'U', 'P'),
+	BUXN_OP_REF_CODE('O', 'V', 'R'),
+	BUXN_OP_REF_CODE('E', 'Q', 'U'),
+	BUXN_OP_REF_CODE('N', 'E', 'Q'),
+	BUXN_OP_REF_CODE('G', 'T', 'H'),
+	BUXN_OP_REF_CODE('L', 'T', 'H'),
+	BUXN_OP_REF_CODE('J', 'M', 'P'),
+	BUXN_OP_REF_CODE('J', 'C', 'N'),
+	BUXN_OP_REF_CODE('J', 'S', 'R'),
+	BUXN_OP_REF_CODE('S', 'T', 'H'),
+	BUXN_OP_REF_CODE('L', 'D', 'Z'),
+	BUXN_OP_REF_CODE('S', 'T', 'Z'),
+	BUXN_OP_REF_CODE('L', 'D', 'R'),
+	BUXN_OP_REF_CODE('S', 'T', 'R'),
+	BUXN_OP_REF_CODE('L', 'D', 'A'),
+	BUXN_OP_REF_CODE('S', 'T', 'A'),
+	BUXN_OP_REF_CODE('D', 'E', 'I'),
+	BUXN_OP_REF_CODE('D', 'E', 'O'),
+	BUXN_OP_REF_CODE('A', 'D', 'D'),
+	BUXN_OP_REF_CODE('S', 'U', 'B'),
+	BUXN_OP_REF_CODE('M', 'U', 'L'),
+	BUXN_OP_REF_CODE('D', 'I', 'V'),
+	BUXN_OP_REF_CODE('A', 'N', 'D'),
+	BUXN_OP_REF_CODE('O', 'R', 'A'),
+	BUXN_OP_REF_CODE('E', 'O', 'R'),
+	BUXN_OP_REF_CODE('S', 'F', 'T'),
+};
+
+static const uint32_t BUXN_BRK_REF = BUXN_OP_REF_CODE('B', 'R', 'K');
 
 typedef struct {
 	const char* chars;
@@ -304,6 +344,36 @@ buxn_asm_is_sep(int ch) {
 }
 
 static bool
+buxn_asm_is_opcode(buxn_asm_str_t word, uint8_t* base) {
+	if (word.len < 3) { return false; }
+	uint32_t ref_code = BUXN_OP_REF_CODE(word.chars[0], word.chars[1], word.chars[2]);
+
+	if (ref_code == BUXN_BRK_REF) {
+		if (base != NULL) { *base = 0x00; }
+		return true;
+	}
+
+	for (
+		uint8_t opcode = 0;
+		opcode < (sizeof(BUXN_BASE_OPCODE_REFS) / sizeof(BUXN_BASE_OPCODE_REFS[0]));
+		++opcode
+	) {
+		if (BUXN_BASE_OPCODE_REFS[opcode] == ref_code) {
+			if (base != NULL) {
+				if (opcode == 0) {
+					*base = 0x80;  // LIT always have k
+				} else {
+					*base = opcode;
+				}
+			}
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static bool
 buxn_asm_next_token_in_file(
 	buxn_asm_t* basm,
 	buxn_asm_file_unit_t* unit,
@@ -489,7 +559,11 @@ buxn_asm_register_symbol(
 	const buxn_asm_token_t* token,
 	buxn_asm_str_t name
 ) {
-	if (name.len == 0 || buxn_asm_is_runic(name.chars[0])) {
+	if (
+		name.len == 0
+		|| buxn_asm_is_runic(name.chars[0])
+		|| buxn_asm_is_opcode(name, NULL)
+	) {
 		buxn_asm_error(basm, token, "Invalid symbol name");
 		return NULL;
 	}
@@ -1401,6 +1475,30 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 }
 
 static bool
+buxn_asm_process_opcode(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t opcode) {
+	assert((token->lexeme.len >= 3) && "Word is too short");
+
+	for (int i = 0; i < token->lexeme.len - 3; ++i) {
+		char flag = token->lexeme.chars[i + 3];
+		switch (flag) {
+			case '2':
+				opcode |= (1 << 5);
+				break;
+			case 'r':
+				opcode |= (1 << 6);
+				break;
+			case 'k':
+				opcode |= (1 << 7);
+				break;
+			default:
+				return buxn_asm_error(basm, token, "Invalid opcode");
+		}
+	}
+
+	return buxn_asm_emit_opcode(basm, token, opcode);
+}
+
+static bool
 buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	assert((!buxn_asm_is_runic(token->lexeme.chars[0])) && "Runic word encountered");
 	// Inline buxn_asm_strfind here so we get the hash
@@ -1408,20 +1506,9 @@ buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	const buxn_asm_pstr_t* interned_name;
 	BHAMT_GET(basm->strpool.root, interned_name, initial_hash, token->lexeme, buxn_asm_str_eq);
 	if (interned_name == NULL) {
-		// Check whether it's an opcode using the pre-calculated
-		// minimal perfect hash
-		int seed_slot = (int)(initial_hash & 0xff);
-		int seed = buxn_opcode_hash_seeds[seed_slot];
-		int final_slot;
-		if (seed < 0) {
-			final_slot = -seed - 1;
-		} else {
-			uint64_t final_hash = chibihash64(token->lexeme.chars, token->lexeme.len, seed);
-			final_slot = (int)(final_hash & 0xff);
-		}
-
-		if (strcmp(token->lexeme.chars, buxn_hashed_opcode_names[final_slot]) == 0) {
-			return buxn_asm_emit_opcode(basm, token, buxn_hashed_opcode_values[final_slot]);
+		uint8_t base_opcode;
+		if (buxn_asm_is_opcode(token->lexeme, &base_opcode)) {
+			return buxn_asm_process_opcode(basm, token, base_opcode);
 		} else {
 			return buxn_asm_emit_jsi(basm, token);
 		}
