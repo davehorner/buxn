@@ -30,6 +30,12 @@ jobs:
       - name: Build
         run: |
           ./build Release linux
+      - name: Test
+        env:
+          BUILD_TYPE: Release
+          PLATFORM: linux
+        run: |
+          ./test
   build-android:
     runs-on: ubuntu-latest
     steps:
@@ -90,3 +96,9 @@ jobs:
           version: "4.0.2"
       - name: Build
         run: ./build Release cosmo
+      - name: Test
+        env:
+          BUILD_TYPE: Release
+          PLATFORM: cosmo
+        run: |
+          ./test
