@@ -1253,6 +1253,11 @@ static bool
 buxn_asm_process_lit_number(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 	uint16_t number;
 	buxn_asm_str_t str = buxn_asm_str_pop_front(start->lexeme);
+
+	if (str.len != 2 && str.len != 4) {
+		return buxn_asm_error(basm, start, "Invalid number");
+	}
+
 	if (!buxn_asm_parse_number(basm, start, str, &number)) {
 		return false;
 	}
@@ -1271,6 +1276,11 @@ buxn_asm_process_lit_number(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 static bool
 buxn_asm_process_raw_number(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	uint16_t number;
+
+	if (token->lexeme.len != 2 && token->lexeme.len != 4) {
+		return buxn_asm_error(basm, token, "Invalid number");
+	}
+
 	if (!buxn_asm_parse_number(basm, token, token->lexeme, &number)) {
 		return false;
 	}
