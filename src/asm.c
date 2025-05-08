@@ -214,7 +214,7 @@ write_rom(buxn_asm_ctx_t* ctx, const char* rom_path) {
 	}
 	ctx->rom_size = rom_size;
 
-	if (fwrite(ctx->rom, ctx->rom_size, 1, rom_file) != 1) {
+	if (ctx->rom_size && fwrite(ctx->rom, ctx->rom_size, 1, rom_file) != 1) {
 		BLOG_ERROR("Error while writing rom file: %s", strerror(errno));
 		success = false;
 		goto end;

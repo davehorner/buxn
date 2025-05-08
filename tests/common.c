@@ -71,6 +71,11 @@ buxn_asm_fgetc(buxn_asm_ctx_t* ctx, buxn_asm_file_t* file) {
 
 void
 buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
+	switch (type) {
+		case BUXN_ASM_REPORT_ERROR: ++ctx->num_errors; break;
+		case BUXN_ASM_REPORT_WARNING: ++ctx->num_warnings; break;
+	}
+
 	if (ctx->suppress_report) { return; }
 
 	blog_level_t level = BLOG_LEVEL_INFO;

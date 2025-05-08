@@ -18,6 +18,9 @@ struct buxn_asm_ctx_s {
 	bool suppress_report;
 	char rom[UINT16_MAX];
 	uint16_t rom_size;
+
+	int num_errors;
+	int num_warnings;
 };
 
 typedef struct {

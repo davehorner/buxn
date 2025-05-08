@@ -1299,6 +1299,7 @@ buxn_asm_resolve_padding(
 			return buxn_asm_error(basm, token, "Invalid symbol is being used for padding");
 		}
 
+		symbol->referenced = true;
 		*padding_out = symbol->label_address;
 		return true;
 	}

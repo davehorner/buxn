@@ -1,5 +1,6 @@
 #include <btest.h>
 #include <string.h>
+#include <stdlib.h>
 #include "common.h"
 #include "../src/vm/vm.h"
 #include "../src/devices/system.h"
@@ -20,10 +21,10 @@ init(void) {
 	barena_pool_init(&fixture.pool, 1);
 	barena_init(&fixture.arena, &fixture.pool);
 
-	fixture.basm.arena = &fixture.arena;
-	fixture.basm.rom_size = 0;
-	fixture.basm.vfs = empty_vfs;
-	fixture.basm.suppress_report = false;
+	fixture.basm = (buxn_asm_ctx_t){
+		.arena = &fixture.arena,
+		.vfs = empty_vfs,
+	};
 }
 
 static void
@@ -39,21 +40,51 @@ static btest_suite_t basm = {
 };
 
 static inline bool
-buxn_asm_str(buxn_asm_ctx_t* basm, const char* str) {
+buxn_asm_str(buxn_asm_ctx_t* basm, const char* str, const char* file, int line) {
+	barena_snapshot_t snapshot = barena_snapshot(basm->arena);
+
+	int size = snprintf(NULL, 0, "%s:%d", file, line);
+	char* filename = barena_malloc(basm->arena, size + 1);
+	snprintf(filename, size + 1, "%s:%d", file, line);
+
 	basm->vfs = (buxn_vfs_entry_t[]) {
 		{
-			.name = "<inline>",
+			.name = filename,
 			.content = { .data = (const unsigned char*)str, .size = strlen(str) }
 		},
 		{ 0 },
 	};
 	basm->rom_size = 0;
+	basm->num_errors = 0;
+	basm->num_warnings = 0;
 
-	barena_snapshot_t snapshot = barena_snapshot(basm->arena);
-	bool result = buxn_asm(basm, "<inline>");
+	bool result = buxn_asm(basm, filename);
+
 	barena_restore(basm->arena, snapshot);
 
 	return result;
+}
+
+#define buxn_asm_str(basm, str) buxn_asm_str(basm, str, __FILE__, __LINE__)
+
+BTEST(basm, warning) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+
+	// Unused label
+	BTEST_EXPECT(buxn_asm_str(basm, "@scope"));
+	BTEST_EXPECT(basm->num_warnings == 1);
+
+	// Unused label starting with capital letter
+	BTEST_EXPECT(buxn_asm_str(basm, "@Main"));
+	BTEST_EXPECT(basm->num_warnings == 0);
+
+	// Redundant flag
+	BTEST_EXPECT(buxn_asm_str(basm, "EQU2222"));
+	BTEST_EXPECT(basm->num_warnings == 1);
+
+	// Label used for padding
+	BTEST_EXPECT(buxn_asm_str(basm, "@here |00 |here"));
+	BTEST_EXPECT(basm->num_warnings == 0);
 }
 
 // Ported from: https://git.sr.ht/~rabbits/drifblim/commit/fd440a224496b514b52f3d17f6be2542e0dc9ddd
