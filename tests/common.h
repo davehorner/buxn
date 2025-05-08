@@ -13,7 +13,8 @@ typedef struct {
 
 struct buxn_asm_ctx_s {
 	buxn_vfs_entry_t* vfs;
-	barena_t arena;
+	barena_t* arena;
+
 	bool suppress_report;
 	char rom[UINT16_MAX];
 	uint16_t rom_size;

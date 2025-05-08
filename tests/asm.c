@@ -8,6 +8,7 @@
 static struct {
 	barena_pool_t pool;
 	buxn_asm_ctx_t basm;
+	barena_t arena;
 } fixture;
 
 static buxn_vfs_entry_t empty_vfs[] = {
@@ -17,7 +18,9 @@ static buxn_vfs_entry_t empty_vfs[] = {
 static void
 init(void) {
 	barena_pool_init(&fixture.pool, 1);
-	barena_init(&fixture.basm.arena, &fixture.pool);
+	barena_init(&fixture.arena, &fixture.pool);
+
+	fixture.basm.arena = &fixture.arena;
 	fixture.basm.rom_size = 0;
 	fixture.basm.vfs = empty_vfs;
 	fixture.basm.suppress_report = false;
@@ -25,7 +28,7 @@ init(void) {
 
 static void
 cleanup(void) {
-	barena_reset(&fixture.basm.arena);
+	barena_reset(&fixture.arena);
 	barena_pool_cleanup(&fixture.pool);
 }
 
@@ -46,9 +49,9 @@ buxn_asm_str(buxn_asm_ctx_t* basm, const char* str) {
 	};
 	basm->rom_size = 0;
 
-	barena_snapshot_t snapshot = barena_snapshot(&basm->arena);
+	barena_snapshot_t snapshot = barena_snapshot(basm->arena);
 	bool result = buxn_asm(basm, "<inline>");
-	barena_restore(&basm->arena, snapshot);
+	barena_restore(basm->arena, snapshot);
 
 	return result;
 }
@@ -67,7 +70,7 @@ BTEST(basm, acid) {
 	// Load and execute rom
 	buxn_test_devices_t devices = { 0 };
 	buxn_vm_t* vm = barena_malloc(
-		&basm->arena,
+		&fixture.arena,
 		sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE
 	);
 	vm->memory_size = BUXN_MEMORY_BANK_SIZE;

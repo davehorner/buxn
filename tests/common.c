@@ -13,7 +13,7 @@ struct buxn_asm_file_s {
 
 void*
 buxn_asm_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment) {
-	return barena_memalign(&ctx->arena, size, alignment);
+	return barena_memalign(ctx->arena, size, alignment);
 }
 
 void
