@@ -150,7 +150,7 @@ BTEST(basm, macro) {
 
 BTEST(basm, references) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
-	basm->suppress_report = false;
+	basm->suppress_report = true;
 
 	BTEST_ASSERT(!buxn_asm_str(basm, "@scope LIT2 =label @end"));
 	BTEST_ASSERT(!buxn_asm_str(basm, "@scope ;label @end"));
