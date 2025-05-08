@@ -87,7 +87,7 @@ build_linux() {
 	$CC \
 		-fuse-ld=mold \
 		${BUILD_TYPE_FLAGS} \
-		${OBJ_DIR}/tests/{main,asm,common}.c.o \
+		${OBJ_DIR}/tests/{main,common,asm,vm}.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
 		${OBJ_DIR}/src/vm/vm.c.o \
 		${OBJ_DIR}/src/devices/{system,console}.c.o \
@@ -334,7 +334,7 @@ build_cosmo() {
 
 	$CC \
 		${BUILD_TYPE_FLAGS} \
-		${OBJ_DIR}/tests/{main,asm,common}.c.o \
+		${OBJ_DIR}/tests/{main,common,asm,vm}.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
 		${OBJ_DIR}/src/vm/vm.c.o \
 		${OBJ_DIR}/src/devices/{system,console}.c.o \
@@ -349,8 +349,9 @@ compile_common() {
 
 	# Test
 	compile tests/main.c $PROGRAM_FLAGS
-	compile tests/asm.c $PROGRAM_FLAGS
 	compile tests/common.c $PROGRAM_FLAGS
+	compile tests/asm.c $PROGRAM_FLAGS
+	compile tests/vm.c $PROGRAM_FLAGS
 
 	# VM
 	compile src/vm/vm.c $VM_FLAGS

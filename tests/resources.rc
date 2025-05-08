@@ -1,3 +1,4 @@
 #include <xincbin.h>
 
 XINCBIN(acid_tal, "tests/acid.tal")
+XINCBIN(opctest_tal, "tests/opctest.tal")
