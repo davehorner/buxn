@@ -1,0 +1,3 @@
+#include <xincbin.h>
+
+XINCBIN(acid_tal, "tests/acid.tal")

@@ -84,6 +84,17 @@ build_linux() {
 		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
 		-o ${BIN_DIR}/buxn-gui
 
+	$CC \
+		-fuse-ld=mold \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/tests/{main,asm,common}.c.o \
+		${OBJ_DIR}/src/asm/asm.c.o \
+		-o ${BIN_DIR}/tests
+
+	echo "Done"
+
+	echo "Testing..."
+	${BIN_DIR}/tests
 	echo "Done"
 }
 
@@ -329,6 +340,11 @@ build_cosmo() {
 compile_common() {
 	# Program
 	compile src/physfs.c $PROGRAM_FLAGS
+
+	# Test
+	compile tests/main.c $PROGRAM_FLAGS
+	compile tests/asm.c $PROGRAM_FLAGS
+	compile tests/common.c $PROGRAM_FLAGS
 
 	# VM
 	compile src/vm/vm.c $VM_FLAGS
