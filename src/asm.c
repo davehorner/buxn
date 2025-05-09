@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <errno.h>
 #include <barena.h>
 #include <bhash.h>
 #include <barray.h>
-#include <errno.h>
 #include <blog.h>
 #include "asm/asm.h"
+#define BSERIAL_STDIO
+#include "dbg/symbol.h"
 
 typedef struct {
 	int len;
@@ -14,6 +16,7 @@ typedef struct {
 } str_t;
 
 typedef BHASH_TABLE(uint16_t, str_t) str_table_t;
+typedef BHASH_TABLE(uint16_t, uint16_t) src_map_table_t;
 typedef BHASH_TABLE(const char*, FILE*) file_table_t;
 
 struct buxn_asm_ctx_s {
@@ -21,12 +24,51 @@ struct buxn_asm_ctx_s {
 	uint16_t num_macros;
 	uint16_t num_labels;
 	char rom[UINT16_MAX];
+
 	FILE* sym_file;
+
+	barray(buxn_dbg_sym_t) debug_symbols;
+	buxn_dbg_sym_t current_symbol;
+
 	barena_t arena;
 	str_table_t str_table;
 	file_table_t file_table;
 	barray(char) line_buf;
 };
+
+static void
+buxn_asm_put_dbg_sym(
+	buxn_asm_ctx_t* ctx,
+	buxn_dbg_sym_type_t type,
+	uint16_t addr,
+	const buxn_asm_sym_t* sym
+) {
+	bhash_index_t index = bhash_find(&ctx->str_table, sym->region.source_id);
+	assert(bhash_is_valid(index) && "Assembler reports invalid string");
+	const char* filename = ctx->str_table.values[index].chars;
+
+	buxn_dbg_sym_t* current_symbol = &ctx->current_symbol;
+	if (
+		type == current_symbol->type
+		&& filename == current_symbol->filename  // filename is interned
+		&& sym->region.range.start.byte == current_symbol->range.start.byte
+		&& sym->region.range.end.byte == current_symbol->range.end.byte
+	) {
+		// Merge
+		current_symbol->addr_max = addr;
+	} else {
+		// Flush previous
+		if (current_symbol->addr_min != 0) {
+			barray_push(ctx->debug_symbols, *current_symbol, NULL);
+		}
+
+		// New symbol
+		current_symbol->type = type;
+		current_symbol->addr_min = current_symbol->addr_max = addr;
+		current_symbol->filename = filename;
+		current_symbol->range = sym->region.range;
+	}
+}
 
 void*
 buxn_asm_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment) {
@@ -47,27 +89,42 @@ buxn_asm_put_string(buxn_asm_ctx_t* ctx, uint16_t id, const char* str, int len) 
 
 void
 buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sym) {
-	if (sym->type == BUXN_ASM_SYM_MACRO) {
-		++ctx->num_macros;
-	} else if (sym->type == BUXN_ASM_SYM_LABEL) {
-		++ctx->num_labels;
+	switch (sym->type) {
+		case BUXN_ASM_SYM_MACRO:
+			++ctx->num_macros;
+			break;
+		case BUXN_ASM_SYM_LABEL: {
+			++ctx->num_labels;
 
-		if (ctx->sym_file) {
-			bhash_index_t index = bhash_find(&ctx->str_table, sym->id);
-			assert(bhash_is_valid(index) && "Assembler reports invalid string");
-			str_t str = ctx->str_table.values[index];
+			if (ctx->sym_file) {
+				bhash_index_t index = bhash_find(&ctx->str_table, sym->id);
+				assert(bhash_is_valid(index) && "Assembler reports invalid string");
+				str_t str = ctx->str_table.values[index];
 
-			uint8_t addr_hi = addr >> 8;
-			uint8_t addr_lo = addr & 0xff;
-			fwrite(&addr_hi, sizeof(addr_hi), 1, ctx->sym_file);
-			fwrite(&addr_lo, sizeof(addr_hi), 1, ctx->sym_file);
-			// All interned string are null-terminated so this is safe
-			fwrite(str.chars, str.len + 1, 1, ctx->sym_file);
+				uint8_t addr_hi = addr >> 8;
+				uint8_t addr_lo = addr & 0xff;
+				fwrite(&addr_hi, sizeof(addr_hi), 1, ctx->sym_file);
+				fwrite(&addr_lo, sizeof(addr_hi), 1, ctx->sym_file);
+				// All interned string are null-terminated so this is safe
+				fwrite(str.chars, str.len + 1, 1, ctx->sym_file);
 
-			if (ferror(ctx->sym_file)) {
-				BLOG_ERROR("Error while writing symbol file: %s", strerror(errno));
+				if (ferror(ctx->sym_file)) {
+					BLOG_ERROR("Error while writing symbol file: %s", strerror(errno));
+				}
 			}
-		}
+		} break;
+		case BUXN_ASM_SYM_OPCODE:
+			 buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_OPCODE, addr, sym);
+			 break;
+		case BUXN_ASM_SYM_LABEL_REF:
+			buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_LABEL_REF, addr, sym);
+			break;
+		case BUXN_ASM_SYM_TEXT:
+			buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_TEXT, addr, sym);
+			break;
+		case BUXN_ASM_SYM_NUMBER:
+			buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_NUMBER, addr, sym);
+			break;
 	}
 }
 
@@ -307,7 +364,40 @@ main(int argc, const char* argv[]) {
 
 	bool success = buxn_asm(&ctx, argv[1]);
 
+	// Write .dbg file
+	{
+		snprintf(namebuf, namebuf_len, "%s.dbg", rom_filename);
+		FILE* dbg_file = fopen(namebuf, "wb");
+		if (dbg_file != NULL) {
+			// Flush last entry
+			if (ctx.current_symbol.addr_min != 0) {
+				barray_push(ctx.debug_symbols, ctx.current_symbol, NULL);
+			}
+
+			bserial_ctx_config_t config = buxn_dbg_sym_recommended_bserial_config();
+			void* mem = barena_malloc(&ctx.arena, bserial_ctx_mem_size(config));
+			bserial_stdio_out_t stdio_out;
+			bserial_out_t* out = bserial_stdio_init_out(&stdio_out, dbg_file);
+			bserial_ctx_t* bserial = bserial_make_ctx(mem, config, NULL, out);
+
+			uint16_t size = barray_len(ctx.debug_symbols);
+			buxn_dbg_sym_table(bserial, &size);
+			for (uint16_t i = 0; i < size; ++i) {
+				buxn_dbg_sym(bserial, &ctx.debug_symbols[i]);
+			}
+
+			if (bserial_status(bserial) != BSERIAL_OK) {
+				BLOG_ERROR("Error while writing debug file: %s", strerror(errno));
+			}
+
+			fclose(dbg_file);
+		} else {
+			BLOG_ERROR("Error while writing debug file: %s", strerror(errno));
+		}
+	}
+
 	barray_free(NULL, ctx.line_buf);
+	barray_free(NULL, ctx.debug_symbols);
 	for (bhash_index_t i = 0; i < bhash_len(&ctx.file_table); ++i) {
 		fclose(ctx.file_table.values[i]);
 	}
@@ -330,7 +420,7 @@ main(int argc, const char* argv[]) {
 
 	if (ctx.sym_file != NULL) {
 		if (fflush(ctx.sym_file) != 0) {
-			BLOG_ERROR("Error while opening symbol file: %s", strerror(errno));
+			BLOG_ERROR("Error while writing symbol file: %s", strerror(errno));
 		}
 
 		fclose(ctx.sym_file);
@@ -344,3 +434,4 @@ main(int argc, const char* argv[]) {
 #include <blog.h>
 #include <bhash.h>
 #include <barray.h>
+#include <bserial.h>

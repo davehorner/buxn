@@ -29,17 +29,14 @@ build_linux() {
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
 
 	DEV_FLAGS="-Wall -Wextra -pedantic -Werror"
-	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -DSOKOL_GLES3"
+	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -Ideps/termbox2 -DSOKOL_GLES3"
 	VM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS}"
 	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1 -DPHYSFS_NO_CDROM_SUPPORT=1"
 
 	begin_compile
 	compile_common
+	compile_desktop
 	compile src/gui.c $PROGRAM_FLAGS
-	compile src/cli.c $PROGRAM_FLAGS
-	compile src/asm.c $PROGRAM_FLAGS
-	compile src/asm/asm.c $PROGRAM_FLAGS
-	compile src/rom2exe.c $PROGRAM_FLAGS
 	compile src/linux/platform.c $PROGRAM_FLAGS
 	compile src/libs.c $PROGRAM_FLAGS
 	compile deps/physfs/src/physfs_platform_unix.c $PHYSFS_FLAGS
@@ -72,6 +69,12 @@ build_linux() {
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/rom2exe.c.o \
 		-o ${BIN_DIR}/buxn-rom2exe
+
+	$CC \
+		-fuse-ld=mold \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/romviz.c.o \
+		-o ${BIN_DIR}/buxn-romviz
 
 	$CC \
 		-fuse-ld=mold \
@@ -303,10 +306,7 @@ build_cosmo() {
 
 	begin_compile
 	compile_common
-	compile src/cli.c $PROGRAM_FLAGS
-	compile src/asm.c $PROGRAM_FLAGS
-	compile src/asm/asm.c $PROGRAM_FLAGS
-	compile src/rom2exe.c $PROGRAM_FLAGS
+	compile_desktop
 	compile deps/physfs/src/physfs_platform_unix.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_platform_posix.c $PHYSFS_FLAGS
 	end_compile
@@ -347,12 +347,6 @@ compile_common() {
 	# Program
 	compile src/physfs.c $PROGRAM_FLAGS
 
-	# Test
-	compile tests/main.c $PROGRAM_FLAGS
-	compile tests/common.c $PROGRAM_FLAGS
-	compile tests/asm.c $PROGRAM_FLAGS
-	compile tests/vm.c $PROGRAM_FLAGS
-
 	# VM
 	compile src/vm/vm.c $VM_FLAGS
 	compile src/metadata.c $VM_FLAGS
@@ -371,6 +365,21 @@ compile_common() {
 	compile deps/physfs/src/physfs_byteorder.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_archiver_zip.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_archiver_dir.c $PHYSFS_FLAGS
+}
+
+compile_desktop() {
+	# Programs
+	compile src/cli.c $PROGRAM_FLAGS
+	compile src/asm.c $PROGRAM_FLAGS
+	compile src/asm/asm.c $PROGRAM_FLAGS
+	compile src/rom2exe.c $PROGRAM_FLAGS
+	compile src/romviz.c $PROGRAM_FLAGS
+
+	# Test
+	compile tests/main.c $PROGRAM_FLAGS
+	compile tests/common.c $PROGRAM_FLAGS
+	compile tests/asm.c $PROGRAM_FLAGS
+	compile tests/vm.c $PROGRAM_FLAGS
 }
 
 begin_compile() {
