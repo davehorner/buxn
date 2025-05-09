@@ -3,18 +3,26 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <bhash.h>
 #include "vm/opcodes.h"
 #define BSERIAL_STDIO
 #include "dbg/symbol.h"
 
 #define SPACE_PER_BYTE 3
-#define HEADER_LINES 2
+#define HEADER_LINES 3
 
 #define DEFINE_OPCODE_NAME(NAME, VALUE) \
 	[VALUE] = STRINGIFY(NAME),
 
 #define STRINGIFY(X) STRINGIFY2(X)
 #define STRINGIFY2(X) #X
+
+typedef struct {
+	char* content;
+	int size;
+} source_t;
+
+typedef BHASH_TABLE(const char*, source_t) source_set_t;
 
 static const char* opcode_names[256] = {
 	BUXN_OPCODE_DISPATCH(DEFINE_OPCODE_NAME)
@@ -56,6 +64,9 @@ main(int argc, const char* argv[]) {
 	barena_pool_init(&pool, 1);
 	barena_t arena;
 	barena_init(&arena, &pool);
+	source_set_t sources;
+	// Since all strings are interned, we can just treat them like values
+	bhash_init(&sources, bhash_config_default());
 
 	uint8_t* rom = NULL;
 	int rom_size = 0;
@@ -152,6 +163,10 @@ main(int argc, const char* argv[]) {
 			line_offset += (focus_line - last_visible_line);
 		}
 
+		// To save time on symbol search, instead of starting from the beginning,
+		// just start searching from the *previous* // line.
+		// Some symbols can span a line so backing up by one line ensures we
+		// can always find the right symbol.
 		int symbol_index = line_offset > 0 ? (line_offset - 1) * num_bytes_per_row : 0;
 		buxn_dbg_sym_t* focused_symbol = NULL;
 		for (int y = 0; y < height - HEADER_LINES; ++y) {
@@ -186,6 +201,7 @@ main(int argc, const char* argv[]) {
 end_draw:
 
 		if (focused_symbol) {
+			// Print source location
 			tb_printf(
 				0, 0,
 				TB_WHITE, TB_DEFAULT,
@@ -195,6 +211,7 @@ end_draw:
 				focused_symbol->range.end.line, focused_symbol->range.end.col, focused_symbol->range.end.byte
 			);
 
+			// Print type
 			const char* type = "Unknown";
 			switch (focused_symbol->type) {
 				case BUXN_DBG_SYM_OPCODE:
@@ -214,6 +231,47 @@ end_draw:
 				tb_printf(0, 1, TB_WHITE, TB_DEFAULT, "Type: %s (%s)", type, opcode_names[rom[view_pos]]);
 			} else {
 				tb_printf(0, 1, TB_WHITE, TB_DEFAULT, "Type: %s", type);
+			}
+
+			// Print source text
+			bhash_index_t index = bhash_find(&sources, focused_symbol->filename);
+			source_t source = { 0 };
+			if (!bhash_is_valid(index)) {
+				FILE* source_file = fopen(focused_symbol->filename, "rb");
+				long file_size = 0;
+				if (source_file != NULL) {
+					fseek(source_file, 0, SEEK_END);
+					file_size = ftell(source_file);
+				}
+
+				if (file_size > 0) {
+					fseek(source_file, 0, SEEK_SET);
+					source.content = barena_memalign(&arena, file_size, _Alignof(char));
+					if (fread(source.content, file_size, 1, source_file) == 1) {
+						source.size = (int)file_size;
+					}
+				}
+
+				if (source_file != NULL) {
+					fclose(source_file);
+				}
+
+				bhash_put(&sources, focused_symbol->filename, source);
+			} else {
+				source = sources.values[index];
+			}
+
+			if (source.size > 0) {
+				int start = focused_symbol->range.start.byte;
+				start = start >= source.size ? source.size - 1 : start;
+				int end = focused_symbol->range.end.byte;
+				end = end >= source.size ? source.size - 1 : end;
+
+				start = start < 0 ? 0 : start;
+				end = end < start ? start : end;
+				int count = end - start;
+
+				tb_printf(0, 2, TB_WHITE, TB_DEFAULT, "Text: %.*s", count, source.content + start);
 			}
 		}
 
@@ -260,6 +318,7 @@ end_draw:
 end:
 	tb_shutdown();
 
+	bhash_cleanup(&sources);
 	barena_reset(&arena);
 	barena_pool_cleanup(&pool);
 	return exit_code;
@@ -271,3 +330,4 @@ end:
 #define BLIB_IMPLEMENTATION
 #include <barena.h>
 #include <bserial.h>
+#include <bhash.h>
