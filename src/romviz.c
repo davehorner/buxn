@@ -3,11 +3,22 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include "vm/opcodes.h"
 #define BSERIAL_STDIO
 #include "dbg/symbol.h"
 
 #define SPACE_PER_BYTE 3
 #define HEADER_LINES 2
+
+#define DEFINE_OPCODE_NAME(NAME, VALUE) \
+	[VALUE] = STRINGIFY(NAME),
+
+#define STRINGIFY(X) STRINGIFY2(X)
+#define STRINGIFY2(X) #X
+
+static const char* opcode_names[256] = {
+	BUXN_OPCODE_DISPATCH(DEFINE_OPCODE_NAME)
+};
 
 static buxn_dbg_sym_t*
 find_symbol(
@@ -199,7 +210,11 @@ end_draw:
 					type = "label";
 					break;
 			}
-			tb_printf(0, 1, TB_WHITE, TB_DEFAULT, "Type: %s", type);
+			if (focused_symbol->type == BUXN_DBG_SYM_OPCODE) {
+				tb_printf(0, 1, TB_WHITE, TB_DEFAULT, "Type: %s (%s)", type, opcode_names[rom[view_pos]]);
+			} else {
+				tb_printf(0, 1, TB_WHITE, TB_DEFAULT, "Type: %s", type);
+			}
 		}
 
 		tb_present();
