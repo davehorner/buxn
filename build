@@ -300,7 +300,7 @@ build_cosmo() {
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
 
 	DEV_FLAGS="-Wall -Wextra -pedantic -Werror"
-	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -std=c11 -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash"
+	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -std=c11 -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -Ideps/termbox2"
 	VM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS}"
 	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1 -DPHYSFS_NO_CDROM_SUPPORT=1"
 
@@ -331,6 +331,11 @@ build_cosmo() {
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/rom2exe.c.o \
 		-o ${BIN_DIR}/buxn-rom2exe
+
+	$CC \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/romviz.c.o \
+		-o ${BIN_DIR}/buxn-romviz
 
 	$CC \
 		${BUILD_TYPE_FLAGS} \
