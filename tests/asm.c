@@ -82,6 +82,9 @@ BTEST(basm, warning) {
 	BTEST_EXPECT(buxn_asm_str(basm, "EQU2222"));
 	BTEST_EXPECT(basm->num_warnings == 1);
 
+	BTEST_EXPECT(buxn_asm_str(basm, "LITk"));
+	BTEST_EXPECT(basm->num_warnings == 1);
+
 	// Label used for padding
 	BTEST_EXPECT(buxn_asm_str(basm, "@here |00 |here"));
 	BTEST_EXPECT(basm->num_warnings == 0);
@@ -169,9 +172,9 @@ BTEST(basm, symbol) {
 
 BTEST(basm, opcode) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
-	basm->suppress_report = true;
 
-	BTEST_EXPECT(!buxn_asm_str(basm, "@scope ADD2q @end @ADD2q"));
+	BTEST_EXPECT(buxn_asm_str(basm, "@scope ADD2q @end @ADD2q"));
+	BTEST_EXPECT(buxn_asm_str(basm, "@scope BRKk @end @BRKk"));
 }
 
 BTEST(basm, number) {

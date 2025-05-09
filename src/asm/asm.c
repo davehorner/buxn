@@ -364,34 +364,69 @@ buxn_asm_is_sep(int ch) {
 		|| ch == '\v';
 }
 
+typedef struct {
+	uint8_t opcode;
+	bool has_redundant_flag;
+} buxn_asm_opcode_result_t;
+
 static bool
-buxn_asm_is_opcode(buxn_asm_str_t word, uint8_t* base) {
+buxn_asm_parse_opcode(buxn_asm_str_t word, buxn_asm_opcode_result_t* result) {
 	if (word.len < 3) { return false; }
 	uint32_t ref_code = BUXN_OP_REF_CODE(word.chars[0], word.chars[1], word.chars[2]);
 
+	// BRK is a special case
 	if (ref_code == BUXN_BRK_REF) {
-		if (base != NULL) { *base = 0x00; }
-		return true;
-	}
-
-	for (
-		uint8_t opcode = 0;
-		opcode < (sizeof(BUXN_BASE_OPCODE_REFS) / sizeof(BUXN_BASE_OPCODE_REFS[0]));
-		++opcode
-	) {
-		if (BUXN_BASE_OPCODE_REFS[opcode] == ref_code) {
-			if (base != NULL) {
-				if (opcode == 0) {
-					*base = 0x80;  // LIT always have k
-				} else {
-					*base = opcode;
-				}
+		if (word.len == 3) {  // BRK can only be written as-is
+			if (result != NULL) {
+				result->opcode =  0x00;
+				result->has_redundant_flag = false;
 			}
 			return true;
+		} else {
+			return false;
 		}
 	}
 
-	return false;
+	// Find base opcode
+	uint8_t opcode;
+	uint8_t num_base_opcodes = sizeof(BUXN_BASE_OPCODE_REFS) / sizeof(BUXN_BASE_OPCODE_REFS[0]);
+	for (opcode = 0; opcode < num_base_opcodes; ++opcode) {
+		if (BUXN_BASE_OPCODE_REFS[opcode] == ref_code) {
+			break;
+		}
+	}
+	if (opcode >= num_base_opcodes) { return false; }
+	if (opcode == 0) { opcode = 0x80; }  // LIT always has k
+
+	// Process flags
+	bool has_redundant_flag = false;
+	for (int i = 0; i < word.len - 3; ++i) {
+		char flag = word.chars[i + 3];
+		switch (flag) {
+			case '2':
+				has_redundant_flag |= (opcode & BUXN_ASM_OP_FLAG_2) > 0;
+				opcode |= BUXN_ASM_OP_FLAG_2;
+				break;
+			case 'r':
+				has_redundant_flag |= (opcode & BUXN_ASM_OP_FLAG_R) > 0;
+				opcode |= BUXN_ASM_OP_FLAG_R;
+				break;
+			case 'k':
+				has_redundant_flag |= (opcode & BUXN_ASM_OP_FLAG_K) > 0;
+				opcode |= BUXN_ASM_OP_FLAG_K;
+				break;
+			default:
+				// Having an unrecognized flag means it is not an opcode
+				return false;
+		}
+	}
+
+	if (result != NULL) {
+		result->opcode = opcode;
+		result->has_redundant_flag = has_redundant_flag;
+	}
+
+	return true;
 }
 
 static bool
@@ -590,7 +625,7 @@ buxn_asm_register_symbol(
 		return NULL;
 	}
 
-	if (buxn_asm_is_opcode(name, NULL)) {
+	if (buxn_asm_parse_opcode(name, NULL)) {
 		buxn_asm_error(basm, token, "Symbol name cannot be an opcode");
 		return NULL;
 	}
@@ -1488,38 +1523,6 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 }
 
 static bool
-buxn_asm_process_opcode(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t opcode) {
-	assert((token->lexeme.len >= 3) && "Word is too short");
-
-	bool has_redundant_flag = false;
-	for (int i = 0; i < token->lexeme.len - 3; ++i) {
-		char flag = token->lexeme.chars[i + 3];
-		switch (flag) {
-			case '2':
-				has_redundant_flag |= (opcode & BUXN_ASM_OP_FLAG_2) > 0;
-				opcode |= BUXN_ASM_OP_FLAG_2;
-				break;
-			case 'r':
-				has_redundant_flag |= (opcode & BUXN_ASM_OP_FLAG_R) > 0;
-				opcode |= BUXN_ASM_OP_FLAG_R;
-				break;
-			case 'k':
-				has_redundant_flag |= (opcode & BUXN_ASM_OP_FLAG_K) > 0;
-				opcode |= BUXN_ASM_OP_FLAG_K;
-				break;
-			default:
-				return buxn_asm_error(basm, token, "Invalid opcode");
-		}
-	}
-
-	if (has_redundant_flag) {
-		buxn_asm_warning(basm, token, "Opcode contains redundant flags");
-	}
-
-	return buxn_asm_emit_opcode(basm, token, opcode);
-}
-
-static bool
 buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	assert((!buxn_asm_is_runic(token->lexeme.chars[0])) && "Runic word encountered");
 	// Inline buxn_asm_strfind here so we get the hash
@@ -1527,9 +1530,13 @@ buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	const buxn_asm_pstr_t* interned_name;
 	BHAMT_GET(basm->strpool.root, interned_name, initial_hash, token->lexeme, buxn_asm_str_eq);
 	if (interned_name == NULL) {
-		uint8_t base_opcode;
-		if (buxn_asm_is_opcode(token->lexeme, &base_opcode)) {
-			return buxn_asm_process_opcode(basm, token, base_opcode);
+		buxn_asm_opcode_result_t opcode_result;
+		if (buxn_asm_parse_opcode(token->lexeme, &opcode_result)) {
+			if (opcode_result.has_redundant_flag) {
+				buxn_asm_warning(basm, token, "Opcode contains redundant flags");
+			}
+
+			return buxn_asm_emit_opcode(basm, token, opcode_result.opcode);
 		} else {
 			return buxn_asm_emit_jsi(basm, token);
 		}
