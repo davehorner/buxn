@@ -333,6 +333,23 @@ buxn_asm_is_runic(char ch) {
 }
 
 static bool
+buxn_asm_is_number(buxn_asm_str_t str) {
+	if (str.len == 0) { return false; }
+
+	for (int i = 0; i < str.len; ++i) {
+		char ch = str.chars[i];
+		if (!(
+			('0' <= ch && ch <= '9')
+			|| ('a' <= ch && ch <= 'f')
+		)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static bool
 buxn_asm_is_uppercased(char ch) {
 	return 'A' <= ch && ch <= 'Z';
 }
@@ -563,12 +580,23 @@ buxn_asm_register_symbol(
 	const buxn_asm_token_t* token,
 	buxn_asm_str_t name
 ) {
-	if (
-		name.len == 0
-		|| buxn_asm_is_runic(name.chars[0])
-		|| buxn_asm_is_opcode(name, NULL)
-	) {
-		buxn_asm_error(basm, token, "Invalid symbol name");
+	if (name.len == 0) {
+		buxn_asm_error(basm, token, "Symbol name cannot be empty");
+		return NULL;
+	}
+
+	if (buxn_asm_is_runic(name.chars[0])) {
+		buxn_asm_error(basm, token, "Symbol name cannot be runic");
+		return NULL;
+	}
+
+	if (buxn_asm_is_opcode(name, NULL)) {
+		buxn_asm_error(basm, token, "Symbol name cannot be an opcode");
+		return NULL;
+	}
+
+	if (buxn_asm_is_number(name)) {
+		buxn_asm_error(basm, token, "Symbol name cannot be numeric");
 		return NULL;
 	}
 
@@ -1191,28 +1219,8 @@ buxn_asm_process_macro(
 }
 
 static bool
-buxn_asm_is_number(buxn_asm_str_t str) {
-	if (str.len == 0) { return false; }
-
-	for (int i = 0; i < str.len; ++i) {
-		char ch = str.chars[i];
-		if (!(
-			('0' <= ch && ch <= '9')
-			|| ('a' <= ch && ch <= 'f')
-		)) {
-			return false;
-		}
-	}
-
-	return true;
-}
-
-static bool
 buxn_asm_process_global_label(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 	buxn_asm_str_t label_name = buxn_asm_str_pop_front(start->lexeme);
-	if (buxn_asm_is_number(label_name)) {
-		return buxn_asm_error(basm, start, "Invalid label name");
-	}
 
 	buxn_asm_symtab_node_t* label = buxn_asm_register_label(basm, start, label_name, basm->write_addr);
 	if (label == NULL) { return false; }

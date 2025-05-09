@@ -87,7 +87,7 @@ BTEST(basm, warning) {
 	BTEST_EXPECT(basm->num_warnings == 0);
 }
 
-// Ported from: https://git.sr.ht/~rabbits/drifblim/commit/fd440a224496b514b52f3d17f6be2542e0dc9ddd
+// Ported from: https://git.sr.ht/~rabbits/drifblim/commit/d8aba81f35f3f398ceeb653756a9597531e600cf
 
 BTEST(basm, acid) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
@@ -160,6 +160,7 @@ BTEST(basm, symbol) {
 
 	BTEST_EXPECT(!buxn_asm_str(basm, "@scope @foo @foo @end"));
 	BTEST_EXPECT(!buxn_asm_str(basm, "@scope @1234 @end"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope @-1234 @end"));
 	BTEST_EXPECT(!buxn_asm_str(basm, "@scope @LDA @end"));
 	BTEST_EXPECT(!buxn_asm_str(basm, "%label { SUB } @label"));
 	BTEST_EXPECT(!buxn_asm_str(basm, "@scope &foo &foo @end"));
@@ -196,6 +197,9 @@ BTEST(basm, macro) {
 	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %test { BRK @end"));
 	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %macro {BRK } #1234"));
 	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %macro { BRK} #1234"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %add2 { ADD } #1234"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %-test { ADD } #1234"));
+	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %JCN2 { ADD } #1234"));
 }
 
 BTEST(basm, references) {
