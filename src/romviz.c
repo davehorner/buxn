@@ -186,7 +186,7 @@ main(int argc, const char* argv[]) {
 				if (symbol == NULL) {
 					foreground = TB_WHITE;
 				} else if (symbol->type == BUXN_DBG_SYM_TEXT) {
-					foreground = TB_BLUE;
+					foreground = TB_GREEN;
 				} else if (symbol->type == BUXN_DBG_SYM_OPCODE) {
 					foreground = TB_CYAN;
 				} else if (symbol->type == BUXN_DBG_SYM_NUMBER) {
@@ -271,7 +271,20 @@ end_draw:
 				end = end < start ? start : end;
 				int count = end - start;
 
-				tb_printf(0, 2, TB_WHITE, TB_DEFAULT, "Text: %.*s", count, source.content + start);
+				uintattr_t foreground = TB_WHITE;
+				if (focused_symbol->type == BUXN_DBG_SYM_TEXT) {
+					foreground = TB_GREEN;
+				} else if (focused_symbol->type == BUXN_DBG_SYM_OPCODE) {
+					foreground = TB_CYAN;
+				} else if (focused_symbol->type == BUXN_DBG_SYM_NUMBER) {
+					foreground = TB_RED;
+				} else if (focused_symbol->type == BUXN_DBG_SYM_LABEL_REF) {
+					foreground = TB_YELLOW;
+				}
+
+				size_t out;
+				tb_print_ex(0, 2, TB_WHITE, TB_DEFAULT, &out, "Text: ");
+				tb_printf(out, 2, foreground, TB_DEFAULT, "%.*s", count, source.content + start);
 			}
 		}
 
