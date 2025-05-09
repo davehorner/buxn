@@ -163,11 +163,7 @@ main(int argc, const char* argv[]) {
 			line_offset += (focus_line - last_visible_line);
 		}
 
-		// To save time on symbol search, instead of starting from the beginning,
-		// just start searching from the *previous* // line.
-		// Some symbols can span a line so backing up by one line ensures we
-		// can always find the right symbol.
-		int symbol_index = line_offset > 0 ? (line_offset - 1) * num_bytes_per_row : 0;
+		int symbol_index = 0;
 		buxn_dbg_sym_t* focused_symbol = NULL;
 		for (int y = 0; y < height - HEADER_LINES; ++y) {
 			for (int x = 0; x < num_bytes_per_row; ++x) {

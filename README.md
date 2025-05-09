@@ -59,8 +59,13 @@ When a ROM exposes [metadata](https://wiki.xxiivv.com/site/metadata.html) the fo
   Take note that it will be drawn using [potato's default theme](https://git.sr.ht/~rabbits/potato/tree/325083af9dbde3c39e27e67e75b026ed4b98c8f0/item/src/potato.tal#L31) with the color 0 being transparent.
 
 `buxn-asm` is an [uxntal assembler](https://wiki.xxiivv.com/site/uxntal.html).
+It undergoes the same [test suite](tests/asm.c) as drifblim for conformance.
+Additionally, it can also output an [extended debug information](src/dbg/symbol.h) file.
 
 `buxn-rom2exe` is a program to convert a rom into a standalone executable.
+
+`buxn-romviz` is a rom visualization tool.
+If extended debug info is available, it will show the source location and text of every single byte in a rom.
 
 ### Android
 
