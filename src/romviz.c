@@ -115,7 +115,7 @@ main(int argc, const char* argv[]) {
 		bserial_in_t* in = bserial_stdio_init_in(&stdio_in, dbg_file);
 		bserial_ctx_t* bserial = bserial_make_ctx(mem, config, in, NULL);
 
-		uint16_t count;
+		uint16_t count = 0;
 		if (buxn_dbg_sym_table(bserial, &count) != BSERIAL_OK) {
 			fprintf(stderr, "Error while reading debug file\n");
 			fclose(dbg_file);
