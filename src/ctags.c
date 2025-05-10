@@ -3,7 +3,10 @@
 #include <errno.h>
 #include <barena.h>
 #include <blog.h>
+#include "bflag.h"
 #include "asm/asm.h"
+
+#define FLAG_OUTPUT "-output="
 
 typedef struct {
 	int len;
@@ -51,6 +54,8 @@ void
 buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
 	(void)ctx;
 	(void)type;
+
+	if (type == BUXN_ASM_REPORT_WARNING) { return; }
 
 	if (report->token == NULL) {
 		blog_write(
@@ -110,13 +115,46 @@ main(int argc, const char* argv[]) {
 	});
 
 	int exit_code = 1;
+	bool tag_filename_set = false;
+	const char* output_filename = "tags";
+	const char* input_filename = NULL;
 
-	if (argc < 2) {
-		fprintf(stderr, "Usage: buxn-ctag <entry.tal>\n");
-		return 1;
+	for (int i = 1; i < argc; ++i) {
+		const char* flag_value;
+		const char* arg = argv[i];
+
+		if ((flag_value = parse_flag(arg, "--help")) != NULL) {
+			fprintf(stderr,
+				"Usage: buxn-ctags [options] <input.tal>\n"
+				"Create a ctags file from an input.tal file (and all its includes).\n"
+				"\n"
+				"--help             Print this message.\n"
+				"-output=<file>     (Optional) Set the output filename.\n"
+				"                   This defaults to 'tags'.\n"
+			);
+			return 0;
+		} else if ((flag_value = parse_flag(arg, FLAG_OUTPUT)) != NULL) {
+			if (tag_filename_set) {
+				fprintf(stderr, "%s can only be specified once\n", FLAG_OUTPUT);
+				return 1;
+			} else {
+				output_filename = flag_value;
+				tag_filename_set = true;
+			}
+		} else {
+			if (input_filename == NULL) {
+				input_filename = arg;
+			} else {
+				fprintf(stderr, "Please specify only one input file\n");
+				return 1;
+			}
+		}
 	}
 
-	// TODO: make this configurable
+	if (input_filename == NULL) {
+		fprintf(stderr, "Please specify an input\n");
+		return 1;
+	}
 
 	barena_pool_t arena_pool;
 	barena_pool_init(&arena_pool, 1);
@@ -124,13 +162,13 @@ main(int argc, const char* argv[]) {
 	buxn_asm_ctx_t ctx = { 0 };
 	barena_init(&ctx.arena, &arena_pool);
 
-	ctx.tag_file = fopen("tags", "wb");
+	ctx.tag_file = fopen(output_filename, "wb");
 	if (ctx.tag_file == NULL) {
 		BLOG_ERROR("Error while opening tag file: %s", strerror(errno));
 		goto end;
 	}
 
-	bool success = buxn_asm(&ctx, argv[1]);
+	bool success = buxn_asm(&ctx, input_filename);
 	if (!success) {
 		BLOG_WARN("Error(s) encountered, tags file may be incomplete");
 	}
