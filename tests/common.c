@@ -88,14 +88,6 @@ buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm
 			"%s (`%s`)", report->message, report->token
 		);
 	}
-
-	if (report->related_message != NULL) {
-		blog_write(
-			BLOG_LEVEL_INFO,
-			report->related_region->filename, report->related_region->range.start.line,
-			"%s:", report->related_message
-		);
-	}
 }
 
 uint8_t

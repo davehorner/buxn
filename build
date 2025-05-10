@@ -78,6 +78,13 @@ build_linux() {
 
 	$CC \
 		-fuse-ld=mold \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/ctags.c.o \
+		${OBJ_DIR}/src/asm/asm.c.o \
+		-o ${BIN_DIR}/buxn-ctags
+
+	$CC \
+		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
 		-lGL -lEGL -lm -lX11 -lXcursor -lXi -lasound \
 		${BUILD_TYPE_FLAGS} \
@@ -339,6 +346,12 @@ build_cosmo() {
 
 	$CC \
 		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/ctags.c.o \
+		${OBJ_DIR}/src/asm/asm.c.o \
+		-o ${BIN_DIR}/buxn-ctags
+
+	$CC \
+		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/tests/{main,common,asm,vm}.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
 		${OBJ_DIR}/src/vm/vm.c.o \
@@ -379,6 +392,7 @@ compile_desktop() {
 	compile src/asm/asm.c $PROGRAM_FLAGS
 	compile src/rom2exe.c $PROGRAM_FLAGS
 	compile src/romviz.c $PROGRAM_FLAGS
+	compile src/ctags.c $PROGRAM_FLAGS
 
 	# Test
 	compile tests/main.c $PROGRAM_FLAGS

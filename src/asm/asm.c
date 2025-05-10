@@ -1467,6 +1467,7 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 		.type = BUXN_ASM_SYM_LABEL,
 		// TODO: It is safer to just intern this?
 		.name = lambda_name,
+		.name_is_generated = true,
 		.region = token->region,
 	});
 
