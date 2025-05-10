@@ -8,11 +8,6 @@
 
 #define FLAG_OUTPUT "-output="
 
-typedef struct {
-	int len;
-	const char* chars;
-} str_t;
-
 struct buxn_asm_ctx_s {
 	FILE* tag_file;
 	barena_t arena;
