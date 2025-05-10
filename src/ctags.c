@@ -1,25 +1,41 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <barena.h>
+#include <barray.h>
 #include <blog.h>
 #include "bflag.h"
 #include "asm/asm.h"
 
 #define FLAG_OUTPUT "-output="
 
+typedef struct {
+	const char* name;
+	buxn_asm_source_region_t region;
+	char kind;
+} tag_t;
+
 struct buxn_asm_ctx_s {
-	FILE* tag_file;
 	barena_t arena;
+	barray(tag_t) tags;
 };
 
 static void
-export_tag(buxn_asm_ctx_t* ctx, const buxn_asm_sym_t* sym, char kind) {
-	fprintf(
-		ctx->tag_file,
-		"%s\t%s\tgo %d|;\"\t%c\n",
-		sym->name, sym->region.filename, sym->region.range.start.byte + 1, kind
-	);
+add_tag(buxn_asm_ctx_t* ctx, const buxn_asm_sym_t* sym, char kind) {
+	tag_t tag = {
+		.kind = kind,
+		.name = sym->name,
+		.region = sym->region,
+	};
+	barray_push(ctx->tags, tag, NULL);
+}
+
+static int
+sort_tag(const void* lhs, const void* rhs) {
+	const tag_t* lhs_tag = lhs;
+	const tag_t* rhs_tag = rhs;
+	return strcmp(lhs_tag->name, rhs_tag->name);
 }
 
 void*
@@ -39,9 +55,9 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 	(void)addr;
 
 	if (sym->type == BUXN_ASM_SYM_MACRO) {
-		export_tag(ctx, sym, 'm');
+		add_tag(ctx, sym, 'm');
 	} else if (sym->type == BUXN_ASM_SYM_LABEL && !sym->name_is_generated) {
-		export_tag(ctx, sym, 'l');
+		add_tag(ctx, sym, 'l');
 	}
 }
 
@@ -157,25 +173,44 @@ main(int argc, const char* argv[]) {
 	buxn_asm_ctx_t ctx = { 0 };
 	barena_init(&ctx.arena, &arena_pool);
 
-	ctx.tag_file = fopen(output_filename, "wb");
-	if (ctx.tag_file == NULL) {
+	bool success = buxn_asm(&ctx, input_filename);
+	if (!success) {
+		if (barray_len(ctx.tags) != 0) {
+			BLOG_WARN("Error(s) encountered, tags file may be incomplete");
+		} else {
+			BLOG_ERROR("No tags found due to error");
+			goto end;
+		}
+	}
+
+	qsort(ctx.tags, barray_len(ctx.tags), sizeof(ctx.tags[0]), sort_tag);
+
+	FILE* tag_file = fopen(output_filename, "wb");
+	if (tag_file == NULL) {
 		BLOG_ERROR("Error while opening tag file: %s", strerror(errno));
 		goto end;
 	}
 
-	bool success = buxn_asm(&ctx, input_filename);
-	if (!success) {
-		BLOG_WARN("Error(s) encountered, tags file may be incomplete");
+	// Special tag for vim
+	fprintf(tag_file, "!_TAG_FILE_SORTED\t1\tbuxn-ctags\n");
+	for (int i = 0; i < (int)barray_len(ctx.tags); ++i) {
+		const tag_t* tag = &ctx.tags[i];
+		fprintf(
+			tag_file,
+			"%s\t%s\tgo %d|;\"\t%c\n",
+			tag->name,
+			tag->region.filename, tag->region.range.start.byte + 1,
+			tag->kind
+		);
 	}
+
+	fclose(tag_file);
 
 	exit_code = 0;
 end:
+	barray_free(NULL, ctx.tags);
 	barena_reset(&ctx.arena);
 	barena_pool_cleanup(&arena_pool);
-
-	if (ctx.tag_file != NULL) {
-		fclose(ctx.tag_file);
-	}
 
 	return exit_code;
 }
@@ -183,3 +218,4 @@ end:
 #define BLIB_IMPLEMENTATION
 #include <barena.h>
 #include <blog.h>
+#include <barray.h>
