@@ -160,7 +160,9 @@ buxn_file_deo(struct buxn_vm_s* vm, buxn_file_t* device, uint8_t* mem, uint8_t p
 			);
 			uint16_t total_bytes_read = 0;
 
-			if (device->stat.type == BUXN_FILE_TYPE_DIRECTORY) {
+			if (file == NULL) {
+				total_bytes_read = 0;
+			} else if (device->stat.type == BUXN_FILE_TYPE_DIRECTORY) {
 				// Read dir
 				uint16_t read_dir_pos = device->read_dir_pos;
 				uint16_t read_dir_len = device->read_dir_len;
