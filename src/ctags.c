@@ -183,8 +183,6 @@ main(int argc, const char* argv[]) {
 		}
 	}
 
-	qsort(ctx.tags, barray_len(ctx.tags), sizeof(ctx.tags[0]), sort_tag);
-
 	FILE* tag_file = fopen(output_filename, "wb");
 	if (tag_file == NULL) {
 		BLOG_ERROR("Error while opening tag file: %s", strerror(errno));
@@ -193,6 +191,8 @@ main(int argc, const char* argv[]) {
 
 	// Special tag for vim
 	fprintf(tag_file, "!_TAG_FILE_SORTED\t1\tbuxn-ctags\n");
+
+	qsort(ctx.tags, barray_len(ctx.tags), sizeof(ctx.tags[0]), sort_tag);
 	for (int i = 0; i < (int)barray_len(ctx.tags); ++i) {
 		const tag_t* tag = &ctx.tags[i];
 		fprintf(
