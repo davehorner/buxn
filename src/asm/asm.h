@@ -22,11 +22,6 @@ typedef struct {
 	buxn_asm_file_pos_t end;
 } buxn_asm_file_range_t;
 
-typedef struct {
-	const char* filename;
-	buxn_asm_file_range_t range;
-} buxn_asm_report_region_t;
-
 typedef enum {
 	BUXN_ASM_SYM_MACRO,
 	BUXN_ASM_SYM_LABEL,
@@ -37,13 +32,13 @@ typedef enum {
 } buxn_asm_sym_type_t;
 
 typedef struct {
-	uint16_t source_id;
+	const char* filename;
 	buxn_asm_file_range_t range;
 } buxn_asm_source_region_t;
 
 typedef struct {
 	buxn_asm_sym_type_t type;
-	uint16_t id;
+	const char* name;
 	buxn_asm_source_region_t region;
 } buxn_asm_sym_t;
 
@@ -55,10 +50,10 @@ typedef enum {
 typedef struct {
 	const char* message;
 	const char* token;
-	const buxn_asm_report_region_t* region;
+	const buxn_asm_source_region_t* region;
 
 	const char* related_message;
-	const buxn_asm_report_region_t* related_region;
+	const buxn_asm_source_region_t* related_region;
 } buxn_asm_report_t;
 
 bool
@@ -77,9 +72,6 @@ buxn_asm_put_rom(buxn_asm_ctx_t* ctx, uint16_t addr, uint8_t value);
 
 extern void
 buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sym);
-
-extern void
-buxn_asm_put_string(buxn_asm_ctx_t* ctx, uint16_t id, const char* str, int len);
 
 extern buxn_asm_file_t*
 buxn_asm_fopen(buxn_asm_ctx_t* ctx, const char* filename);

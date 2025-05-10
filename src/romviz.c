@@ -198,13 +198,14 @@ end_draw:
 
 		if (focused_symbol) {
 			// Print source location
+			const buxn_asm_source_region_t* region = &focused_symbol->region;
 			tb_printf(
 				0, 0,
 				TB_WHITE, TB_DEFAULT,
 				"Source: %s (%d:%d:%d - %d:%d:%d)",
-				focused_symbol->filename,
-				focused_symbol->range.start.line, focused_symbol->range.start.col, focused_symbol->range.start.byte,
-				focused_symbol->range.end.line, focused_symbol->range.end.col, focused_symbol->range.end.byte
+				region->filename,
+				region->range.start.line, region->range.start.col, region->range.start.byte,
+				region->range.end.line, region->range.end.col, region->range.end.byte
 			);
 
 			// Print type
@@ -230,10 +231,10 @@ end_draw:
 			}
 
 			// Print source text
-			bhash_index_t index = bhash_find(&sources, focused_symbol->filename);
+			bhash_index_t index = bhash_find(&sources, focused_symbol->region.filename);
 			source_t source = { 0 };
 			if (!bhash_is_valid(index)) {
-				FILE* source_file = fopen(focused_symbol->filename, "rb");
+				FILE* source_file = fopen(focused_symbol->region.filename, "rb");
 				long file_size = 0;
 				if (source_file != NULL) {
 					fseek(source_file, 0, SEEK_END);
@@ -252,15 +253,15 @@ end_draw:
 					fclose(source_file);
 				}
 
-				bhash_put(&sources, focused_symbol->filename, source);
+				bhash_put(&sources, focused_symbol->region.filename, source);
 			} else {
 				source = sources.values[index];
 			}
 
 			if (source.size > 0) {
-				int start = focused_symbol->range.start.byte;
+				int start = focused_symbol->region.range.start.byte;
 				start = start >= source.size ? source.size - 1 : start;
-				int end = focused_symbol->range.end.byte;
+				int end = focused_symbol->region.range.end.byte;
 				end = end >= source.size ? source.size - 1 : end;
 
 				start = start < 0 ? 0 : start;

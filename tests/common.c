@@ -24,14 +24,6 @@ buxn_asm_put_rom(buxn_asm_ctx_t* ctx, uint16_t address, uint8_t value) {
 }
 
 void
-buxn_asm_put_string(buxn_asm_ctx_t* ctx, uint16_t id, const char* str, int len) {
-	(void)ctx;
-	(void)id;
-	(void)str;
-	(void)len;
-}
-
-void
 buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sym) {
 	(void)ctx;
 	(void)addr;

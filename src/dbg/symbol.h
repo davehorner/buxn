@@ -14,10 +14,9 @@ typedef enum {
 
 typedef struct {
 	buxn_dbg_sym_type_t type;
-	const char* filename;
 	uint16_t addr_min;
 	uint16_t addr_max;
-	buxn_asm_file_range_t range;
+	buxn_asm_source_region_t region;
 } buxn_dbg_sym_t;
 
 static inline bserial_ctx_config_t
@@ -57,15 +56,6 @@ buxn_dbg_sym(bserial_ctx_t* ctx, buxn_dbg_sym_t* entry) {
 			entry->type = int_type;
 		}
 
-		BSERIAL_KEY(ctx, filename) {
-			uint64_t len;
-			if (bserial_mode(ctx) == BSERIAL_MODE_WRITE) {
-				len = strlen(entry->filename);
-			}
-
-			BSERIAL_CHECK_STATUS(bserial_symbol(ctx, &entry->filename, &len));
-		}
-
 		BSERIAL_KEY(ctx, addr_min) {
 			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->addr_min));
 		}
@@ -74,28 +64,37 @@ buxn_dbg_sym(bserial_ctx_t* ctx, buxn_dbg_sym_t* entry) {
 			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->addr_max));
 		}
 
-		BSERIAL_KEY(ctx, range.start.line) {
-			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->range.start.line));
+		BSERIAL_KEY(ctx, filename) {
+			uint64_t len;
+			if (bserial_mode(ctx) == BSERIAL_MODE_WRITE) {
+				len = strlen(entry->region.filename);
+			}
+
+			BSERIAL_CHECK_STATUS(bserial_symbol(ctx, &entry->region.filename, &len));
 		}
 
-		BSERIAL_KEY(ctx, range.start.col) {
-			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->range.start.col));
+		BSERIAL_KEY(ctx, start.line) {
+			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->region.range.start.line));
 		}
 
-		BSERIAL_KEY(ctx, range.start.byte) {
-			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->range.start.byte));
+		BSERIAL_KEY(ctx, start.col) {
+			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->region.range.start.col));
 		}
 
-		BSERIAL_KEY(ctx, range.end.line) {
-			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->range.end.line));
+		BSERIAL_KEY(ctx, start.byte) {
+			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->region.range.start.byte));
 		}
 
-		BSERIAL_KEY(ctx, range.end.col) {
-			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->range.end.col));
+		BSERIAL_KEY(ctx, end.line) {
+			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->region.range.end.line));
 		}
 
-		BSERIAL_KEY(ctx, range.end.byte) {
-			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->range.end.byte));
+		BSERIAL_KEY(ctx, end.col) {
+			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->region.range.end.col));
+		}
+
+		BSERIAL_KEY(ctx, end.byte) {
+			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->region.range.end.byte));
 		}
 	}
 

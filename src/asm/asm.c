@@ -69,12 +69,10 @@ struct buxn_asm_pstr_s {
 	buxn_asm_pstr_t* children[BHAMT_NUM_CHILDREN];
 
 	BHAMT_HASH_TYPE hash;
-	uint16_t export_id;
 };
 
 typedef struct {
 	buxn_asm_pstr_t* root;
-	uint16_t num_exported;
 } buxn_asm_strpool_t;
 
 typedef enum {
@@ -84,8 +82,7 @@ typedef enum {
 
 typedef struct {
 	buxn_asm_str_t lexeme;
-	const buxn_asm_pstr_t* filename;
-	buxn_asm_report_region_t region;
+	buxn_asm_source_region_t region;
 } buxn_asm_token_t;
 
 typedef struct buxn_asm_token_link_s buxn_asm_token_link_t;
@@ -272,7 +269,7 @@ buxn_asm_peek_char(buxn_asm_t* basm, buxn_asm_file_unit_t* unit) {
 				basm,
 				&(buxn_asm_report_t){
 					.message = "I/O error",
-					.region = &(buxn_asm_report_region_t){
+					.region = &(buxn_asm_source_region_t){
 						.filename = unit->path->key.chars
 					}
 				}
@@ -449,7 +446,6 @@ buxn_asm_next_token_in_file(
 			} else {
 				basm->token_buf[token_len] = '\0';
 				*(token) = (buxn_asm_token_t){
-					.filename = unit->path,
 					.lexeme = { .chars = basm->token_buf, .len = token_len },
 					.region = {
 						.filename = unit->path->key.chars,
@@ -464,7 +460,6 @@ buxn_asm_next_token_in_file(
 			} else {
 				basm->token_buf[token_len] = '\0';
 				*(token) = (buxn_asm_token_t){
-					.filename = unit->path,
 					.lexeme = { .chars = basm->token_buf, .len = token_len },
 					.region = {
 						.filename = unit->path->key.chars,
@@ -481,7 +476,7 @@ buxn_asm_next_token_in_file(
 					basm,
 					&(buxn_asm_report_t) {
 						.message = "Token is too long",
-						.region = &(buxn_asm_report_region_t){
+						.region = &(buxn_asm_source_region_t){
 							.filename = unit->path->key.chars,
 							.range = { .start = start, .end = end },
 						},
@@ -579,16 +574,6 @@ buxn_asm_strfind(buxn_asm_t* basm, buxn_asm_str_t str) {
 	return node;
 }
 
-static uint16_t
-buxn_asm_strexport(buxn_asm_t* basm, const buxn_asm_pstr_t* str) {
-	if (str->export_id != 0) { return str->export_id; }
-
-
-	uint16_t id = ((buxn_asm_pstr_t*)str)->export_id = ++basm->strpool.num_exported;
-	buxn_asm_put_string(basm->ctx, id, str->key.chars, str->key.len);
-	return str->export_id;
-}
-
 static buxn_asm_token_t
 buxn_asm_persist_token(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	if (token->lexeme.chars != basm->token_buf) {
@@ -599,7 +584,6 @@ buxn_asm_persist_token(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	memcpy(str_copy, token->lexeme.chars, token->lexeme.len);
 	str_copy[token->lexeme.len] = '\0';
 	return (buxn_asm_token_t){
-		.filename = token->filename,
 		.lexeme = { .chars = str_copy, .len = token->lexeme.len },
 		.region = token->region,
 	};
@@ -696,11 +680,8 @@ buxn_asm_register_label(
 
 	buxn_asm_put_symbol(basm->ctx, write_addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_LABEL,
-		.id = buxn_asm_strexport(basm, symbol->key),
-		.region = {
-			.source_id = buxn_asm_strexport(basm, token->filename),
-			.range = token->region.range,
-		},
+		.name = symbol->key->key.chars,
+		.region = token->region,
 	});
 
 	return symbol;
@@ -785,10 +766,7 @@ buxn_asm_emit_opcode(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t op
 
 	buxn_asm_put_symbol(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_OPCODE,
-		.region = {
-			.source_id = buxn_asm_strexport(basm, token->filename),
-			.range = token->region.range,
-		},
+		.region = token->region,
 	});
 
 	return true;
@@ -801,11 +779,7 @@ buxn_asm_emit_byte(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t byte
 
 	buxn_asm_put_symbol(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_NUMBER,
-		.id = byte,
-		.region = {
-			.source_id = buxn_asm_strexport(basm, token->filename),
-			.range = token->region.range,
-		},
+		.region = token->region,
 	});
 
 	return true;
@@ -818,11 +792,7 @@ buxn_asm_emit_short(buxn_asm_t* basm, const buxn_asm_token_t* token, uint16_t sh
 
 	buxn_asm_put_symbol2(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_NUMBER,
-		.id = short_,
-		.region = {
-			.source_id = buxn_asm_strexport(basm, token->filename),
-			.range = token->region.range,
-		},
+		.region = token->region,
 	});
 
 	return true;
@@ -853,11 +823,8 @@ buxn_asm_emit_addr_placeholder(
 ) {
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
-		.id = label_name != NULL ? buxn_asm_strexport(basm, label_name) : 0,
-		.region = {
-			.source_id = buxn_asm_strexport(basm, token->filename),
-			.range = token->region.range,
-		},
+		.name = label_name != NULL ? label_name->key.chars : 0,
+		.region = token->region,
 	};
 
 	uint16_t addr = basm->write_addr;
@@ -1010,11 +977,8 @@ buxn_asm_emit_backward_ref(
 
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
-		.id = buxn_asm_strexport(basm, label->key),
-		.region = {
-			.source_id = buxn_asm_strexport(basm, token->filename),
-			.range = token->region.range,
-		},
+		.name = label->key->key.chars,
+		.region = token->region,
 	};
 
 	return buxn_asm_emit_addr(
@@ -1243,11 +1207,8 @@ buxn_asm_process_macro(
 
 	buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_MACRO,
-		.id = buxn_asm_strexport(basm, symbol->key),
-		.region = {
-			.source_id = buxn_asm_strexport(basm, start->filename),
-			.range = start->region.range,
-		},
+		.name = symbol->key->key.chars,
+		.region = start->region,
 	});
 
 	return true;
@@ -1502,17 +1463,11 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	}
 	*name_ptr = '\0';
 
-	// Export the string without interning
-	// Then immediately put the symbol before `lambda_name` is invalidated
-	uint16_t str_id = ++basm->strpool.num_exported;
-	buxn_asm_put_string(basm->ctx, str_id, lambda_name, name_ptr - lambda_name);
 	buxn_asm_put_symbol(basm->ctx, current_addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_LABEL,
-		.id = str_id,
-		.region = {
-			.source_id = buxn_asm_strexport(basm, token->filename),
-			.range = token->region.range,
-		},
+		// TODO: It is safer to just intern this?
+		.name = lambda_name,
+		.region = token->region,
 	});
 
 	basm->lambdas = ref->next;
@@ -1575,10 +1530,7 @@ buxn_asm_process_text(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_TEXT,
-		.region = {
-			.source_id = buxn_asm_strexport(basm, token->filename),
-			.range = token->region.range,
-		},
+		.region = token->region,
 	};
 	uint16_t addr = basm->write_addr;
 	for (int i = 1; i < token->lexeme.len; ++i) {
@@ -1633,7 +1585,6 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 					return buxn_asm_error(
 						basm,
 						&(buxn_asm_token_t){
-							.filename = token.filename,
 							.lexeme = included_filename->key,
 							.region = token.region,
 						},
@@ -1790,7 +1741,7 @@ buxn_asm_process_file(buxn_asm_t* basm, const buxn_asm_pstr_t* path) {
 			basm,
 			&(buxn_asm_report_t) {
 				.message = "Could not open file",
-				.region = &(buxn_asm_report_region_t){ .filename = path->key.chars }
+				.region = &(buxn_asm_source_region_t){ .filename = path->key.chars }
 			}
 		);
 	}

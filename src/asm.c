@@ -15,8 +15,6 @@ typedef struct {
 	const char* chars;
 } str_t;
 
-typedef BHASH_TABLE(uint16_t, str_t) str_table_t;
-typedef BHASH_TABLE(uint16_t, uint16_t) src_map_table_t;
 typedef BHASH_TABLE(const char*, FILE*) file_table_t;
 
 struct buxn_asm_ctx_s {
@@ -31,7 +29,6 @@ struct buxn_asm_ctx_s {
 	buxn_dbg_sym_t current_symbol;
 
 	barena_t arena;
-	str_table_t str_table;
 	file_table_t file_table;
 	barray(char) line_buf;
 };
@@ -43,16 +40,12 @@ buxn_asm_put_dbg_sym(
 	uint16_t addr,
 	const buxn_asm_sym_t* sym
 ) {
-	bhash_index_t index = bhash_find(&ctx->str_table, sym->region.source_id);
-	assert(bhash_is_valid(index) && "Assembler reports invalid string");
-	const char* filename = ctx->str_table.values[index].chars;
-
 	buxn_dbg_sym_t* current_symbol = &ctx->current_symbol;
 	if (
 		type == current_symbol->type
-		&& filename == current_symbol->filename  // filename is interned
-		&& sym->region.range.start.byte == current_symbol->range.start.byte
-		&& sym->region.range.end.byte == current_symbol->range.end.byte
+		&& sym->region.filename == current_symbol->region.filename  // filename is interned
+		&& sym->region.range.start.byte == current_symbol->region.range.start.byte
+		&& sym->region.range.end.byte == current_symbol->region.range.end.byte
 	) {
 		// Merge
 		current_symbol->addr_max = addr;
@@ -65,8 +58,7 @@ buxn_asm_put_dbg_sym(
 		// New symbol
 		current_symbol->type = type;
 		current_symbol->addr_min = current_symbol->addr_max = addr;
-		current_symbol->filename = filename;
-		current_symbol->range = sym->region.range;
+		current_symbol->region = sym->region;
 	}
 }
 
@@ -83,11 +75,6 @@ buxn_asm_put_rom(buxn_asm_ctx_t* ctx, uint16_t address, uint8_t value) {
 }
 
 void
-buxn_asm_put_string(buxn_asm_ctx_t* ctx, uint16_t id, const char* str, int len) {
-	bhash_put(&ctx->str_table, id, ((str_t){ .chars = str, .len = len }));
-}
-
-void
 buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sym) {
 	switch (sym->type) {
 		case BUXN_ASM_SYM_MACRO:
@@ -97,16 +84,12 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 			++ctx->num_labels;
 
 			if (ctx->sym_file) {
-				bhash_index_t index = bhash_find(&ctx->str_table, sym->id);
-				assert(bhash_is_valid(index) && "Assembler reports invalid string");
-				str_t str = ctx->str_table.values[index];
-
 				uint8_t addr_hi = addr >> 8;
 				uint8_t addr_lo = addr & 0xff;
 				fwrite(&addr_hi, sizeof(addr_hi), 1, ctx->sym_file);
 				fwrite(&addr_lo, sizeof(addr_hi), 1, ctx->sym_file);
 				// All interned string are null-terminated so this is safe
-				fwrite(str.chars, str.len + 1, 1, ctx->sym_file);
+				fwrite(sym->name, strlen(sym->name) + 1, 1, ctx->sym_file);
 
 				if (ferror(ctx->sym_file)) {
 					BLOG_ERROR("Error while writing symbol file: %s", strerror(errno));
@@ -166,7 +149,7 @@ open_file(buxn_asm_ctx_t* ctx, const char* filename) {
 }
 
 static void
-print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_report_region_t* region) {
+print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_source_region_t* region) {
 	FILE* file = open_file(ctx, region->filename);
 	if (file == NULL) { return; }
 
@@ -288,19 +271,6 @@ end:
 	return success;
 }
 
-// https://nullprogram.com/blog/2018/07/31/
-static bhash_hash_t
-prospector32(const void* data, size_t size) {
-	(void)size;
-	uint32_t x = *(const uint16_t*)data;
-	x ^= x >> 15;
-	x *= 0x2c1b3c6dU;
-	x ^= x >> 12;
-	x *= 0x297a2d39U;
-	x ^= x >> 15;
-	return x;
-}
-
 static bhash_hash_t
 str_hash(const void* data, size_t size) {
 	(void)size;
@@ -338,11 +308,6 @@ main(int argc, const char* argv[]) {
 	barena_init(&ctx.arena, &arena_pool);
 
 	bhash_config_t config = bhash_config_default();
-	config.removable = false;
-	config.hash = prospector32;
-	bhash_init(&ctx.str_table, config);
-
-	config = bhash_config_default();
 	config.removable = false;
 	config.hash = str_hash;
 	bhash_init(&ctx.file_table, config);
@@ -402,7 +367,6 @@ main(int argc, const char* argv[]) {
 		fclose(ctx.file_table.values[i]);
 	}
 	bhash_cleanup(&ctx.file_table);
-	bhash_cleanup(&ctx.str_table);
 	barena_reset(&ctx.arena);
 	barena_pool_cleanup(&arena_pool);
 
