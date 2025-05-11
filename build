@@ -377,6 +377,9 @@ compile_common() {
 	compile src/devices/file.c $VM_FLAGS
 	compile src/devices/controller.c $VM_FLAGS
 
+	# Debug
+	compile src/dbg/core.c
+
 	# PhysFS
 	compile deps/physfs/src/physfs.c $PHYSFS_FLAGS
 	compile deps/physfs/src/physfs_unicode.c $PHYSFS_FLAGS
