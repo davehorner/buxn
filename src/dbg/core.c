@@ -23,7 +23,7 @@ typedef enum {
 } buxn_dbg_opcode_class_t;
 
 struct buxn_dbg_s {
-	buxn_dbg_options_t options;
+	buxn_dbg_wire_t* wire;
 	bool executing;
 	buxn_dbg_standing_cmd_t standing_cmd;
 	void* vm_userdata;
@@ -33,17 +33,14 @@ struct buxn_dbg_s {
 	buxn_dbg_brkp_t brkps[255];
 };
 
-size_t
-buxn_dbg_mem_size(const buxn_dbg_options_t* options) {
-	(void)options;
-	return sizeof(buxn_dbg_t);
-}
+_Static_assert(sizeof(buxn_dbg_t) == BUXN_DBG_SIZE, "Declared size does not match");
+_Static_assert(_Alignof(buxn_dbg_t) == BUXN_DBG_ALIGNMENT, "Declared alignment does not match");
 
 buxn_dbg_t*
-buxn_dbg_init(void* mem, const buxn_dbg_options_t* options) {
+buxn_dbg_init(void* mem, buxn_dbg_wire_t* wire) {
 	buxn_dbg_t* dbg = mem;
 	*dbg = (buxn_dbg_t){
-		.options = *options,
+		.wire = wire,
 	};
 
 	return dbg;
@@ -62,13 +59,13 @@ buxn_dbg_should_hook(buxn_dbg_t* dbg) {
 
 void
 buxn_dbg_hook(buxn_dbg_t* dbg, struct buxn_vm_s* vm, uint16_t pc) {
-	buxn_dbg_ctx_t* ctx = dbg->options.ctx;
+	buxn_dbg_wire_t* wire = dbg->wire;
 
 	bool execution_just_started = false;
 	if (!dbg->executing) {
 		dbg->executing = true;
 		execution_just_started = true;
-		buxn_dbg_begin_exec(ctx, pc);
+		buxn_dbg_begin_exec(wire, pc);
 	}
 
 	bool should_pause = false;
@@ -209,11 +206,11 @@ buxn_dbg_hook(buxn_dbg_t* dbg, struct buxn_vm_s* vm, uint16_t pc) {
 	}
 
 	if (should_pause || brkp_id != BUXN_DBG_BRKP_NONE) {
-		buxn_dbg_begin_break(ctx, brkp_id);
+		buxn_dbg_begin_break(wire, brkp_id);
 
 		while (should_pause) {
 			buxn_dbg_cmd_t cmd;
-			buxn_dbg_next_command(ctx, &cmd);
+			buxn_dbg_next_command(wire, &cmd);
 
 			switch (cmd.type) {
 				case BUXN_DBG_CMD_INFO:
@@ -315,11 +312,11 @@ buxn_dbg_hook(buxn_dbg_t* dbg, struct buxn_vm_s* vm, uint16_t pc) {
 			}
 		}
 
-		buxn_dbg_end_break(ctx);
+		buxn_dbg_end_break(wire);
 	}
 
 	if (vm->memory[pc] == 0x00) {  // BRK
-		buxn_dbg_end_exec(ctx);
+		buxn_dbg_end_exec(wire);
 		dbg->executing = false;
 	}
 }

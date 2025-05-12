@@ -379,6 +379,8 @@ compile_common() {
 
 	# Debug
 	compile src/dbg/core.c
+	compile src/dbg/wire.c $PROGRAM_FLAGS
+	compile src/dbg/protocol.c $PROGRAM_FLAGS
 
 	# PhysFS
 	compile deps/physfs/src/physfs.c $PHYSFS_FLAGS

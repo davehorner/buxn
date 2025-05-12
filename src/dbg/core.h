@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define BUXN_DBG_SIZE      1056
+#define BUXN_DBG_ALIGNMENT 8
+
 #define BUXN_DBG_BRKP_DEV     (0 << 0)
 #define BUXN_DBG_BRKP_MEM     (1 << 0)
 #define BUXN_DBG_BRKP_PAUSE   (1 << 1)
@@ -16,12 +19,8 @@
 #define BUXN_DBG_BRKP_NONE ((uint8_t)0xff)
 
 typedef struct buxn_dbg_s buxn_dbg_t;
-typedef struct buxn_dbg_ctx_s buxn_dbg_ctx_t;
+typedef struct buxn_dbg_wire_s buxn_dbg_wire_t;
 struct buxn_vm_s;
-
-typedef struct {
-	buxn_dbg_ctx_t* ctx;
-} buxn_dbg_options_t;
 
 typedef enum {
 	BUXN_DBG_CMD_INFO,
@@ -29,8 +28,8 @@ typedef enum {
 	BUXN_DBG_CMD_STEP_OVER,
 	BUXN_DBG_CMD_STEP_IN,
 	BUXN_DBG_CMD_STEP_OUT,
-	BUXN_DBG_CMD_BRKP_SET,
 	BUXN_DBG_CMD_BRKP_GET,
+	BUXN_DBG_CMD_BRKP_SET,
 	BUXN_DBG_CMD_DEV_READ,
 	BUXN_DBG_CMD_DEV_WRITE,
 	BUXN_DBG_CMD_MEM_READ,
@@ -54,7 +53,7 @@ typedef struct {
 	uint8_t data[256];
 } buxn_dbg_stack_info_t;
 
-typedef struct {
+typedef struct buxn_dbg_cmd_s {
 	buxn_dbg_cmd_type_t type;
 
 	union {
@@ -103,11 +102,8 @@ typedef struct {
 	};
 } buxn_dbg_cmd_t;
 
-size_t
-buxn_dbg_mem_size(const buxn_dbg_options_t* options);
-
 buxn_dbg_t*
-buxn_dbg_init(void* mem, const buxn_dbg_options_t* options);
+buxn_dbg_init(void* mem, buxn_dbg_wire_t* wire);
 
 void
 buxn_dbg_request_pause(buxn_dbg_t* dbg);
@@ -121,18 +117,18 @@ buxn_dbg_should_hook(buxn_dbg_t* dbg);
 // Must be provided by the host program
 
 extern void
-buxn_dbg_begin_exec(buxn_dbg_ctx_t* ctx, uint16_t addr);
+buxn_dbg_begin_exec(buxn_dbg_wire_t* wire, uint16_t addr);
 
 extern void
-buxn_dbg_begin_break(buxn_dbg_ctx_t* ctx, uint8_t brkp_id);
+buxn_dbg_begin_break(buxn_dbg_wire_t* wire, uint8_t brkp_id);
 
 extern void
-buxn_dbg_next_command(buxn_dbg_ctx_t* ctx, buxn_dbg_cmd_t* cmd);
+buxn_dbg_next_command(buxn_dbg_wire_t* wire, buxn_dbg_cmd_t* cmd);
 
 extern void
-buxn_dbg_end_break(buxn_dbg_ctx_t* ctx);
+buxn_dbg_end_break(buxn_dbg_wire_t* wire);
 
 extern void
-buxn_dbg_end_exec(buxn_dbg_ctx_t* ctx);
+buxn_dbg_end_exec(buxn_dbg_wire_t* wire);
 
 #endif

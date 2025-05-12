@@ -90,7 +90,7 @@ BTEST(basm, warning) {
 	BTEST_EXPECT(basm->num_warnings == 1);
 
 	// Label used for padding
-	BTEST_EXPECT(buxn_asm_str(basm, "@here |00 |here"));
+	BTEST_EXPECT(buxn_asm_str(basm, "|01 @here |00 |here"));
 	BTEST_EXPECT(basm->num_warnings == 0);
 }
 
