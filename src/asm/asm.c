@@ -1077,6 +1077,10 @@ buxn_asm_resolve(buxn_asm_t* basm) {
 				itr->key->key.len > 0
 				&& buxn_asm_is_uppercased(itr->key->key.chars[0])
 			)
+			&& !(
+				itr->type == BUXN_ASM_SYMTAB_ENTRY_LABEL
+				&& itr->label_address == BUXN_ASM_RESET_VECTOR
+			)
 		) {
 			buxn_asm_warning(basm, &itr->token, "Unreferenced symbol");
 		}

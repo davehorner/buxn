@@ -71,11 +71,15 @@ BTEST(basm, warning) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 
 	// Unused label
-	BTEST_EXPECT(buxn_asm_str(basm, "@scope"));
+	BTEST_EXPECT(buxn_asm_str(basm, "|00 @scope"));
 	BTEST_EXPECT(basm->num_warnings == 1);
 
 	// Unused label starting with capital letter
-	BTEST_EXPECT(buxn_asm_str(basm, "@Main"));
+	BTEST_EXPECT(buxn_asm_str(basm, "|00 @Main"));
+	BTEST_EXPECT(basm->num_warnings == 0);
+
+	// Reset vector label
+	BTEST_EXPECT(buxn_asm_str(basm, "|0100 @on-reset"));
 	BTEST_EXPECT(basm->num_warnings == 0);
 
 	// Redundant flag
