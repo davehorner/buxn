@@ -51,6 +51,8 @@ build_linux() {
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{cli.c.o,vm/vm.c.o,physfs.c.o} \
 		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o} \
+		${OBJ_DIR}/src/dbg/{core.c.o,wire.c.o,protocol.c.o} \
+		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o} \
 		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
 		-o ${BIN_DIR}/buxn-cli
@@ -85,6 +87,13 @@ build_linux() {
 
 	$CC \
 		-fuse-ld=mold \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/dbg-wrapper.c.o \
+		${OBJ_DIR}/src/dbg/transports/{fifo,stream,from_str}.c.o \
+		-o ${BIN_DIR}/buxn-dbg-wrapper
+
+	$CC \
+		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
 		-lGL -lEGL -lm -lX11 -lXcursor -lXi -lasound \
 		${BUILD_TYPE_FLAGS} \
@@ -98,6 +107,8 @@ build_linux() {
 		-fuse-ld=mold \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/tests/{main,common,asm,vm}.c.o \
+		${OBJ_DIR}/src/dbg/{core.c.o,wire.c.o,protocol.c.o} \
+		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
 		${OBJ_DIR}/src/vm/vm.c.o \
 		${OBJ_DIR}/src/devices/{system,console}.c.o \
@@ -352,7 +363,15 @@ build_cosmo() {
 
 	$CC \
 		${BUILD_TYPE_FLAGS} \
-		${OBJ_DIR}/tests/{main,common,asm,vm}.c.o \
+		${OBJ_DIR}/src/dbg-wrapper.c.o \
+		${OBJ_DIR}/src/dbg/transports/{fifo,stream,from_str}.c.o \
+		-o ${BIN_DIR}/buxn-dbg-wrapper
+
+	$CC \
+		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/tests/{main,common,asm,vm,dbg}.c.o \
+		${OBJ_DIR}/src/dbg/{core.c.o,wire.c.o,protocol.c.o} \
+		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
 		${OBJ_DIR}/src/vm/vm.c.o \
 		${OBJ_DIR}/src/devices/{system,console}.c.o \
@@ -381,6 +400,11 @@ compile_common() {
 	compile src/dbg/core.c
 	compile src/dbg/wire.c $PROGRAM_FLAGS
 	compile src/dbg/protocol.c $PROGRAM_FLAGS
+	compile src/dbg/transports/fd.c $PROGRAM_FLAGS
+	compile src/dbg/transports/stream.c $PROGRAM_FLAGS
+	compile src/dbg/transports/fifo.c $PROGRAM_FLAGS
+	compile src/dbg/transports/from_str.c $PROGRAM_FLAGS
+	compile src/dbg-wrapper.c $PROGRAM_FLAGS
 
 	# PhysFS
 	compile deps/physfs/src/physfs.c $PHYSFS_FLAGS
@@ -404,6 +428,7 @@ compile_desktop() {
 	compile tests/common.c $PROGRAM_FLAGS
 	compile tests/asm.c $PROGRAM_FLAGS
 	compile tests/vm.c $PROGRAM_FLAGS
+	#compile tests/dbg.c $PROGRAM_FLAGS
 }
 
 begin_compile() {

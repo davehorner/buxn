@@ -14,8 +14,17 @@ static struct {
 } fixture;
 
 static void
-init(void) {
+init_per_suite(void) {
 	barena_pool_init(&fixture.pool, 1);
+}
+
+static void
+cleanup_per_suite(void) {
+	barena_pool_cleanup(&fixture.pool);
+}
+
+static void
+init_per_test(void) {
 	barena_init(&fixture.arena, &fixture.pool);
 	fixture.vm = barena_memalign(
 		&fixture.arena,
@@ -29,15 +38,18 @@ init(void) {
 }
 
 static void
-cleanup(void) {
+cleanup_per_test(void) {
 	barena_reset(&fixture.arena);
-	barena_pool_cleanup(&fixture.pool);
 }
 
 static btest_suite_t vm = {
 	.name = "vm",
-	.init = init,
-	.cleanup = cleanup,
+
+	.init_per_suite = init_per_suite,
+	.cleanup_per_suite = cleanup_per_suite,
+
+	.init_per_test = init_per_test,
+	.cleanup_per_test = cleanup_per_test,
 };
 
 BTEST(vm, opctest) {

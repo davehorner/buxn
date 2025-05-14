@@ -31,8 +31,8 @@ buxn_dbg_protocol_recommended_bserial_config(void) {
 	return (bserial_ctx_config_t){
 		.max_symbol_len = 48,
 		.max_num_symbols = 32,
-		.max_record_fields = 16,
-		.max_depth = 8,
+		.max_record_fields = 8,
+		.max_depth = 4,
 	};
 }
 

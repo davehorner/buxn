@@ -2,7 +2,11 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <physfs.h>
+#include <errno.h>
 #include "vm/vm.h"
+#include "dbg/core.h"
+#include "dbg/wire.h"
+#include "dbg/transports/fd.h"
 #include "bembd.h"
 #include "devices/console.h"
 #include "devices/system.h"
@@ -10,13 +14,14 @@
 #include "devices/file.h"
 
 typedef struct {
+	buxn_dbg_t* dbg;
 	buxn_console_t console;
 	buxn_file_t file[BUXN_NUM_FILE_DEVICES];
-} devices_t;
+} vm_data_t;
 
 uint8_t
 buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
-	devices_t* devices = vm->userdata;
+	vm_data_t* devices = vm->userdata;
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
@@ -40,7 +45,7 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 
 void
 buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
-	devices_t* devices = vm->userdata;
+	vm_data_t* devices = vm->userdata;
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
@@ -103,10 +108,45 @@ buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) 
 	fputc(c, stderr);
 }
 
+static void
+vm_exec_hook(buxn_vm_t* vm, uint16_t pc) {
+	vm_data_t* userdata = vm->userdata;
+	buxn_dbg_hook(userdata->dbg, vm, pc);
+}
+
 static int
 boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	int exit_code = 0;
-	devices_t devices = { 0 };
+	vm_data_t devices = { 0 };
+
+	_Alignas(BUXN_DBG_ALIGNMENT) char dbg_mem[BUXN_DBG_SIZE];
+	buxn_dbg_wire_t wire = { 0 };
+	buxn_dbg_transport_fd_t transport;
+	void* dbg_in_mem = NULL;
+	void* dbg_out_mem = NULL;
+	int dbg_fd = -1;
+	{
+		const char* debug_fd_env = getenv("BUXN_DEBUG_FD");
+		if (debug_fd_env != NULL) {
+			errno = 0;
+			long fd = strtol(debug_fd_env, NULL, 10);
+			if (errno == 0 && fd >= 0 && fd < INT32_MAX) {
+				dbg_fd = (int)fd;
+			}
+		}
+
+		if (dbg_fd >= 0) {
+			buxn_dbg_transport_fd_init(&transport, dbg_fd);
+
+			bserial_ctx_config_t config = buxn_dbg_protocol_recommended_bserial_config();
+			dbg_in_mem = malloc(bserial_ctx_mem_size(config));
+			dbg_out_mem = malloc(bserial_ctx_mem_size(config));
+			buxn_dbg_transport_fd_wire(&transport, &wire, config, dbg_in_mem, dbg_out_mem);
+
+			devices.dbg = buxn_dbg_init(dbg_mem, &wire);
+			buxn_dbg_request_pause(devices.dbg);
+		}
+	}
 
 	buxn_vm_t* vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
 	vm->userdata = &devices;
@@ -130,6 +170,10 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	fclose(rom_file);
 
 	buxn_console_init(vm, &devices.console, argc, argv);
+
+	if (devices.dbg != NULL) {
+		vm->exec_hook = vm_exec_hook;
+	}
 
 	buxn_vm_execute(vm, BUXN_RESET_VECTOR);
 	if ((exit_code = buxn_system_exit_code(vm)) > 0) {
@@ -158,6 +202,9 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	if (exit_code < 0) { exit_code = 0; }
 end:
 	free(vm);
+	free(dbg_in_mem);
+	free(dbg_out_mem);
+
 	PHYSFS_deinit();
 	return exit_code;
 }
@@ -218,3 +265,4 @@ main(int argc, const char* argv[]) {
 
 #define BLIB_IMPLEMENTATION
 #include <blog.h>
+#include <bserial.h>

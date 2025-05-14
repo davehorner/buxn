@@ -1,5 +1,4 @@
 #include <blog.h>
-#define BTEST_IMPLEMENTATION
 #include <btest.h>
 
 int
@@ -38,6 +37,8 @@ main(int argc, const char* argv[]) {
 #define BLIB_IMPLEMENTATION
 #include <blog.h>
 #include <barena.h>
+#include <bserial.h>
+#include <btest.h>
 
 #define XINCBIN_IMPLEMENTATION
 #include "resources.h"

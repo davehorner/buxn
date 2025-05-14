@@ -17,8 +17,17 @@ static buxn_vfs_entry_t empty_vfs[] = {
 };
 
 static void
-init(void) {
+init_per_suite(void) {
 	barena_pool_init(&fixture.pool, 1);
+}
+
+static void
+cleanup_per_suite(void) {
+	barena_pool_cleanup(&fixture.pool);
+}
+
+static void
+init_per_test(void) {
 	barena_init(&fixture.arena, &fixture.pool);
 
 	fixture.basm = (buxn_asm_ctx_t){
@@ -28,15 +37,18 @@ init(void) {
 }
 
 static void
-cleanup(void) {
+cleanup_per_test(void) {
 	barena_reset(&fixture.arena);
-	barena_pool_cleanup(&fixture.pool);
 }
 
 static btest_suite_t basm = {
 	.name = "asm",
-	.init = init,
-	.cleanup = cleanup,
+
+	.init_per_suite = init_per_suite,
+	.cleanup_per_suite = cleanup_per_suite,
+
+	.init_per_test = init_per_test,
+	.cleanup_per_test = cleanup_per_test,
 };
 
 static inline bool
