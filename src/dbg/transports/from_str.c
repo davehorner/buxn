@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <netdb.h>
 #include <errno.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
 #include "../../bflag.h"
 

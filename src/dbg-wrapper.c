@@ -27,7 +27,7 @@ main(int argc, char* argv[]) {
 
 	int debug_fd = buxn_dbg_transport_from_str(argv[1]);
 	if (debug_fd >= 0) {
-		char buf[sizeof("65535")];
+		char buf[sizeof("2147483647")];
 		snprintf(buf, sizeof(buf), "%d", debug_fd);
 		setenv("BUXN_DEBUG_FD", buf, 1);
 	}
