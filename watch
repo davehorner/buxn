@@ -1,9 +1,12 @@
 #!/bin/sh -e
 
-./build $@ || true
 export BUILD_TYPE=${1:-Debug}
 export PLATFORM=${2:-linux}
-./test $@ || true
+
+if ./build $@
+then
+	./test $@ || true
+fi
 
 inotifywait -r -e CLOSE_WRITE -m build src tests | \
 	while read path action file

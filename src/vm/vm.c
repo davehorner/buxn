@@ -55,9 +55,9 @@ buxn_vm_execute(buxn_vm_t* vm, uint16_t pc) {
 #undef buxn_vm_execute_internal
 #define BUXN_NEXT_OPCODE() \
 	do { \
-		uint8_t opcode = mem[pc++]; \
 		BUXN_SAVE_STATE(); \
 		hook(vm, pc); \
+		uint8_t opcode = mem[pc++]; \
 		goto *dispatch_table[opcode]; \
 	} while (0)
 #define buxn_vm_execute_internal buxn_vm_execute_with_hook

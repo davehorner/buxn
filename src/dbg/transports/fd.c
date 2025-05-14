@@ -4,6 +4,10 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <errno.h>
+#include <string.h>
+#include <stdio.h>
+
 #define BUXN_CONTAINER_OF(ptr, type, member) ((type *)((char *)(ptr) - offsetof(type, member)))
 
 static size_t

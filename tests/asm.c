@@ -8,8 +8,8 @@
 
 static struct {
 	barena_pool_t pool;
-	buxn_asm_ctx_t basm;
 	barena_t arena;
+	buxn_asm_ctx_t basm;
 } fixture;
 
 static buxn_vfs_entry_t empty_vfs[] = {
