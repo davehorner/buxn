@@ -132,6 +132,7 @@ load_file(buxn_vm_t* vm, const char* filename) {
 			{ .name = "door.tal", .content = XINCBIN_GET(door_tal) },
 			{ .name = "object.tal", .content = XINCBIN_GET(object_tal) },
 			{ .name = "vector.tal", .content = XINCBIN_GET(vector_tal) },
+			{ .name = "prog_brkp.tal", .content = XINCBIN_GET(prog_brkp_tal) },
 			{ 0 },
 		},
 	};
@@ -640,6 +641,53 @@ BTEST(dbg, dev_store_brkp) {
 			},
 		});
 		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, BUXN_RESET_VECTOR + 5);  // DEO2
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_END_EXEC();
+}
+
+static void
+system_dbg_port(buxn_vm_t* vm, uint8_t value) {
+	(void)vm;
+	(void)value;
+	buxn_dbg_request_pause(fixture.dbg);
+}
+
+BTEST(dbg, prog_brkp) {
+	buxn_vm_t* vm = fixture.vm;
+	BTEST_ASSERT(load_file(vm, "prog_brkp.tal"));
+	fixture.devices.system_dbg = system_dbg_port;
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	// Triggered by the programmed breakpoint
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		uint16_t pc;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_PC,
+				.pc = &pc,
+			},
+		});
+		// Unlike debugger breakpoint, programmed breakpoint triggers **after**
+		// the write to System/dbg
+		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, BUXN_RESET_VECTOR + 5);
 
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_RESUME,
