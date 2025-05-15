@@ -73,6 +73,7 @@ init_per_test(void) {
 		barena_memalign(&fixture.arena, BUXN_DBG_SIZE, BUXN_DBG_ALIGNMENT),
 		&fixture.vm_conn.wire
 	);
+	buxn_dbg_request_pause(fixture.dbg);
 
 	buxn_console_init(fixture.vm, &fixture.devices.console, 0, NULL);
 
@@ -164,12 +165,9 @@ dbg_command(buxn_dbg_cmd_t cmd) {
 }
 
 BTEST(dbg, pause) {
-	buxn_dbg_t* dbg = fixture.dbg;
 	buxn_vm_t* vm = fixture.vm;
 
 	BTEST_ASSERT(load_str(fixture.vm, "[ LIT &door $1 ] INCk ,&door STR"));
-	buxn_dbg_request_pause(dbg);
-
 	run_vm_async(vm);
 
 	buxn_dbg_msg_t msg;
@@ -199,6 +197,64 @@ BTEST(dbg, pause) {
 	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
 	BTEST_ASSERT(msg.type == BUXN_DBG_MSG_END_BREAK);
 
+	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
+	BTEST_ASSERT(msg.type == BUXN_DBG_MSG_END_EXEC);
+}
+
+BTEST(dbg, mem_exec_brkp) {
+	buxn_vm_t* vm = fixture.vm;
+
+	BTEST_ASSERT(load_str(fixture.vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	run_vm_async(vm);
+
+	buxn_dbg_msg_t msg;
+
+	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
+	BTEST_ASSERT(msg.type == BUXN_DBG_MSG_BEGIN_EXEC);
+	BTEST_ASSERT(msg.addr == BUXN_RESET_VECTOR);
+
+	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
+	BTEST_ASSERT(msg.type == BUXN_DBG_MSG_BEGIN_BREAK);
+	BTEST_ASSERT(msg.brkp_id == BUXN_DBG_BRKP_NONE);
+
+	dbg_command((buxn_dbg_cmd_t){
+		.type = BUXN_DBG_CMD_BRKP_SET,
+		.brkp_set = {
+			.id = 0,
+			.brkp = {
+				.addr = 0x0102,  // INCk
+				.mask = BUXN_DBG_BRKP_EXEC | BUXN_DBG_BRKP_PAUSE | BUXN_DBG_BRKP_MEM,
+			},
+		},
+	});
+
+	uint8_t nbrkps;
+	dbg_command((buxn_dbg_cmd_t){
+		.type = BUXN_DBG_CMD_INFO,
+		.info = {
+			.type = BUXN_DBG_INFO_NBRKPS,
+			.nbrkps = &nbrkps,
+		},
+	});
+	BTEST_ASSERT_EX(nbrkps == 1, "nbrkps = %d", nbrkps);
+
+	dbg_command((buxn_dbg_cmd_t){
+		.type = BUXN_DBG_CMD_RESUME,
+	});
+
+	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
+	BTEST_ASSERT(msg.type == BUXN_DBG_MSG_END_BREAK);
+
+	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
+	BTEST_ASSERT_EX(msg.type == BUXN_DBG_MSG_BEGIN_BREAK, "msg.type = %d", msg.type);
+	BTEST_ASSERT_EX(msg.brkp_id == 0, "msg.brkp_id = %d", msg.brkp_id);
+
+	dbg_command((buxn_dbg_cmd_t){
+		.type = BUXN_DBG_CMD_RESUME,
+	});
+
+	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
+	BTEST_ASSERT(msg.type == BUXN_DBG_MSG_END_BREAK);
 	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
 	BTEST_ASSERT(msg.type == BUXN_DBG_MSG_END_EXEC);
 }

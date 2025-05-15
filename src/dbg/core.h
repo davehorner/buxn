@@ -8,8 +8,8 @@
 #define BUXN_DBG_SIZE      1056
 #define BUXN_DBG_ALIGNMENT 8
 
-#define BUXN_DBG_BRKP_DEV     (0 << 0)
-#define BUXN_DBG_BRKP_MEM     (1 << 0)
+#define BUXN_DBG_BRKP_MEM     (0 << 0)
+#define BUXN_DBG_BRKP_DEV     (1 << 0)
 #define BUXN_DBG_BRKP_PAUSE   (1 << 1)
 #define BUXN_DBG_BRKP_EXEC    (1 << 2)
 #define BUXN_DBG_BRKP_LOAD    (1 << 3)
