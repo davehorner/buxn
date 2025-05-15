@@ -545,3 +545,147 @@ BTEST(dbg, mem_batch_read) {
 	rom[1] = 0x01;  // &door has been overwritten
 	BTEST_ASSERT((memcmp(rom, vm->memory + BUXN_RESET_VECTOR, sizeof(rom)) == 0));
 }
+
+BTEST(dbg, step_over) {
+	buxn_vm_t* vm = fixture.vm;
+
+	BTEST_ASSERT(
+		load_str(
+			vm,
+			"@on-reset\n"
+			"  Object/get-x\n"
+			"  BRK\n"
+			"@Object\n"
+			"  &x 42\n"
+			"  &get-x ;/x LDA JMP2r\n"
+			"  &set-x ;/x STA JMP2r\n"
+		)
+	);
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_STEP_OVER,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		uint16_t pc;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_PC,
+				.pc = &pc,
+			},
+		});
+		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, BUXN_RESET_VECTOR + 3);  // BRK
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_STEP_IN,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_END_EXEC();
+}
+
+BTEST(dbg, step_in_and_out) {
+	buxn_vm_t* vm = fixture.vm;
+
+	BTEST_ASSERT(
+		load_str(
+			vm,
+			"@on-reset\n"
+			"  Object/get-x\n"
+			"  BRK\n"
+			"@Object\n"
+			"  &x 42\n"
+			"  &get-x ;/x LDA JMP2r\n"
+			"  &set-x ;/x STA JMP2r\n"
+		)
+	);
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_STEP_IN,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		uint16_t pc;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_PC,
+				.pc = &pc,
+			},
+		});
+		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, BUXN_RESET_VECTOR + 5);  // ;/x
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_STEP_OUT,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		uint16_t pc;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_PC,
+				.pc = &pc,
+			},
+		});
+		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, BUXN_RESET_VECTOR + 3);  // BRK
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_STEP_IN,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_END_EXEC();
+}
+
+BTEST(dbg, step_out_on_top) {
+	buxn_vm_t* vm = fixture.vm;
+
+	BTEST_ASSERT(
+		load_str(
+			vm,
+			"@on-reset\n"
+			"  Object/get-x\n"
+			"  BRK\n"
+			"@Object\n"
+			"  &x 42\n"
+			"  &get-x ;/x LDA JMP2r\n"
+			"  &set-x ;/x STA JMP2r\n"
+		)
+	);
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_STEP_OUT,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_END_EXEC();
+}
