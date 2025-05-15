@@ -125,8 +125,10 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 
 void
 buxn_system_debug(buxn_vm_t* vm, uint8_t value) {
-	(void)vm;
-	(void)value;
+	buxn_test_devices_t* devices = vm->userdata;
+	if (devices->system_dbg) {
+		devices->system_dbg(vm, value);
+	}
 }
 
 void

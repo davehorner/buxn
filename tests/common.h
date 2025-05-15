@@ -27,6 +27,8 @@ struct buxn_asm_ctx_s {
 typedef struct {
 	buxn_console_t console;
 	buxn_mouse_t mouse;
+
+	void (*system_dbg)(struct buxn_vm_s* vm, uint8_t value);
 } buxn_test_devices_t;
 
 #endif

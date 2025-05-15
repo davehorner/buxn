@@ -37,6 +37,8 @@ static struct {
 	buxn_dbg_t* dbg;
 	thrd_t vm_thread;
 	debug_conn_t dbg_conn, vm_conn;
+
+	uint8_t dbg_value;
 } fixture;
 
 static void
@@ -90,6 +92,7 @@ init_per_test(void) {
 
 	buxn_console_init(fixture.vm, &fixture.devices.console, 0, NULL);
 	fixture.devices.mouse = (buxn_mouse_t){ 0 };
+	fixture.devices.system_dbg = NULL;
 
 	fixture.vm = barena_malloc(&fixture.arena, sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE);
 	fixture.vm->memory_size = BUXN_MEMORY_BANK_SIZE;
@@ -741,9 +744,16 @@ BTEST(dbg, dev_read) {
 	ASSERT_END_EXEC();
 }
 
+static void
+system_dbg_dev_write(buxn_vm_t* vm, uint8_t value) {
+	fixture.dbg_value = value;
+	vm->device[0x0e] = 0x01;
+}
+
 BTEST(dbg, dev_write) {
 	buxn_vm_t* vm = fixture.vm;
 	run_vm_async(vm);
+	fixture.devices.system_dbg = system_dbg_dev_write;
 
 	uint16_t value = buxn_vm_dev_load2(vm, 0x00);
 	BTEST_ASSERT_EQ(SHORT_HEX_FMT, value, 0x0000);
@@ -760,6 +770,16 @@ BTEST(dbg, dev_write) {
 				.values = values,
 			},
 		});
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_DEV_WRITE,
+			.dev_read = {
+				.addr = 0x0e,
+				.size = 1,
+				.values = &(uint8_t){ 0x03 },
+			},
+		});
+
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_RESUME,
 		});
@@ -769,6 +789,9 @@ BTEST(dbg, dev_write) {
 
 	value = buxn_vm_dev_load2(vm, 0x00);
 	BTEST_ASSERT_EQ(SHORT_HEX_FMT, value, 0x6942);
+
+	BTEST_ASSERT_EQ(SHORT_HEX_FMT, fixture.dbg_value, 0x03);
+	BTEST_ASSERT_EQ(SHORT_HEX_FMT, vm->device[0x0e], 0x01);
 }
 
 BTEST(dbg, step_over) {
