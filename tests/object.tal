@@ -1,0 +1,12 @@
+@on-reset
+	Object/get-x
+	BRK
+
+@Object
+	&x 42
+	&get-x
+		;/x LDA
+		JMP2r
+	&set-x
+		;/x STA
+		JMP2r

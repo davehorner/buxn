@@ -1,0 +1,15 @@
+|90 @Mouse
+	&vector $2
+	&x $2 &y $2
+	&state $1
+	&pad $3
+	&modx $2 &mody $2
+
+|0100 @on-reset ( -> )
+	;on-mouse .Mouse/vector DEO2
+	BRK
+
+@on-mouse
+	.Mouse/x DEI2
+	.Mouse/y DEI2
+	BRK

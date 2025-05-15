@@ -11,6 +11,7 @@
 #include "../src/dbg/wire.h"
 #include "../src/dbg/protocol.h"
 #include "../src/dbg/transports/fd.h"
+#include "resources.h"
 
 #define BTEST_ASSERT_REL(FMT, VALUE, REL, EXPECTATION) \
 	BTEST_ASSERT_EX(VALUE REL EXPECTATION, #VALUE " = " FMT, VALUE)
@@ -119,20 +120,15 @@ static btest_suite_t dbg = {
 };
 
 static inline bool
-load_str(buxn_vm_t* vm, const char* str, const char* file, int line) {
+load_file(buxn_vm_t* vm, const char* filename) {
 	barena_snapshot_t snapshot = barena_snapshot(&fixture.arena);
-
-	int size = snprintf(NULL, 0, "%s:%d", file, line);
-	char* filename = barena_malloc(&fixture.arena, size + 1);
-	snprintf(filename, size + 1, "%s:%d", file, line);
 
 	buxn_asm_ctx_t basm = {
 		.arena = &fixture.arena,
 		.vfs = (buxn_vfs_entry_t[]) {
-			{
-				.name = filename,
-				.content = { .data = (const unsigned char*)str, .size = strlen(str) }
-			},
+			{ .name = "door.tal", .content = XINCBIN_GET(door_tal) },
+			{ .name = "object.tal", .content = XINCBIN_GET(object_tal) },
+			{ .name = "vector.tal", .content = XINCBIN_GET(vector_tal) },
 			{ 0 },
 		},
 	};
@@ -146,8 +142,6 @@ load_str(buxn_vm_t* vm, const char* str, const char* file, int line) {
 
 	return result;
 }
-
-#define load_str(vm, str) load_str(vm, str, __FILE__, __LINE__)
 
 static int
 vm_thread_entry(void* userdata) {
@@ -222,8 +216,7 @@ dbg_command(buxn_dbg_cmd_t cmd) {
 
 BTEST(dbg, pause) {
 	buxn_vm_t* vm = fixture.vm;
-
-	BTEST_ASSERT(load_str(fixture.vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	BTEST_ASSERT(load_file(vm, "door.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -249,7 +242,7 @@ BTEST(dbg, pause) {
 
 BTEST(dbg, mem_exec_brkp) {
 	buxn_vm_t* vm = fixture.vm;
-	BTEST_ASSERT(load_str(vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	BTEST_ASSERT(load_file(vm, "door.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -296,8 +289,7 @@ BTEST(dbg, mem_exec_brkp) {
 
 BTEST(dbg, mem_exec_brkp_no_pause) {
 	buxn_vm_t* vm = fixture.vm;
-
-	BTEST_ASSERT(load_str(fixture.vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	BTEST_ASSERT(load_file(vm, "door.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -339,8 +331,7 @@ BTEST(dbg, mem_exec_brkp_no_pause) {
 
 BTEST(dbg, mem_store_brkp) {
 	buxn_vm_t* vm = fixture.vm;
-
-	BTEST_ASSERT(load_str(fixture.vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	BTEST_ASSERT(load_file(vm, "door.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -419,18 +410,7 @@ BTEST(dbg, mem_store_brkp) {
 
 BTEST(dbg, mem_load_brkp) {
 	buxn_vm_t* vm = fixture.vm;
-	BTEST_ASSERT(
-		load_str(
-			vm,
-			"@on-reset\n"
-			"  Object/get-x\n"
-			"  BRK\n"
-			"@Object\n"
-			"  &x 42\n"
-			"  &get-x ;/x LDA JMP2r\n"
-			"  &set-x ;/x STA JMP2r\n"
-		)
-	);
+	BTEST_ASSERT(load_file(vm, "object.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -496,19 +476,7 @@ BTEST(dbg, mem_load_brkp) {
 
 BTEST(dbg, dev_exec_brkp) {
 	buxn_vm_t* vm = fixture.vm;
-	BTEST_ASSERT(
-		load_str(
-			vm,
-			"|90 @Mouse &vector $2 &x $2 &y $2 &state $1 &pad $3 &modx $2 &mody $2\n"
-			"|0100 @on-reset\n"
-			"  ;on-mouse .Mouse/vector DEO2\n"
-			"  BRK\n"
-			"@on-mouse\n"
-			"  .Mouse/x DEI2\n"
-			"  .Mouse/y DEI2\n"
-			"  BRK\n"
-		)
-	);
+	BTEST_ASSERT(load_file(vm, "vector.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -547,10 +515,55 @@ BTEST(dbg, dev_exec_brkp) {
 	thrd_join(mouse_thread, &res);
 }
 
+BTEST(dbg, dev_load_brkp) {
+	buxn_vm_t* vm = fixture.vm;
+	BTEST_ASSERT(load_file(vm, "vector.tal"));
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_BRKP_SET,
+			.brkp_set = {
+				.id = 0,
+				.brkp = {
+					.addr = 0x91,  // .Mouse/vector
+					.mask = BUXN_DBG_BRKP_STORE | BUXN_DBG_BRKP_DEV | BUXN_DBG_BRKP_PAUSE,
+				},
+			},
+		});
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_BEGIN_BREAK(0);
+	{
+		uint16_t pc;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_PC,
+				.pc = &pc,
+			},
+		});
+		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, BUXN_RESET_VECTOR + 5);  // DEO2
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_END_EXEC();
+}
+
 BTEST(dbg, mem_write) {
 	buxn_vm_t* vm = fixture.vm;
-
-	BTEST_ASSERT(load_str(fixture.vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	BTEST_ASSERT(load_file(vm, "door.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -581,8 +594,7 @@ BTEST(dbg, mem_write) {
 
 BTEST(dbg, mem_batch_read) {
 	buxn_vm_t* vm = fixture.vm;
-
-	BTEST_ASSERT(load_str(fixture.vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	BTEST_ASSERT(load_file(vm, "door.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -615,19 +627,7 @@ BTEST(dbg, mem_batch_read) {
 
 BTEST(dbg, step_over) {
 	buxn_vm_t* vm = fixture.vm;
-
-	BTEST_ASSERT(
-		load_str(
-			vm,
-			"@on-reset\n"
-			"  Object/get-x\n"
-			"  BRK\n"
-			"@Object\n"
-			"  &x 42\n"
-			"  &get-x ;/x LDA JMP2r\n"
-			"  &set-x ;/x STA JMP2r\n"
-		)
-	);
+	BTEST_ASSERT(load_file(vm, "object.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -663,19 +663,7 @@ BTEST(dbg, step_over) {
 
 BTEST(dbg, step_in_and_out) {
 	buxn_vm_t* vm = fixture.vm;
-
-	BTEST_ASSERT(
-		load_str(
-			vm,
-			"@on-reset\n"
-			"  Object/get-x\n"
-			"  BRK\n"
-			"@Object\n"
-			"  &x 42\n"
-			"  &get-x ;/x LDA JMP2r\n"
-			"  &set-x ;/x STA JMP2r\n"
-		)
-	);
+	BTEST_ASSERT(load_file(vm, "object.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -742,19 +730,7 @@ BTEST(dbg, step_in_and_out) {
 
 BTEST(dbg, step_out_on_top) {
 	buxn_vm_t* vm = fixture.vm;
-
-	BTEST_ASSERT(
-		load_str(
-			vm,
-			"@on-reset\n"
-			"  Object/get-x\n"
-			"  BRK\n"
-			"@Object\n"
-			"  &x 42\n"
-			"  &get-x ;/x LDA JMP2r\n"
-			"  &set-x ;/x STA JMP2r\n"
-		)
-	);
+	BTEST_ASSERT(load_file(vm, "object.tal"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -847,10 +823,9 @@ BTEST(dbg, brkp_compaction) {
 
 BTEST(dbg, should_hook) {
 	buxn_vm_t* vm = fixture.vm;
-	BTEST_ASSERT(load_str(vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	BTEST_ASSERT(load_file(vm, "door.tal"));
 
 	BTEST_ASSERT(buxn_dbg_should_hook(fixture.dbg));
-
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
