@@ -778,3 +778,52 @@ BTEST(dbg, brkp_compaction) {
 
 	ASSERT_END_EXEC();
 }
+
+BTEST(dbg, should_hook) {
+	buxn_vm_t* vm = fixture.vm;
+	BTEST_ASSERT(load_str(vm, "[ LIT &door $1 ] INCk ,&door STR"));
+
+	BTEST_ASSERT(buxn_dbg_should_hook(fixture.dbg));
+
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_BRKP_SET,
+			.brkp_set = {
+				.id = 0,
+				.brkp = {
+					.addr = 0x0102,  // INCk
+					.mask = BUXN_DBG_BRKP_EXEC | BUXN_DBG_BRKP_PAUSE,
+				},
+			},
+		});
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	BTEST_ASSERT(buxn_dbg_should_hook(fixture.dbg));
+
+	ASSERT_BEGIN_BREAK(0);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_BRKP_SET,
+			.brkp_set = { .id = 0 },
+		});
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	BTEST_ASSERT(!buxn_dbg_should_hook(fixture.dbg));
+
+	ASSERT_END_EXEC();
+}

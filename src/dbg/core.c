@@ -54,7 +54,7 @@ buxn_dbg_request_pause(buxn_dbg_t* dbg) {
 bool
 buxn_dbg_should_hook(buxn_dbg_t* dbg) {
 	return dbg->standing_cmd.type != BUXN_DBG_STANDING_CMD_EXECUTE
-		&& dbg->nbrkps != 0;
+		|| dbg->nbrkps != 0;
 }
 
 void
