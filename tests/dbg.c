@@ -11,8 +11,14 @@
 #include "../src/dbg/protocol.h"
 #include "../src/dbg/transports/fd.h"
 
-#define BTEST_ASSERT_EQUAL(FMT, VALUE, EXPECTATION) \
-	BTEST_ASSERT_EX(VALUE == EXPECTATION, #VALUE " = " FMT, VALUE)
+#define BTEST_ASSERT_REL(FMT, VALUE, REL, EXPECTATION) \
+	BTEST_ASSERT_EX(VALUE REL EXPECTATION, #VALUE " = " FMT, VALUE)
+
+#define BTEST_ASSERT_EQ(FMT, VALUE, EXPECTATION) \
+	BTEST_ASSERT_REL(FMT, VALUE, ==, EXPECTATION)
+
+#define BYTE_HEX_FMT "0x%02x"
+#define SHORT_HEX_FMT "0x%04x"
 
 typedef struct {
 	buxn_dbg_wire_t wire;
@@ -166,37 +172,37 @@ dbg_command(buxn_dbg_cmd_t cmd) {
 
 	BTEST_ASSERT(buxn_dbg_protocol_msg(fixture.dbg_conn.wire.out, fixture.dbg_conn.wire.buffer, &msg) == BSERIAL_OK);
 	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
-	BTEST_ASSERT_EX(msg.type == BUXN_DBG_MSG_COMMAND_REP, "msg.type = %d", msg.type);
+	BTEST_ASSERT_EQ("%d", msg.type, BUXN_DBG_MSG_COMMAND_REP);
 }
 
 #define ASSERT_BEGIN_EXEC(ADDR) \
 	do { \
 		buxn_dbg_msg_t msg; \
 		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
-		BTEST_ASSERT_EQUAL("%d", msg.type, BUXN_DBG_MSG_BEGIN_EXEC); \
-		BTEST_ASSERT_EQUAL("0x%04x", msg.addr, ADDR); \
+		BTEST_ASSERT_EQ("%d", msg.type, BUXN_DBG_MSG_BEGIN_EXEC); \
+		BTEST_ASSERT_EQ(SHORT_HEX_FMT, msg.addr, ADDR); \
 	} while (0)
 
 #define ASSERT_BEGIN_BREAK(BRKP) \
 	do { \
 		buxn_dbg_msg_t msg; \
 		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
-		BTEST_ASSERT_EQUAL("%d", msg.type, BUXN_DBG_MSG_BEGIN_BREAK); \
-		BTEST_ASSERT_EQUAL("%d", msg.brkp_id, BRKP); \
+		BTEST_ASSERT_EQ("%d", msg.type, BUXN_DBG_MSG_BEGIN_BREAK); \
+		BTEST_ASSERT_EQ("%d", msg.brkp_id, BRKP); \
 	} while (0)
 
 #define ASSERT_END_BREAK() \
 	do { \
 		buxn_dbg_msg_t msg; \
 		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
-		BTEST_ASSERT_EQUAL("%d", msg.type, BUXN_DBG_MSG_END_BREAK); \
+		BTEST_ASSERT_EQ("%d", msg.type, BUXN_DBG_MSG_END_BREAK); \
 	} while (0)
 
 #define ASSERT_END_EXEC() \
 	do { \
 		buxn_dbg_msg_t msg; \
 		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
-		BTEST_ASSERT_EQUAL("%d", msg.type, BUXN_DBG_MSG_END_EXEC); \
+		BTEST_ASSERT_EQ("%d", msg.type, BUXN_DBG_MSG_END_EXEC); \
 	} while (0)
 
 BTEST(dbg, pause) {
@@ -216,7 +222,7 @@ BTEST(dbg, pause) {
 			.pc = &pc,
 		},
 	});
-	BTEST_ASSERT_EX(pc == BUXN_RESET_VECTOR, "pc = %d", pc);
+	BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, BUXN_RESET_VECTOR);
 
 	dbg_command((buxn_dbg_cmd_t){
 		.type = BUXN_DBG_CMD_RESUME,
@@ -255,7 +261,7 @@ BTEST(dbg, mem_exec_brkp) {
 				.nbrkps = &nbrkps,
 			},
 		});
-		BTEST_ASSERT_EX(nbrkps == 1, "nbrkps = %d", nbrkps);
+		BTEST_ASSERT_EQ("%d", nbrkps, 1);
 
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_RESUME,
@@ -303,7 +309,7 @@ BTEST(dbg, mem_exec_brkp_no_pause) {
 				.nbrkps = &nbrkps,
 			},
 		});
-		BTEST_ASSERT_EX(nbrkps == 1, "nbrkps = %d", nbrkps);
+		BTEST_ASSERT_EQ("%d", nbrkps, 1);
 
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_RESUME,
@@ -354,7 +360,7 @@ BTEST(dbg, mem_store_brkp) {
 				.pc = &pc,
 			},
 		});
-		BTEST_ASSERT_EX(pc == 0x0105, "pc = %d", pc);  // STR
+		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, 0x0105);  // STR
 
 		uint8_t byte;
 		dbg_command((buxn_dbg_cmd_t){
@@ -366,7 +372,7 @@ BTEST(dbg, mem_store_brkp) {
 			},
 		});
 		// The instruction is not executed yet
-		BTEST_ASSERT_EX(byte == 0x00, "byte = %d", byte);
+		BTEST_ASSERT_EQ(BYTE_HEX_FMT, byte, 0x00);
 
 		// Let it execute
 		dbg_command((buxn_dbg_cmd_t){
@@ -386,7 +392,7 @@ BTEST(dbg, mem_store_brkp) {
 				.values = &byte,
 			},
 		});
-		BTEST_ASSERT_EX(byte == 0x01, "byte = %d", byte);
+		BTEST_ASSERT_EQ(BYTE_HEX_FMT, byte, 0x01);
 
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_RESUME,
@@ -445,7 +451,7 @@ BTEST(dbg, mem_load_brkp) {
 				.pc = &pc,
 			},
 		});
-		BTEST_ASSERT_EX(pc == 0x0108, "pc = %d", pc);  // LDA
+		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, 0x0108);  // LDA
 
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_STEP_OVER,
@@ -463,8 +469,8 @@ BTEST(dbg, mem_load_brkp) {
 				.stack = &stack,
 			},
 		});
-		BTEST_ASSERT_EQUAL("%d", stack.pointer, 1);
-		BTEST_ASSERT_EQUAL("0x%02x", stack.data[0], 0x42);
+		BTEST_ASSERT_EQ("%d", stack.pointer, 1);
+		BTEST_ASSERT_EQ(BYTE_HEX_FMT, stack.data[0], 0x42);
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_RESUME,
 		});
@@ -503,7 +509,7 @@ BTEST(dbg, mem_write) {
 	ASSERT_END_EXEC();
 
 	uint8_t byte = vm->memory[0x101];
-	BTEST_ASSERT_EX(byte == 0x02, "byte = %d", byte);
+	BTEST_ASSERT_EQ(BYTE_HEX_FMT, byte, 0x02);
 }
 
 BTEST(dbg, mem_batch_read) {
