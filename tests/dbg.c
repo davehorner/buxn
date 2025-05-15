@@ -56,7 +56,9 @@ init_dbg_conn(debug_conn_t* conn, int fd) {
 
 static void
 cleanup_dbg_conn(debug_conn_t* conn) {
-	close(conn->transport.fd);
+	// shutdown ensures that read/write will fail and the vm will bail out of
+	// debug wait regardless of status
+	shutdown(conn->transport.fd, SHUT_RDWR);
 }
 
 static void
@@ -86,11 +88,11 @@ init_per_test(void) {
 
 static void
 cleanup_per_test(void) {
-	int status;
-	thrd_join(fixture.vm_thread, &status);
-
 	cleanup_dbg_conn(&fixture.dbg_conn);
 	cleanup_dbg_conn(&fixture.vm_conn);
+
+	int status;
+	thrd_join(fixture.vm_thread, &status);
 
 	barena_reset(&fixture.arena);
 }
@@ -161,7 +163,7 @@ dbg_command(buxn_dbg_cmd_t cmd) {
 
 	BTEST_ASSERT(buxn_dbg_protocol_msg(fixture.dbg_conn.wire.out, fixture.dbg_conn.wire.buffer, &msg) == BSERIAL_OK);
 	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
-	BTEST_ASSERT(msg.type == BUXN_DBG_MSG_COMMAND_REP);
+	BTEST_ASSERT_EX(msg.type == BUXN_DBG_MSG_COMMAND_REP, "msg.type = %d", msg.type);
 }
 
 BTEST(dbg, pause) {
@@ -359,8 +361,40 @@ BTEST(dbg, mem_store_brkp) {
 			.pc = &pc,
 		},
 	});
-	BTEST_ASSERT_EX(pc == 0x105, "pc = %d", pc);  // STR
-	BTEST_ASSERT(vm->memory[0x105] = 0x13);
+	BTEST_ASSERT_EX(pc == 0x0105, "pc = %d", pc);  // STR
+
+	uint8_t byte;
+	dbg_command((buxn_dbg_cmd_t){
+		.type = BUXN_DBG_CMD_MEM_READ,
+		.mem_read = {
+			.addr = 0x0101,
+			.size = 1,
+			.values = &byte,
+		},
+	});
+	// The instruction is not executed yet
+	BTEST_ASSERT_EX(byte == 0x00, "byte = %d", byte);
+
+	// Let it execute
+	dbg_command((buxn_dbg_cmd_t){
+		.type = BUXN_DBG_CMD_STEP_OVER,
+	});
+
+	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
+	BTEST_ASSERT(msg.type == BUXN_DBG_MSG_END_BREAK);
+	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
+	BTEST_ASSERT(msg.type == BUXN_DBG_MSG_BEGIN_BREAK);
+	BTEST_ASSERT_EX(msg.brkp_id == BUXN_DBG_BRKP_NONE, "msg.brkp_id = %d", msg.brkp_id);
+
+	dbg_command((buxn_dbg_cmd_t){
+		.type = BUXN_DBG_CMD_MEM_READ,
+		.mem_read = {
+			.addr = 0x0101,
+			.size = 1,
+			.values = &byte,
+		},
+	});
+	BTEST_ASSERT_EX(byte == 0x01, "byte = %d", byte);
 
 	dbg_command((buxn_dbg_cmd_t){
 		.type = BUXN_DBG_CMD_RESUME,

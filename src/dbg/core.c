@@ -300,13 +300,13 @@ buxn_dbg_hook(buxn_dbg_t* dbg, struct buxn_vm_s* vm, uint16_t pc) {
 				case BUXN_DBG_CMD_MEM_READ:
 					for (uint16_t i = 0; i < cmd.mem_read.size; ++i) {
 						uint16_t read_addr = cmd.mem_read.addr + i;  // Ensure wrap around
-						cmd.mem_read.values[read_addr] = vm->memory[read_addr];
+						cmd.mem_read.values[i] = vm->memory[read_addr];
 					}
 					break;
 				case BUXN_DBG_CMD_MEM_WRITE:
 					for (uint16_t i = 0; i < cmd.mem_write.size; ++i) {
 						uint16_t write_addr = cmd.mem_write.addr + i;  // Ensure wrap around
-						vm->memory[write_addr] = cmd.mem_write.values[write_addr];
+						vm->memory[i] = cmd.mem_write.values[write_addr];
 					}
 					break;
 			}
