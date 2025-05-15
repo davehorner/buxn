@@ -741,6 +741,36 @@ BTEST(dbg, dev_read) {
 	ASSERT_END_EXEC();
 }
 
+BTEST(dbg, dev_write) {
+	buxn_vm_t* vm = fixture.vm;
+	run_vm_async(vm);
+
+	uint16_t value = buxn_vm_dev_load2(vm, 0x00);
+	BTEST_ASSERT_EQ(SHORT_HEX_FMT, value, 0x0000);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		uint8_t values[2] = { 0x69, 0x42 };
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_DEV_WRITE,
+			.dev_read = {
+				.addr = 0x00,
+				.size = 2,
+				.values = values,
+			},
+		});
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+	ASSERT_END_EXEC();
+
+	value = buxn_vm_dev_load2(vm, 0x00);
+	BTEST_ASSERT_EQ(SHORT_HEX_FMT, value, 0x6942);
+}
+
 BTEST(dbg, step_over) {
 	buxn_vm_t* vm = fixture.vm;
 	BTEST_ASSERT(load_file(vm, "object.tal"));
