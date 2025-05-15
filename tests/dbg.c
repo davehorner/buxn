@@ -358,7 +358,7 @@ BTEST(dbg, mem_store_brkp) {
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_MEM_READ,
 			.mem_read = {
-				.addr = 0x0101,
+				.addr = 0x0101,  // &door
 				.size = 1,
 				.values = &byte,
 			},
@@ -379,7 +379,7 @@ BTEST(dbg, mem_store_brkp) {
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_MEM_READ,
 			.mem_read = {
-				.addr = 0x0101,
+				.addr = 0x0101,  // &door
 				.size = 1,
 				.values = &byte,
 			},
@@ -393,4 +393,36 @@ BTEST(dbg, mem_store_brkp) {
 	ASSERT_END_BREAK();
 
 	ASSERT_END_EXEC();
+}
+
+BTEST(dbg, mem_write) {
+	buxn_vm_t* vm = fixture.vm;
+
+	BTEST_ASSERT(load_str(fixture.vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		uint8_t byte = 0x01;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_MEM_WRITE,
+			.mem_write = {
+				.addr = 0x0101,  // &door
+				.size = 1,
+				.values = &byte,
+			},
+		});
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_END_EXEC();
+
+	uint8_t byte = vm->memory[0x101];
+	BTEST_ASSERT_EX(byte == 0x02, "byte = %d", byte);
 }
