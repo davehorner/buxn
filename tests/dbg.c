@@ -504,6 +504,16 @@ BTEST(dbg, dev_exec_brkp) {
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR + 7);  // @on-mouse
 	ASSERT_BEGIN_BREAK(0);
 	{
+		uint16_t pc;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_PC,
+				.pc = &pc,
+			},
+		});
+		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, BUXN_RESET_VECTOR + 7);  // @on-mouse
+
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_RESUME,
 		});
@@ -516,6 +526,82 @@ BTEST(dbg, dev_exec_brkp) {
 }
 
 BTEST(dbg, dev_load_brkp) {
+	buxn_vm_t* vm = fixture.vm;
+	BTEST_ASSERT(load_file(vm, "vector.tal"));
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_BRKP_SET,
+			.brkp_set = {
+				.id = 0,
+				.brkp = {
+					.addr = 0x92,  // .Mouse/x
+					.mask = BUXN_DBG_BRKP_LOAD | BUXN_DBG_BRKP_DEV | BUXN_DBG_BRKP_PAUSE,
+				},
+			},
+		});
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+	ASSERT_END_EXEC();
+
+	fixture.devices.mouse.x = 42;
+	fixture.devices.mouse.y = 69;
+
+	thrd_t mouse_thread = run_mouse_vector_async(vm);
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR + 7);  // @on-mouse
+
+	ASSERT_BEGIN_BREAK(0);
+	{
+		uint16_t pc;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_PC,
+				.pc = &pc,
+			},
+		});
+
+		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, BUXN_RESET_VECTOR + 9);  // DEI
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_STEP_OVER,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		buxn_dbg_stack_info_t stack;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_WST,
+				.stack = &stack,
+			},
+		});
+		BTEST_ASSERT_EQ("%d", stack.pointer, 2);
+		BTEST_ASSERT_EQ(BYTE_HEX_FMT, stack.data[0], 0x00);
+		BTEST_ASSERT_EQ("%d", stack.data[1], 42);
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_END_EXEC();
+
+	int res;
+	thrd_join(mouse_thread, &res);
+}
+
+BTEST(dbg, dev_store_brkp) {
 	buxn_vm_t* vm = fixture.vm;
 	BTEST_ASSERT(load_file(vm, "vector.tal"));
 	run_vm_async(vm);
