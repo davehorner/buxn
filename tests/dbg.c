@@ -538,7 +538,7 @@ BTEST(dbg, dev_load_brkp) {
 			.brkp_set = {
 				.id = 0,
 				.brkp = {
-					.addr = 0x92,  // .Mouse/x
+					.addr = 0x92,  // Mouse/x
 					.mask = BUXN_DBG_BRKP_LOAD | BUXN_DBG_BRKP_DEV | BUXN_DBG_BRKP_PAUSE,
 				},
 			},
@@ -709,6 +709,36 @@ BTEST(dbg, mem_batch_read) {
 
 	rom[1] = 0x01;  // &door has been overwritten
 	BTEST_ASSERT((memcmp(rom, vm->memory + BUXN_RESET_VECTOR, sizeof(rom)) == 0));
+}
+
+BTEST(dbg, dev_read) {
+	buxn_vm_t* vm = fixture.vm;
+	run_vm_async(vm);
+
+	fixture.devices.mouse.x = 42;
+	fixture.devices.mouse.y = 69;
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		uint8_t values[2];
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_DEV_READ,
+			.dev_read = {
+				.addr = 0x92,  // Mouse/x
+				.size = 2,
+				.values = values,
+			},
+		});
+		uint16_t mouse_x = (values[0] << 8) | values[1];
+		BTEST_ASSERT_EQ("%d", mouse_x, 42);
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+	ASSERT_END_EXEC();
 }
 
 BTEST(dbg, step_over) {
