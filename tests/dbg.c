@@ -426,3 +426,37 @@ BTEST(dbg, mem_write) {
 	uint8_t byte = vm->memory[0x101];
 	BTEST_ASSERT_EX(byte == 0x02, "byte = %d", byte);
 }
+
+BTEST(dbg, mem_batch_read) {
+	buxn_vm_t* vm = fixture.vm;
+
+	BTEST_ASSERT(load_str(fixture.vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+
+	uint8_t rom[7];
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_MEM_READ,
+			.mem_write = {
+				.addr = BUXN_RESET_VECTOR,
+				.size = sizeof(rom),
+				.values = rom,
+			},
+		});
+
+		BTEST_ASSERT((memcmp(rom, vm->memory + BUXN_RESET_VECTOR, sizeof(rom)) == 0));
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_END_EXEC();
+
+	rom[1] = 0x01;  // &door has been overwritten
+	BTEST_ASSERT((memcmp(rom, vm->memory + BUXN_RESET_VECTOR, sizeof(rom)) == 0));
+}
