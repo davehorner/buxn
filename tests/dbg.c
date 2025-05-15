@@ -471,6 +471,7 @@ BTEST(dbg, mem_load_brkp) {
 		});
 		BTEST_ASSERT_EQ("%d", stack.pointer, 1);
 		BTEST_ASSERT_EQ(BYTE_HEX_FMT, stack.data[0], 0x42);
+
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_RESUME,
 		});
@@ -632,6 +633,19 @@ BTEST(dbg, step_in_and_out) {
 			},
 		});
 		BTEST_ASSERT_EQ(SHORT_HEX_FMT, pc, BUXN_RESET_VECTOR + 5);  // ;/x
+
+		// The return stack should contain the address of BRK
+		buxn_dbg_stack_info_t stack;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_RST,
+				.stack = &stack,
+			},
+		});
+		BTEST_ASSERT_EQ("%d", stack.pointer, 2);
+		BTEST_ASSERT_EQ(BYTE_HEX_FMT, stack.data[0], 0x01);  // BRK
+		BTEST_ASSERT_EQ(BYTE_HEX_FMT, stack.data[1], 0x03);
 
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_STEP_OUT,
