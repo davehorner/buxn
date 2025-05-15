@@ -703,3 +703,78 @@ BTEST(dbg, step_out_on_top) {
 
 	ASSERT_END_EXEC();
 }
+
+BTEST(dbg, brkp_compaction) {
+	buxn_vm_t* vm = fixture.vm;
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_BRKP_SET,
+			.brkp_set = {
+				.id = 0,
+				.brkp = {
+					.addr = 0x0100,
+					.mask = BUXN_DBG_BRKP_EXEC,
+				},
+			},
+		});
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_BRKP_SET,
+			.brkp_set = {
+				.id = 1,
+				.brkp = {
+					.addr = 0x0101,
+					.mask = BUXN_DBG_BRKP_EXEC,
+				},
+			},
+		});
+
+		uint8_t nbrkps;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_NBRKPS,
+				.nbrkps = &nbrkps,
+			},
+		});
+		BTEST_ASSERT_EQ("%d", nbrkps, 2);
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_BRKP_SET,
+			.brkp_set = { .id = 0 },
+		});
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_NBRKPS,
+				.nbrkps = &nbrkps,
+			},
+		});
+		BTEST_ASSERT_EQ("%d", nbrkps, 2);
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_BRKP_SET,
+			.brkp_set = { .id = 1 },
+		});
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_NBRKPS,
+				.nbrkps = &nbrkps,
+			},
+		});
+		BTEST_ASSERT_EQ("%d", nbrkps, 0);
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_END_EXEC();
+}
