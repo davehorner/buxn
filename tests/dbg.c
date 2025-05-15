@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include "common.h"
 #include "../src/vm/vm.h"
+#include "../src/devices/mouse.h"
 #include "../src/dbg/core.h"
 #include "../src/dbg/wire.h"
 #include "../src/dbg/protocol.h"
@@ -87,6 +88,7 @@ init_per_test(void) {
 	buxn_dbg_request_pause(fixture.dbg);
 
 	buxn_console_init(fixture.vm, &fixture.devices.console, 0, NULL);
+	fixture.devices.mouse = (buxn_mouse_t){ 0 };
 
 	fixture.vm = barena_malloc(&fixture.arena, sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE);
 	fixture.vm->memory_size = BUXN_MEMORY_BANK_SIZE;
@@ -156,6 +158,19 @@ vm_thread_entry(void* userdata) {
 static void
 run_vm_async(buxn_vm_t* vm){
 	thrd_create(&fixture.vm_thread, vm_thread_entry, vm);
+}
+
+static int
+mouse_vector_entry(void* userdata) {
+	buxn_mouse_update(userdata);
+	return 0;
+}
+
+static thrd_t
+run_mouse_vector_async(buxn_vm_t* vm){
+	thrd_t id;
+	thrd_create(&id, mouse_vector_entry, vm);
+	return id;
 }
 
 static bserial_status_t
@@ -234,8 +249,7 @@ BTEST(dbg, pause) {
 
 BTEST(dbg, mem_exec_brkp) {
 	buxn_vm_t* vm = fixture.vm;
-
-	BTEST_ASSERT(load_str(fixture.vm, "[ LIT &door $1 ] INCk ,&door STR"));
+	BTEST_ASSERT(load_str(vm, "[ LIT &door $1 ] INCk ,&door STR"));
 	run_vm_async(vm);
 
 	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
@@ -405,7 +419,6 @@ BTEST(dbg, mem_store_brkp) {
 
 BTEST(dbg, mem_load_brkp) {
 	buxn_vm_t* vm = fixture.vm;
-
 	BTEST_ASSERT(
 		load_str(
 			vm,
@@ -479,6 +492,59 @@ BTEST(dbg, mem_load_brkp) {
 	ASSERT_END_BREAK();
 
 	ASSERT_END_EXEC();
+}
+
+BTEST(dbg, dev_exec_brkp) {
+	buxn_vm_t* vm = fixture.vm;
+	BTEST_ASSERT(
+		load_str(
+			vm,
+			"|90 @Mouse &vector $2 &x $2 &y $2 &state $1 &pad $3 &modx $2 &mody $2\n"
+			"|0100 @on-reset\n"
+			"  ;on-mouse .Mouse/vector DEO2\n"
+			"  BRK\n"
+			"@on-mouse\n"
+			"  .Mouse/x DEI2\n"
+			"  .Mouse/y DEI2\n"
+			"  BRK\n"
+		)
+	);
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_BRKP_SET,
+			.brkp_set = {
+				.id = 0,
+				.brkp = {
+					.addr = 0x90,  // .Mouse/vector
+					.mask = BUXN_DBG_BRKP_EXEC | BUXN_DBG_BRKP_DEV | BUXN_DBG_BRKP_PAUSE,
+				},
+			},
+		});
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+	ASSERT_END_EXEC();
+
+	thrd_t mouse_thread = run_mouse_vector_async(vm);
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR + 7);  // @on-mouse
+	ASSERT_BEGIN_BREAK(0);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+	ASSERT_END_EXEC();
+
+	int res;
+	thrd_join(mouse_thread, &res);
 }
 
 BTEST(dbg, mem_write) {

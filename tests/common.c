@@ -99,6 +99,8 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 			return buxn_system_dei(vm, address);
 		case BUXN_DEVICE_CONSOLE:
 			return buxn_console_dei(vm, &devices->console, address);
+		case BUXN_DEVICE_MOUSE:
+			return buxn_mouse_dei(vm, &devices->mouse, address);
 		default:
 			return vm->device[address];
 	}
@@ -114,6 +116,9 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 			break;
 		case BUXN_DEVICE_CONSOLE:
 			buxn_console_deo(vm, &devices->console, address);
+			break;
+		case BUXN_DEVICE_MOUSE:
+			buxn_mouse_deo(vm, &devices->mouse, address);
 			break;
 	}
 }

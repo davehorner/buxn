@@ -5,6 +5,7 @@
 #include <barena.h>
 #include "../src/asm/asm.h"
 #include "../src/devices/console.h"
+#include "../src/devices/mouse.h"
 
 typedef struct {
 	const char* name;
@@ -25,6 +26,7 @@ struct buxn_asm_ctx_s {
 
 typedef struct {
 	buxn_console_t console;
+	buxn_mouse_t mouse;
 } buxn_test_devices_t;
 
 #endif

@@ -111,7 +111,7 @@ build_linux() {
 		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
 		${OBJ_DIR}/src/vm/vm.c.o \
-		${OBJ_DIR}/src/devices/{system,console}.c.o \
+		${OBJ_DIR}/src/devices/{system,console,mouse}.c.o \
 		-o ${BIN_DIR}/tests
 
 	echo "Done"
@@ -376,7 +376,7 @@ build_cosmo() {
 		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
 		${OBJ_DIR}/src/vm/vm.c.o \
-		${OBJ_DIR}/src/devices/{system,console}.c.o \
+		${OBJ_DIR}/src/devices/{system,console,mouse}.c.o \
 		-o ${BIN_DIR}/tests
 
 	echo "Done"
