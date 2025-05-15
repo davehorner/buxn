@@ -11,6 +11,9 @@
 #include "../src/dbg/protocol.h"
 #include "../src/dbg/transports/fd.h"
 
+#define BTEST_ASSERT_EQUAL(FMT, VALUE, EXPECTATION) \
+	BTEST_ASSERT_EX(VALUE == EXPECTATION, #VALUE " = " FMT, VALUE)
+
 typedef struct {
 	buxn_dbg_wire_t wire;
 	buxn_dbg_transport_fd_t transport;
@@ -170,30 +173,30 @@ dbg_command(buxn_dbg_cmd_t cmd) {
 	do { \
 		buxn_dbg_msg_t msg; \
 		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
-		BTEST_ASSERT(msg.type == BUXN_DBG_MSG_BEGIN_EXEC); \
-		BTEST_ASSERT_EX(msg.addr == ADDR, "msg.addr = 0x%04x", msg.addr); \
+		BTEST_ASSERT_EQUAL("%d", msg.type, BUXN_DBG_MSG_BEGIN_EXEC); \
+		BTEST_ASSERT_EQUAL("0x%04x", msg.addr, ADDR); \
 	} while (0)
 
 #define ASSERT_BEGIN_BREAK(BRKP) \
 	do { \
 		buxn_dbg_msg_t msg; \
 		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
-		BTEST_ASSERT(msg.type == BUXN_DBG_MSG_BEGIN_BREAK); \
-		BTEST_ASSERT_EX(msg.brkp_id == BRKP, "msg.brkp_id = %d", msg.brkp_id); \
+		BTEST_ASSERT_EQUAL("%d", msg.type, BUXN_DBG_MSG_BEGIN_BREAK); \
+		BTEST_ASSERT_EQUAL("%d", msg.brkp_id, BRKP); \
 	} while (0)
 
 #define ASSERT_END_BREAK() \
 	do { \
 		buxn_dbg_msg_t msg; \
 		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
-		BTEST_ASSERT(msg.type == BUXN_DBG_MSG_END_BREAK); \
+		BTEST_ASSERT_EQUAL("%d", msg.type, BUXN_DBG_MSG_END_BREAK); \
 	} while (0)
 
 #define ASSERT_END_EXEC() \
 	do { \
 		buxn_dbg_msg_t msg; \
 		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
-		BTEST_ASSERT(msg.type == BUXN_DBG_MSG_END_EXEC); \
+		BTEST_ASSERT_EQUAL("%d", msg.type, BUXN_DBG_MSG_END_EXEC); \
 	} while (0)
 
 BTEST(dbg, pause) {
@@ -343,7 +346,6 @@ BTEST(dbg, mem_store_brkp) {
 
 	ASSERT_BEGIN_BREAK(1);
 	{
-
 		uint16_t pc;
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_INFO,
@@ -386,6 +388,83 @@ BTEST(dbg, mem_store_brkp) {
 		});
 		BTEST_ASSERT_EX(byte == 0x01, "byte = %d", byte);
 
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_END_EXEC();
+}
+
+BTEST(dbg, mem_load_brkp) {
+	buxn_vm_t* vm = fixture.vm;
+
+	BTEST_ASSERT(
+		load_str(
+			vm,
+			"@on-reset\n"
+			"  Object/get-x\n"
+			"  BRK\n"
+			"@Object\n"
+			"  &x 42\n"
+			"  &get-x ;/x LDA JMP2r\n"
+			"  &set-x ;/x STA JMP2r\n"
+		)
+	);
+	run_vm_async(vm);
+
+	ASSERT_BEGIN_EXEC(BUXN_RESET_VECTOR);
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_BRKP_SET,
+			.brkp_set = {
+				.id = 0,
+				.brkp = {
+					.addr = 0x0104,  // &Object/x
+					.mask = BUXN_DBG_BRKP_LOAD | BUXN_DBG_BRKP_PAUSE | BUXN_DBG_BRKP_MEM,
+				},
+			},
+		});
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_RESUME,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_BEGIN_BREAK(0);
+	{
+		uint16_t pc;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_PC,
+				.pc = &pc,
+			},
+		});
+		BTEST_ASSERT_EX(pc == 0x0108, "pc = %d", pc);  // LDA
+
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_STEP_OVER,
+		});
+	}
+	ASSERT_END_BREAK();
+
+	ASSERT_BEGIN_BREAK(BUXN_DBG_BRKP_NONE);
+	{
+		buxn_dbg_stack_info_t stack;
+		dbg_command((buxn_dbg_cmd_t){
+			.type = BUXN_DBG_CMD_INFO,
+			.info = {
+				.type = BUXN_DBG_INFO_WST,
+				.stack = &stack,
+			},
+		});
+		BTEST_ASSERT_EQUAL("%d", stack.pointer, 1);
+		BTEST_ASSERT_EQUAL("0x%02x", stack.data[0], 0x42);
 		dbg_command((buxn_dbg_cmd_t){
 			.type = BUXN_DBG_CMD_RESUME,
 		});
