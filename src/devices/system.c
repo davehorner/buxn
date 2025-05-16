@@ -30,10 +30,10 @@ buxn_system_deo(struct buxn_vm_s* vm, uint8_t address) {
 					uint32_t bank = buxn_vm_mem_load2(vm, op_addr + 3);
 					uint32_t addr = buxn_vm_mem_load2(vm, op_addr + 5);
 					uint32_t start = bank * ((uint32_t)UINT16_MAX + 1) + addr;
-					start = start < memory_size ? start : memory_size;
+					start = start < memory_size ? start : memory_size - 1;
 
 					uint32_t end = start + length;
-					end = end < memory_size ? end : memory_size;
+					end = end <= memory_size ? end : memory_size;
 
 					uint8_t fill_value = vm->memory[op_addr + 7];
 					memset(vm->memory + start, fill_value, end - start);
@@ -43,16 +43,16 @@ buxn_system_deo(struct buxn_vm_s* vm, uint8_t address) {
 					uint32_t src_bank = buxn_vm_mem_load2(vm, op_addr + 3);
 					uint32_t src_addr = buxn_vm_mem_load2(vm, op_addr + 5);
 					uint32_t src = src_bank * ((uint32_t)UINT16_MAX + 1) + src_addr;
-					src = src < memory_size ? src : memory_size;
+					src = src < memory_size ? src : memory_size - 1;
 
 					uint32_t dst_bank = buxn_vm_mem_load2(vm, op_addr + 7);
 					uint32_t dst_addr = buxn_vm_mem_load2(vm, op_addr + 9);
 					uint32_t dst = dst_bank * ((uint32_t)UINT16_MAX + 1) + dst_addr;
-					dst = dst < memory_size ? dst : memory_size;
+					dst = dst < memory_size ? dst : memory_size - 1;
 
 					uint32_t max = src > dst ? src : dst;
 					uint32_t end = max + length;
-					end = end < memory_size ? end : memory_size;
+					end = end <= memory_size ? end : memory_size;
 					length = end - max;
 
 					if (op == 0x01) {
