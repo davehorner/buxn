@@ -4,9 +4,15 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <limits.h>
 
-#define BUXN_DBG_SIZE      1056
-#define BUXN_DBG_ALIGNMENT 8
+#if UINTPTR_MAX == 0xFFFFFFFF
+#	define BUXN_DBG_SIZE      1044
+#	define BUXN_DBG_ALIGNMENT 4
+#else
+#	define BUXN_DBG_SIZE      1056
+#	define BUXN_DBG_ALIGNMENT 8
+#endif
 
 #define BUXN_DBG_BRKP_MEM     (0 << 0)
 #define BUXN_DBG_BRKP_DEV     (1 << 0)
