@@ -6,9 +6,9 @@
 #include <bhash.h>
 #include <barray.h>
 #include <blog.h>
-#include "asm/asm.h"
+#include <buxn/asm/asm.h>
 #define BSERIAL_STDIO
-#include "dbg/symbol.h"
+#include <buxn/dbg/symbol.h>
 
 typedef struct {
 	int len;

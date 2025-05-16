@@ -1,5 +1,5 @@
-#include "file.h"
-#include "../vm/vm.h"
+#include <buxn/devices/file.h>
+#include <buxn/vm/vm.h>
 #include <string.h>
 
 static char BUXN_FILE_INVALID_HANDLE = 0;

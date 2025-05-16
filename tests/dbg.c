@@ -5,12 +5,12 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include "common.h"
-#include "../src/vm/vm.h"
-#include "../src/devices/mouse.h"
-#include "../src/dbg/core.h"
-#include "../src/dbg/wire.h"
-#include "../src/dbg/protocol.h"
-#include "../src/dbg/transports/fd.h"
+#include <buxn/vm/vm.h>
+#include <buxn/devices/mouse.h>
+#include <buxn/dbg/core.h>
+#include <buxn/dbg/wire.h>
+#include <buxn/dbg/protocol.h>
+#include <buxn/dbg/transports/fd.h>
 #include "resources.h"
 
 #define BTEST_ASSERT_REL(FMT, VALUE, REL, EXPECTATION) \

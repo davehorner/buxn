@@ -1,4 +1,4 @@
-#include "vm.h"
+#include <buxn/vm/vm.h>
 #include <stdbool.h>
 #include <string.h>
 

@@ -3,15 +3,15 @@
 #include <stdbool.h>
 #include <physfs.h>
 #include <errno.h>
-#include "vm/vm.h"
-#include "dbg/core.h"
-#include "dbg/wire.h"
-#include "dbg/transports/fd.h"
+#include <buxn/vm/vm.h>
+#include <buxn/dbg/core.h>
+#include <buxn/dbg/wire.h>
+#include <buxn/dbg/transports/fd.h>
 #include "bembd.h"
-#include "devices/console.h"
-#include "devices/system.h"
-#include "devices/datetime.h"
-#include "devices/file.h"
+#include <buxn/devices/console.h>
+#include <buxn/devices/system.h>
+#include <buxn/devices/datetime.h>
+#include <buxn/devices/file.h>
 
 typedef struct {
 	buxn_dbg_t* dbg;

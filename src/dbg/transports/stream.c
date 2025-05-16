@@ -1,5 +1,5 @@
 #define _GNU_SOURCE
-#include "stream.h"
+#include <buxn/dbg/transports/stream.h>
 #include <stddef.h>
 #include <unistd.h>
 #include <string.h>

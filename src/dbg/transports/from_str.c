@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
-#include "from_str.h"
-#include "fifo.h"
-#include "stream.h"
+#include <buxn/dbg/transports/from_str.h>
+#include <buxn/dbg/transports/fifo.h>
+#include <buxn/dbg/transports/stream.h>
 #include <string.h>
 #include <stdlib.h>
 #include <netdb.h>

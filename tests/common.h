@@ -3,9 +3,9 @@
 
 #include <xincbin.h>
 #include <barena.h>
-#include "../src/asm/asm.h"
-#include "../src/devices/console.h"
-#include "../src/devices/mouse.h"
+#include <buxn/asm/asm.h>
+#include <buxn/devices/console.h>
+#include <buxn/devices/mouse.h>
 
 typedef struct {
 	const char* name;

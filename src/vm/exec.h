@@ -1,6 +1,6 @@
-#include "vm.h"
+#include <buxn/vm/vm.h>
+#include <buxn/vm/opcodes.h>
 #include <stdbool.h>
-#include "opcodes.h"
 
 #define BUXN_LOAD_STATE() \
 	do { \

@@ -1,6 +1,6 @@
-#include "wire.h"
-#include "core.h"
-#include "protocol.h"
+#include <buxn/dbg/wire.h>
+#include <buxn/dbg/core.h>
+#include <buxn/dbg/protocol.h>
 
 static void
 buxn_dbg_wire_maybe_reply(buxn_dbg_wire_t* wire) {

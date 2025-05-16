@@ -1,6 +1,6 @@
 #include <string.h>
-#include "core.h"
-#include "../vm/vm.h"
+#include <buxn/dbg/core.h>
+#include <buxn/vm/vm.h>
 
 typedef enum {
 	BUXN_DBG_STANDING_CMD_EXECUTE,

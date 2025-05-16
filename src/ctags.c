@@ -5,8 +5,8 @@
 #include <barena.h>
 #include <barray.h>
 #include <blog.h>
+#include <buxn/asm/asm.h>
 #include "bflag.h"
-#include "asm/asm.h"
 
 #define FLAG_OUTPUT "-output="
 

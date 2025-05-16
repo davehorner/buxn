@@ -1,6 +1,6 @@
-#include "fd.h"
-#include "../core.h"
-#include "../wire.h"
+#include <buxn/dbg/transports/fd.h>
+#include <buxn/dbg/core.h>
+#include <buxn/dbg/wire.h>
 #include <poll.h>
 #include <unistd.h>
 

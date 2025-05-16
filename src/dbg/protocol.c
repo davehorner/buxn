@@ -1,5 +1,5 @@
-#include "protocol.h"
-#include "../vm/vm.h"
+#include <buxn/dbg/protocol.h>
+#include <buxn/vm/vm.h>
 
 static inline void*
 buxn_dbg_protocol_alloc(buxn_dbg_msg_buffer_t buffer, size_t alignment) {

@@ -1,5 +1,5 @@
-#include "system.h"
-#include "../vm/vm.h"
+#include <buxn/devices/system.h>
+#include <buxn/vm/vm.h>
 #include <string.h>
 
 int

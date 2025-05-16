@@ -10,16 +10,16 @@
 #include <physfs.h>
 #include <math.h>
 #include <stdatomic.h>
-#include "vm/vm.h"
-#include "metadata.h"
-#include "devices/system.h"
-#include "devices/console.h"
-#include "devices/screen.h"
-#include "devices/mouse.h"
-#include "devices/controller.h"
-#include "devices/datetime.h"
-#include "devices/audio.h"
-#include "devices/file.h"
+#include <buxn/vm/vm.h>
+#include <buxn/metadata.h>
+#include <buxn/devices/system.h>
+#include <buxn/devices/console.h>
+#include <buxn/devices/screen.h>
+#include <buxn/devices/mouse.h>
+#include <buxn/devices/controller.h>
+#include <buxn/devices/datetime.h>
+#include <buxn/devices/audio.h>
+#include <buxn/devices/file.h>
 #include "platform.h"
 
 #define FRAME_TIME_US (1000000.0 / 60.0)

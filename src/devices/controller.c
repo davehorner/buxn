@@ -1,5 +1,5 @@
-#include "controller.h"
-#include "../vm/vm.h"
+#include <buxn/devices/controller.h>
+#include <buxn/vm/vm.h>
 
 uint8_t
 buxn_controller_dei(struct buxn_vm_s* vm, buxn_controller_t* device, uint8_t address) {

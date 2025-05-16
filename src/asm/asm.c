@@ -1,5 +1,5 @@
 // vim: set foldmethod=marker foldlevel=0:
-#include "asm.h"
+#include <buxn/asm/asm.h>
 #include <stdbool.h>
 #include <string.h>
 #include <assert.h>

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "dbg/transports/from_str.h"
+#include <buxn/dbg/transports/from_str.h>
 
 int
 main(int argc, char* argv[]) {

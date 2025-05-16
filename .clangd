@@ -7,6 +7,7 @@ CompileFlags:
     - -Werror
     - -pedantic
     - -std=c11
+    - -I./include
     - -I./deps/sokol
     - -I./deps/sokol_gp
     - -I./deps/blibs

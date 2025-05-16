@@ -4,9 +4,9 @@
 #include <errno.h>
 #include <string.h>
 #include <bhash.h>
-#include "vm/opcodes.h"
+#include <buxn/vm/opcodes.h>
 #define BSERIAL_STDIO
-#include "dbg/symbol.h"
+#include <buxn/dbg/symbol.h>
 
 #define SPACE_PER_BYTE 3
 #define HEADER_LINES 3
