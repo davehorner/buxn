@@ -22,6 +22,23 @@ buxn_dbg_wire_maybe_reply(buxn_dbg_wire_t* wire) {
 	}
 }
 
+static void
+buxn_dbg_wire_maybe_send_pause(buxn_dbg_wire_t* wire) {
+	if (wire->out != NULL && wire->should_send_pause) {
+		bserial_status_t status = buxn_dbg_protocol_msg(
+			wire->out,
+			wire->buffer,
+			&(buxn_dbg_msg_t){ .type = BUXN_DBG_MSG_PAUSED }
+		);
+		wire->should_send_pause = false;
+
+		if (status != BSERIAL_OK) {
+			wire->out = NULL;
+			wire->in = NULL;
+		}
+	}
+}
+
 void
 buxn_dbg_begin_exec(buxn_dbg_wire_t* wire, uint16_t addr) {
 	if (wire->out != NULL) {
@@ -41,6 +58,7 @@ buxn_dbg_begin_exec(buxn_dbg_wire_t* wire, uint16_t addr) {
 void
 buxn_dbg_begin_break(buxn_dbg_wire_t* wire, uint8_t brkp_id) {
 	if (wire->out != NULL) {
+		wire->should_send_pause = true;
 		bserial_status_t status = buxn_dbg_protocol_msg(
 			wire->out,
 			wire->buffer,
@@ -56,6 +74,7 @@ buxn_dbg_begin_break(buxn_dbg_wire_t* wire, uint8_t brkp_id) {
 
 void
 buxn_dbg_next_command(buxn_dbg_wire_t* wire, buxn_dbg_cmd_t* cmd) {
+	buxn_dbg_wire_maybe_send_pause(wire);
 	buxn_dbg_wire_maybe_reply(wire);
 
 	if (wire->in != NULL) {

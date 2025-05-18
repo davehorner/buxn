@@ -176,17 +176,16 @@ next_dbg_msg(buxn_dbg_msg_t* msg) {
 	return buxn_dbg_protocol_msg(fixture.dbg_conn.wire.in, fixture.dbg_conn.wire.buffer, msg);
 }
 
-static void
-dbg_command(buxn_dbg_cmd_t cmd) {
-	buxn_dbg_msg_t msg = {
-		.type = BUXN_DBG_MSG_COMMAND_REQ,
-		.cmd = cmd,
-	};
-
-	BTEST_ASSERT(buxn_dbg_protocol_msg(fixture.dbg_conn.wire.out, fixture.dbg_conn.wire.buffer, &msg) == BSERIAL_OK);
-	BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK);
-	BTEST_ASSERT_EQ("%d", msg.type, BUXN_DBG_MSG_COMMAND_REP);
-}
+#define dbg_command(...) \
+	do { \
+		buxn_dbg_msg_t msg = { \
+			.type = BUXN_DBG_MSG_COMMAND_REQ, \
+			.cmd = __VA_ARGS__, \
+		}; \
+		BTEST_ASSERT(buxn_dbg_protocol_msg(fixture.dbg_conn.wire.out, fixture.dbg_conn.wire.buffer, &msg) == BSERIAL_OK); \
+		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
+		BTEST_ASSERT_EQ("%d", msg.type, BUXN_DBG_MSG_COMMAND_REP); \
+	} while (0)
 
 #define ASSERT_BEGIN_EXEC(ADDR) \
 	do { \
@@ -198,10 +197,23 @@ dbg_command(buxn_dbg_cmd_t cmd) {
 
 #define ASSERT_BEGIN_BREAK(BRKP) \
 	do { \
+		ASSERT_BEGIN_BREAK_NO_PAUSE(BRKP); \
+		ASSERT_PAUSED(); \
+	} while (0)
+
+#define ASSERT_BEGIN_BREAK_NO_PAUSE(BRKP) \
+	do { \
 		buxn_dbg_msg_t msg; \
 		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
 		BTEST_ASSERT_EQ("%d", msg.type, BUXN_DBG_MSG_BEGIN_BREAK); \
 		BTEST_ASSERT_EQ("%d", msg.brkp_id, BRKP); \
+	} while (0)
+
+#define ASSERT_PAUSED() \
+	do { \
+		buxn_dbg_msg_t msg; \
+		BTEST_ASSERT(next_dbg_msg(&msg) == BSERIAL_OK); \
+		BTEST_ASSERT_EQ("%d", msg.type, BUXN_DBG_MSG_PAUSED); \
 	} while (0)
 
 #define ASSERT_END_BREAK() \
@@ -327,7 +339,7 @@ BTEST(dbg, mem_exec_brkp_no_pause) {
 	}
 	ASSERT_END_BREAK();
 
-	ASSERT_BEGIN_BREAK(0);
+	ASSERT_BEGIN_BREAK_NO_PAUSE(0);
 	ASSERT_END_BREAK();
 
 	ASSERT_END_EXEC();

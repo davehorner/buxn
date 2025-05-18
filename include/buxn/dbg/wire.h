@@ -9,6 +9,7 @@ struct buxn_dbg_wire_s {
 	struct bserial_ctx_s* in;
 	struct bserial_ctx_s* out;
 	bool should_send_reply;
+	bool should_send_pause;
 	buxn_dbg_cmd_t cmd;
 	buxn_dbg_msg_buffer_t buffer;
 };

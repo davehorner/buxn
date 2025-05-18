@@ -203,6 +203,7 @@ buxn_dbg_protocol_msg_body(
 			break;
 		case BUXN_DBG_MSG_END_EXEC:
 		case BUXN_DBG_MSG_END_BREAK:
+		case BUXN_DBG_MSG_PAUSED:
 			break;
 		default:
 			return BSERIAL_MALFORMED;

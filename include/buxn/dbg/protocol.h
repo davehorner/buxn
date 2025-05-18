@@ -11,8 +11,9 @@ typedef enum {
 	BUXN_DBG_MSG_END_EXEC     = 1,
 	BUXN_DBG_MSG_BEGIN_BREAK  = 2,
 	BUXN_DBG_MSG_END_BREAK    = 3,
-	BUXN_DBG_MSG_COMMAND_REQ  = 4,
-	BUXN_DBG_MSG_COMMAND_REP  = 5,
+	BUXN_DBG_MSG_PAUSED       = 4,
+	BUXN_DBG_MSG_COMMAND_REQ  = 5,
+	BUXN_DBG_MSG_COMMAND_REP  = 6,
 } buxn_dbg_msg_type_t;
 
 typedef struct {
