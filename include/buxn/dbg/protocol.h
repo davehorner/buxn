@@ -28,6 +28,7 @@ typedef uint8_t buxn_dbg_msg_buffer_t[BUXN_DBG_MAX_MEM_ACCESS_SIZE];
 
 static inline bserial_ctx_config_t
 buxn_dbg_protocol_recommended_bserial_config(void) {
+	// TODO: the numbers can be lower
 	return (bserial_ctx_config_t){
 		.max_symbol_len = 48,
 		.max_num_symbols = 32,
@@ -37,10 +38,24 @@ buxn_dbg_protocol_recommended_bserial_config(void) {
 }
 
 bserial_status_t
-buxn_dbg_protocol_msg(
+buxn_dbg_protocol_msg_header(bserial_ctx_t* ctx, buxn_dbg_msg_t* msg);
+
+bserial_status_t
+buxn_dbg_protocol_msg_body(
 	bserial_ctx_t* ctx,
 	buxn_dbg_msg_buffer_t buffer,
 	buxn_dbg_msg_t* msg
 );
+
+static inline bserial_status_t
+buxn_dbg_protocol_msg(
+	bserial_ctx_t* ctx,
+	buxn_dbg_msg_buffer_t buffer,
+	buxn_dbg_msg_t* msg
+) {
+	BSERIAL_CHECK_STATUS(buxn_dbg_protocol_msg_header(ctx, msg));
+	BSERIAL_CHECK_STATUS(buxn_dbg_protocol_msg_body(ctx, buffer, msg));
+	return BSERIAL_OK;
+}
 
 #endif

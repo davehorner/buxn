@@ -7,15 +7,20 @@ buxn_dbg_protocol_alloc(buxn_dbg_msg_buffer_t buffer, size_t alignment) {
 }
 
 bserial_status_t
-buxn_dbg_protocol_msg(
+buxn_dbg_protocol_msg_header(bserial_ctx_t* ctx, buxn_dbg_msg_t* msg) {
+	uint8_t type = msg->type;
+	BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &type));
+	msg->type = type;
+	return BSERIAL_OK;
+}
+
+bserial_status_t
+buxn_dbg_protocol_msg_body(
 	bserial_ctx_t* ctx,
 	buxn_dbg_msg_buffer_t buffer,
 	buxn_dbg_msg_t* msg
 ) {
 	uint8_t type = msg->type;
-	BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &type));
-	msg->type = type;
-
 	switch ((buxn_dbg_msg_type_t)type) {
 		case BUXN_DBG_MSG_BEGIN_EXEC:
 			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &msg->addr));
