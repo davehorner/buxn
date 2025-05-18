@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <buxn/dbg/transports/from_str.h>
 
 int
@@ -32,5 +33,6 @@ main(int argc, char* argv[]) {
 		setenv("BUXN_DEBUG_FD", buf, 1);
 	}
 
+	signal(SIGPIPE, SIG_IGN);
 	return execvp(argv[2], &argv[2]);
 }
