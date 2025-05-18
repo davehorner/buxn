@@ -2,6 +2,6 @@
 #include <fcntl.h>
 
 int
-buxn_dbg_transport_fifo(const char* path) {
+buxn_dbg_transport_file(const char* path) {
 	return open(path, O_RDWR, 0);
 }

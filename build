@@ -89,7 +89,7 @@ build_linux() {
 		-fuse-ld=mold \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/dbg-wrapper.c.o \
-		${OBJ_DIR}/src/dbg/transports/{fifo,stream,from_str}.c.o \
+		${OBJ_DIR}/src/dbg/transports/{file,stream,from_str}.c.o \
 		-o ${BIN_DIR}/buxn-dbg-wrapper
 
 	$CC \
@@ -366,7 +366,7 @@ build_cosmo() {
 	$CC \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/dbg-wrapper.c.o \
-		${OBJ_DIR}/src/dbg/transports/{fifo,stream,from_str}.c.o \
+		${OBJ_DIR}/src/dbg/transports/{file,stream,from_str}.c.o \
 		-o ${BIN_DIR}/buxn-dbg-wrapper
 
 	$CC \
@@ -404,7 +404,7 @@ compile_common() {
 	compile src/dbg/protocol.c $PROGRAM_FLAGS
 	compile src/dbg/transports/fd.c $PROGRAM_FLAGS
 	compile src/dbg/transports/stream.c $PROGRAM_FLAGS
-	compile src/dbg/transports/fifo.c $PROGRAM_FLAGS
+	compile src/dbg/transports/file.c $PROGRAM_FLAGS
 	compile src/dbg/transports/from_str.c $PROGRAM_FLAGS
 	compile src/dbg-wrapper.c $PROGRAM_FLAGS
 

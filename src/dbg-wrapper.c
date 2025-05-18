@@ -15,7 +15,7 @@ main(int argc, char* argv[]) {
 			"\n"
 			"`transport` can be one of:\n"
 			"\n"
-			"* fifo:<path>: Open a fifo file.\n"
+			"* file:<path>: Open a fifo file.\n"
 			"* tcp-connect:<address>:<port>: Connect to an address.\n"
 			"* tcp-listen:<port>: Listen on a port for a single connection.\n"
 			"* unix-connect:<name>: Connect to a unix domain socket.\n"

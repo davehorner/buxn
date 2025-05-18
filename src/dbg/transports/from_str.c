@@ -1,6 +1,6 @@
 #define _GNU_SOURCE
 #include <buxn/dbg/transports/from_str.h>
-#include <buxn/dbg/transports/fifo.h>
+#include <buxn/dbg/transports/file.h>
 #include <buxn/dbg/transports/stream.h>
 #include <string.h>
 #include <stdlib.h>
@@ -13,8 +13,8 @@
 int
 buxn_dbg_transport_from_str(const char* str) {
 	const char* arg;
-	if        ((arg = parse_flag(str, "fifo:")) != NULL) {
-		return buxn_dbg_transport_fifo(arg);
+	if        ((arg = parse_flag(str, "file:")) != NULL) {
+		return buxn_dbg_transport_file(arg);
 	} else if ((arg = parse_flag(str, "unix-connect:")) != NULL) {
 		return buxn_dbg_transport_unix_connect(arg);
 	} else if ((arg = parse_flag(str, "unix-listen:")) != NULL) {
