@@ -64,6 +64,7 @@ buxn_dbg_transport_from_str(const char* str) {
 			return -1;
 		}
 	} else {
+		errno = EINVAL;
 		return -1;
 	}
 }

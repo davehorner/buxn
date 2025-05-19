@@ -126,7 +126,7 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	void* dbg_out_mem = NULL;
 	int dbg_fd = -1;
 	{
-		const char* debug_fd_env = getenv("BUXN_DEBUG_FD");
+		const char* debug_fd_env = getenv("BUXN_DBG_FD");
 		if (debug_fd_env != NULL) {
 			errno = 0;
 			long fd = strtol(debug_fd_env, NULL, 10);
