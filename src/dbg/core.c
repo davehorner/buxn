@@ -36,6 +36,9 @@ struct buxn_dbg_s {
 _Static_assert(sizeof(buxn_dbg_t) == BUXN_DBG_SIZE, "Declared size does not match");
 _Static_assert(_Alignof(buxn_dbg_t) == BUXN_DBG_ALIGNMENT, "Declared alignment does not match");
 
+static void
+buxn_dbg_hook(buxn_vm_t* vm, uint16_t pc, void* userdata);
+
 buxn_dbg_t*
 buxn_dbg_init(void* mem, buxn_dbg_wire_t* wire) {
 	buxn_dbg_t* dbg = mem;
@@ -51,14 +54,23 @@ buxn_dbg_request_pause(buxn_dbg_t* dbg) {
 	dbg->standing_cmd.type = BUXN_DBG_STANDING_CMD_PAUSE;
 }
 
+buxn_vm_hook_t
+buxn_dbg_vm_hook(buxn_dbg_t* dbg) {
+	return (buxn_vm_hook_t){
+		.userdata = dbg,
+		.fn = buxn_dbg_hook,
+	};
+}
+
 bool
 buxn_dbg_should_hook(buxn_dbg_t* dbg) {
 	return dbg->standing_cmd.type != BUXN_DBG_STANDING_CMD_EXECUTE
 		|| dbg->nbrkps != 0;
 }
 
-void
-buxn_dbg_hook(buxn_dbg_t* dbg, struct buxn_vm_s* vm, uint16_t pc) {
+static void
+buxn_dbg_hook(buxn_vm_t* vm, uint16_t pc, void* userdata) {
+	buxn_dbg_t* dbg = userdata;
 	buxn_dbg_wire_t* wire = dbg->wire;
 
 	bool execution_just_started = false;

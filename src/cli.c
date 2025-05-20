@@ -14,14 +14,13 @@
 #include <buxn/devices/file.h>
 
 typedef struct {
-	buxn_dbg_t* dbg;
 	buxn_console_t console;
 	buxn_file_t file[BUXN_NUM_FILE_DEVICES];
 } vm_data_t;
 
 uint8_t
 buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
-	vm_data_t* devices = vm->userdata;
+	vm_data_t* devices = vm->config.userdata;
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
@@ -45,7 +44,7 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 
 void
 buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
-	vm_data_t* devices = vm->userdata;
+	vm_data_t* devices = vm->config.userdata;
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
@@ -108,12 +107,6 @@ buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) 
 	fputc(c, stderr);
 }
 
-static void
-vm_exec_hook(buxn_vm_t* vm, uint16_t pc) {
-	vm_data_t* userdata = vm->userdata;
-	buxn_dbg_hook(userdata->dbg, vm, pc);
-}
-
 static int
 boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	int exit_code = 0;
@@ -125,6 +118,7 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	void* dbg_in_mem = NULL;
 	void* dbg_out_mem = NULL;
 	int dbg_fd = -1;
+	buxn_dbg_t* dbg = NULL;
 	{
 		const char* debug_fd_env = getenv("BUXN_DBG_FD");
 		if (debug_fd_env != NULL) {
@@ -143,22 +137,23 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 			dbg_out_mem = malloc(bserial_ctx_mem_size(config));
 			buxn_dbg_transport_fd_wire(&transport, &wire, config, dbg_in_mem, dbg_out_mem);
 
-			devices.dbg = buxn_dbg_init(dbg_mem, &wire);
-			buxn_dbg_request_pause(devices.dbg);
+			dbg = buxn_dbg_init(dbg_mem, &wire);
+			buxn_dbg_request_pause(dbg);
 		}
 	}
 
 	buxn_vm_t* vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
-	vm->userdata = &devices;
-	vm->memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS;
-	vm->exec_hook = NULL;
+	vm->config = (buxn_vm_config_t){
+		.userdata = &devices,
+		.memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS,
+	};
 	buxn_vm_reset(vm, BUXN_VM_RESET_ALL);
 
 	// Read rom
 	{
 		uint8_t* read_pos = &vm->memory[BUXN_RESET_VECTOR];
 		if (rom_size == 0) {
-			while (read_pos < vm->memory + vm->memory_size) {
+			while (read_pos < vm->memory + vm->config.memory_size) {
 				size_t num_bytes = fread(read_pos, 1, 1024, rom_file);
 				if (num_bytes == 0) { break; }
 				read_pos += num_bytes;
@@ -171,8 +166,8 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 
 	buxn_console_init(vm, &devices.console, argc, argv);
 
-	if (devices.dbg != NULL) {
-		vm->exec_hook = vm_exec_hook;
+	if (dbg != NULL) {
+		vm->config.hook = buxn_dbg_vm_hook(dbg);
 	}
 
 	buxn_vm_execute(vm, BUXN_RESET_VECTOR);

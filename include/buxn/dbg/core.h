@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <limits.h>
+#include <buxn/vm/vm.h>
 
 #if UINTPTR_MAX == 0xFFFFFFFF
 #	define BUXN_DBG_SIZE      1044
@@ -114,11 +115,23 @@ buxn_dbg_init(void* mem, buxn_dbg_wire_t* wire);
 void
 buxn_dbg_request_pause(buxn_dbg_t* dbg);
 
-void
-buxn_dbg_hook(buxn_dbg_t* dbg, struct buxn_vm_s* vm, uint16_t pc);
+buxn_vm_hook_t
+buxn_dbg_vm_hook(buxn_dbg_t* dbg);
 
 bool
 buxn_dbg_should_hook(buxn_dbg_t* dbg);
+
+static inline void
+buxn_dbg_exec(buxn_dbg_t* dbg, buxn_vm_t* vm, uint16_t vector) {
+	if (buxn_dbg_should_hook(dbg)) {
+		buxn_vm_hook_t old_hook = vm->config.hook;
+		vm->config.hook = buxn_dbg_vm_hook(dbg);
+		buxn_vm_execute(vm, vector);
+		vm->config.hook = old_hook;
+	} else {
+		buxn_vm_execute(vm, vector);
+	}
+}
 
 // Must be provided by the host program
 

@@ -42,11 +42,6 @@ static struct {
 } fixture;
 
 static void
-exec_hook(buxn_vm_t* vm, uint16_t pc) {
-	buxn_dbg_hook(fixture.dbg, vm, pc);
-}
-
-static void
 init_per_suite(void) {
 	barena_pool_init(&fixture.pool, 1);
 }
@@ -95,9 +90,11 @@ init_per_test(void) {
 	fixture.devices.system_dbg = NULL;
 
 	fixture.vm = barena_malloc(&fixture.arena, sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE);
-	fixture.vm->memory_size = BUXN_MEMORY_BANK_SIZE;
-	fixture.vm->userdata = &fixture.devices;
-	fixture.vm->exec_hook = exec_hook;
+	fixture.vm->config = (buxn_vm_config_t){
+		.userdata = &fixture.devices,
+		.memory_size = BUXN_MEMORY_BANK_SIZE,
+		.hook = buxn_dbg_vm_hook(fixture.dbg),
+	};
 	buxn_vm_reset(fixture.vm, BUXN_VM_RESET_ALL);
 }
 

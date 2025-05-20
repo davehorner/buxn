@@ -3,10 +3,10 @@
 #include <string.h>
 
 static void
-buxn_vm_execute_without_hook(buxn_vm_t* vm, uint16_t pc, const buxn_vm_exec_hook_t hook);
+buxn_vm_execute_without_hook(buxn_vm_t* vm, uint16_t pc, const buxn_vm_hook_t hook);
 
 static void
-buxn_vm_execute_with_hook(buxn_vm_t* vm, uint16_t pc, const buxn_vm_exec_hook_t hook);
+buxn_vm_execute_with_hook(buxn_vm_t* vm, uint16_t pc, const buxn_vm_hook_t hook);
 
 void
 buxn_vm_reset(buxn_vm_t* vm, uint8_t reset_flags) {
@@ -26,7 +26,7 @@ buxn_vm_reset(buxn_vm_t* vm, uint8_t reset_flags) {
 	}
 
 	if ((reset_flags & BUXN_VM_RESET_HIGH_MEM) > 0) {
-		memset(vm->memory + BUXN_RESET_VECTOR, 0, vm->memory_size - BUXN_RESET_VECTOR);
+		memset(vm->memory + BUXN_RESET_VECTOR, 0, vm->config.memory_size - BUXN_RESET_VECTOR);
 	}
 }
 
@@ -36,10 +36,10 @@ buxn_vm_execute(buxn_vm_t* vm, uint16_t pc) {
 
 	// Creating 2 separate versions is the only way to have optimized opcode
 	// dispatch when no debug hook is attached
-	if (vm->exec_hook != NULL) {
-		buxn_vm_execute_with_hook(vm, pc, vm->exec_hook);
+	if (vm->config.hook.fn != NULL) {
+		buxn_vm_execute_with_hook(vm, pc, vm->config.hook);
 	} else {
-		buxn_vm_execute_without_hook(vm, pc, NULL);
+		buxn_vm_execute_without_hook(vm, pc, vm->config.hook);
 	}
 }
 
@@ -56,7 +56,7 @@ buxn_vm_execute(buxn_vm_t* vm, uint16_t pc) {
 #define BUXN_NEXT_OPCODE() \
 	do { \
 		BUXN_SAVE_STATE(); \
-		hook(vm, pc); \
+		hook.fn(vm, pc, hook.userdata); \
 		uint8_t opcode = mem[pc++]; \
 		goto *dispatch_table[opcode]; \
 	} while (0)

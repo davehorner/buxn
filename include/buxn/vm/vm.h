@@ -42,14 +42,21 @@
 
 typedef struct buxn_vm_s buxn_vm_t;
 
-typedef void (*buxn_vm_exec_hook_t)(buxn_vm_t* vm, uint16_t pc);
+typedef void (*buxn_vm_hook_fn_t)(buxn_vm_t* vm, uint16_t pc, void* userdata);
 
-struct buxn_vm_s {
-	// User config, not touched by buxn
-	// Everything else will be reset
+typedef struct {
+	void* userdata;
+	buxn_vm_hook_fn_t fn;
+} buxn_vm_hook_t;
+
+typedef struct {
 	void* userdata;
 	uint32_t memory_size;
-	buxn_vm_exec_hook_t exec_hook;
+	buxn_vm_hook_t hook;
+} buxn_vm_config_t;
+
+struct buxn_vm_s {
+	buxn_vm_config_t config;
 
 	// VM state
 	uint8_t wsp;

@@ -198,7 +198,7 @@ apply_metadata(buxn_metadata_t metadata) {
 
 uint8_t
 buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
-	devices_t* devices = vm->userdata;
+	devices_t* devices = vm->config.userdata;
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
@@ -238,7 +238,7 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 
 void
 buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
-	devices_t* devices = vm->userdata;
+	devices_t* devices = vm->config.userdata;
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
@@ -395,7 +395,7 @@ load_boot_rom(void) {
 	}
 
 	uint8_t* read_pos = &app.vm->memory[BUXN_RESET_VECTOR];
-	uint64_t mem_left = app.vm->memory_size - BUXN_RESET_VECTOR;
+	uint64_t mem_left = app.vm->config.memory_size - BUXN_RESET_VECTOR;
 	int64_t bytes_read;
 	while (
 		mem_left > 0
@@ -419,7 +419,7 @@ load_boot_rom(void) {
 	platform_close_stream(stream);
 
 	buxn_metadata_t metadata = buxn_metadata_parse_from_rom(
-		&app.vm->memory[BUXN_RESET_VECTOR], app.vm->memory_size - 256
+		&app.vm->memory[BUXN_RESET_VECTOR], app.vm->config.memory_size - 256
 	);
 
 	if (metadata.content_len != 0) {
@@ -550,9 +550,10 @@ init(void) {
 
 	// VM
 	app.vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
-	app.vm->userdata = &app.devices;
-	app.vm->memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS;
-	app.vm->exec_hook = NULL;
+	app.vm->config = (buxn_vm_config_t){
+		.userdata = &app.devices,
+		.memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS,
+	};
 	buxn_vm_reset(app.vm, BUXN_VM_RESET_ALL);
 
 	if (!load_boot_rom()) {

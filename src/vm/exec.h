@@ -393,7 +393,7 @@ BUXN_WARNING_PUSH()
 #endif
 
 static void
-buxn_vm_execute_internal(buxn_vm_t* vm, uint16_t pc, const buxn_vm_exec_hook_t hook) {
+buxn_vm_execute_internal(buxn_vm_t* vm, uint16_t pc, const buxn_vm_hook_t hook) {
 	(void)hook;
 	static const void* dispatch_table[256] = {
 		BUXN_OPCODE_DISPATCH(BUXN_OPCODE_DISPATCH_TABLE_ENTRY)
