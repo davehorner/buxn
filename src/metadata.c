@@ -41,7 +41,7 @@ buxn_metadata_parse_internal(uint8_t* addr, uint8_t* max_addr) {
 
 buxn_metadata_t
 buxn_metadata_parse_from_memory(struct buxn_vm_s* vm, uint16_t address) {
-	if ((size_t)address >= vm->memory_size) { return BUXN_NO_METADATA; }
+	if ((size_t)address >= vm->config.memory_size) { return BUXN_NO_METADATA; }
 
 	return buxn_metadata_parse_internal(
 		vm->memory + address,

@@ -32,8 +32,10 @@ init_per_test(void) {
 		_Alignof(buxn_vm_t)
 	);
 	fixture.devices.system_dbg = NULL;
-	fixture.vm->memory_size = BUXN_MEMORY_BANK_SIZE;
-	fixture.vm->userdata = &fixture.devices;
+	fixture.vm->config = (buxn_vm_config_t){
+		.memory_size = BUXN_MEMORY_BANK_SIZE,
+		.userdata = &fixture.devices,
+	};
 	buxn_vm_reset(fixture.vm, BUXN_VM_RESET_ALL);
 	buxn_console_init(fixture.vm, &fixture.devices.console, 0, NULL);
 }

@@ -23,7 +23,7 @@ buxn_system_deo(struct buxn_vm_s* vm, uint8_t address) {
 		case 0x03: {
 			uint16_t op_addr = buxn_vm_dev_load2(vm, 0x02);
 			uint8_t op = vm->memory[op_addr];
-			uint32_t memory_size = vm->memory_size;
+			uint32_t memory_size = vm->config.memory_size;
 			uint32_t length = buxn_vm_mem_load2(vm, op_addr + 1);
 			switch (op) {
 				case 0x00: {

@@ -123,8 +123,10 @@ BTEST(basm, acid) {
 		&fixture.arena,
 		sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE
 	);
-	vm->memory_size = BUXN_MEMORY_BANK_SIZE;
-	vm->userdata = &devices;
+	vm->config = (buxn_vm_config_t){
+		.memory_size = BUXN_MEMORY_BANK_SIZE,
+		.userdata = &devices,
+	};
 	buxn_vm_reset(vm, BUXN_VM_RESET_ALL);
 	buxn_console_init(vm, &devices.console, 0, NULL);
 	memcpy(vm->memory + BUXN_RESET_VECTOR, basm->rom, basm->rom_size);

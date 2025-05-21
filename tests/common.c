@@ -92,7 +92,7 @@ buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm
 
 uint8_t
 buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
-	buxn_test_devices_t* devices = vm->userdata;
+	buxn_test_devices_t* devices = vm->config.userdata;
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
@@ -108,7 +108,7 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 
 void
 buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
-	buxn_test_devices_t* devices = vm->userdata;
+	buxn_test_devices_t* devices = vm->config.userdata;
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
@@ -125,7 +125,7 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 
 void
 buxn_system_debug(buxn_vm_t* vm, uint8_t value) {
-	buxn_test_devices_t* devices = vm->userdata;
+	buxn_test_devices_t* devices = vm->config.userdata;
 	if (devices->system_dbg) {
 		devices->system_dbg(vm, value);
 	}
