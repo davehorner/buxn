@@ -95,6 +95,10 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 					BLOG_ERROR("Error while writing symbol file: %s", strerror(errno));
 				}
 			}
+
+			if (!sym->name_is_generated) {
+				buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_LABEL, addr, sym);
+			}
 		} break;
 		case BUXN_ASM_SYM_OPCODE:
 			 buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_OPCODE, addr, sym);

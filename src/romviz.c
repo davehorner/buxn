@@ -37,6 +37,7 @@ find_symbol(
 ) {
 	int index = *current_index;
 	for (; index < num_symbols; ++index) {
+		if (symbols[index].type == BUXN_DBG_SYM_LABEL) { continue; }
 		if (symbols[index].addr_min <= address && address <= symbols[index].addr_max) {
 			*current_index = index;
 			return &symbols[index];
@@ -130,7 +131,7 @@ main(int argc, const char* argv[]) {
 
 		for (int i = 0; i < num_symbols; ++i) {
 			if (buxn_dbg_sym(bserial, &debug_symbols[i]) != BSERIAL_OK) {
-				fprintf(stderr, "Error while reading debug file\n");
+				fprintf(stderr, "Error while reading debug symbol\n");
 				fclose(dbg_file);
 				goto end;
 			}
@@ -221,6 +222,9 @@ end_draw:
 					type = "number";
 					break;
 				case BUXN_DBG_SYM_LABEL_REF:
+					type = "label reference";
+					break;
+				case BUXN_DBG_SYM_LABEL:
 					type = "label";
 					break;
 			}

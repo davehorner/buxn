@@ -10,6 +10,7 @@ typedef enum {
 	BUXN_DBG_SYM_LABEL_REF  = 1,
 	BUXN_DBG_SYM_NUMBER     = 2,
 	BUXN_DBG_SYM_TEXT       = 3,
+	BUXN_DBG_SYM_LABEL      = 4,
 } buxn_dbg_sym_type_t;
 
 typedef struct {
@@ -52,7 +53,7 @@ buxn_dbg_sym(bserial_ctx_t* ctx, buxn_dbg_sym_t* entry) {
 		BSERIAL_KEY(ctx, type) {
 			uint8_t int_type = entry->type;
 			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &int_type));
-			if (int_type > BUXN_DBG_SYM_TEXT) { return BSERIAL_MALFORMED; }
+			if (int_type > BUXN_DBG_SYM_LABEL) { return BSERIAL_MALFORMED; }
 			entry->type = int_type;
 		}
 
