@@ -760,39 +760,56 @@ buxn_asm_emit2(buxn_asm_t* basm, const buxn_asm_token_t* token, uint16_t short_)
 }
 
 static bool
-buxn_asm_emit_opcode(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t opcode) {
+buxn_asm_emit_opcode(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t opcode, bool is_runic) {
 	uint16_t addr = basm->write_addr;
 	if (!buxn_asm_emit(basm, token, opcode)) { return false; }
 
+	// Map only the rune to this opcode
+	buxn_asm_source_region_t region = token->region;
+	if (is_runic) {
+		region.range.end = region.range.start;
+		region.range.end.col += 1;
+		region.range.end.byte += 1;
+	}
 	buxn_asm_put_symbol(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_OPCODE,
-		.region = token->region,
+		.region = region,
 	});
 
 	return true;
 }
 
 static bool
-buxn_asm_emit_byte(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t byte) {
+buxn_asm_emit_byte(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t byte, bool is_runic) {
 	uint16_t addr = basm->write_addr;
 	if (!buxn_asm_emit(basm, token, byte)) { return false; }
 
+	buxn_asm_source_region_t region = token->region;
+	if (is_runic) {
+		region.range.start.col += 1;
+		region.range.start.byte += 1;
+	}
 	buxn_asm_put_symbol(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_NUMBER,
-		.region = token->region,
+		.region = region,
 	});
 
 	return true;
 }
 
 static bool
-buxn_asm_emit_short(buxn_asm_t* basm, const buxn_asm_token_t* token, uint16_t short_) {
+buxn_asm_emit_short(buxn_asm_t* basm, const buxn_asm_token_t* token, uint16_t short_, bool is_runic) {
 	uint16_t addr = basm->write_addr;
 	if (!buxn_asm_emit2(basm, token, short_)) { return false; }
 
+	buxn_asm_source_region_t region = token->region;
+	if (is_runic) {
+		region.range.start.col += 1;
+		region.range.start.byte += 1;
+	}
 	buxn_asm_put_symbol2(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_NUMBER,
-		.region = token->region,
+		.region = region,
 	});
 
 	return true;
@@ -819,12 +836,18 @@ buxn_asm_emit_addr_placeholder(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_size_t size,
-	const buxn_asm_pstr_t* label_name
+	const buxn_asm_pstr_t* label_name,
+	bool is_runic
 ) {
+	buxn_asm_source_region_t region = token->region;
+	if (is_runic) {
+		region.range.start.col += 1;
+		region.range.start.byte += 1;
+	}
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
 		.name = label_name != NULL ? label_name->key.chars : 0,
-		.region = token->region,
+		.region = region,
 	};
 
 	uint16_t addr = basm->write_addr;
@@ -848,10 +871,11 @@ buxn_asm_emit_forward_ref(
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_type_t type,
 	buxn_asm_label_ref_size_t size,
-	const buxn_asm_pstr_t* label_name
+	const buxn_asm_pstr_t* label_name,
+	bool is_runic
 ) {
 	uint16_t addr = basm->write_addr;
-	if (!buxn_asm_emit_addr_placeholder(basm, token, size, label_name)) {
+	if (!buxn_asm_emit_addr_placeholder(basm, token, size, label_name, is_runic)) {
 		return false;
 	}
 
@@ -874,10 +898,11 @@ buxn_asm_emit_lambda_ref(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_type_t type,
-	buxn_asm_label_ref_size_t size
+	buxn_asm_label_ref_size_t size,
+	bool is_runic
 ) {
 	uint16_t addr = basm->write_addr;
-	if (!buxn_asm_emit_addr_placeholder(basm, token, size, NULL)) {
+	if (!buxn_asm_emit_addr_placeholder(basm, token, size, NULL, is_runic)) {
 		return false;
 	}
 
@@ -964,7 +989,8 @@ buxn_asm_emit_backward_ref(
 	buxn_asm_label_ref_type_t type,
 	buxn_asm_label_ref_size_t size,
 	const buxn_asm_symtab_node_t* label,
-	bool with_symbol
+	bool with_symbol,
+	bool is_runic
 ) {
 	assert((label->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) && "Invalid symbol type");
 
@@ -975,10 +1001,15 @@ buxn_asm_emit_backward_ref(
 		write_addr, label->label_address
 	);
 
+	buxn_asm_source_region_t region = token->region;
+	if (is_runic) {
+		region.range.start.col += 1;
+		region.range.start.byte += 1;
+	}
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
 		.name = label->key->key.chars,
-		.region = token->region,
+		.region = region,
 	};
 
 	return buxn_asm_emit_addr(
@@ -996,10 +1027,11 @@ buxn_asm_emit_label_ref(
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_type_t type,
 	buxn_asm_label_ref_size_t size,
-	buxn_asm_str_t label_name
+	buxn_asm_str_t label_name,
+	bool is_runic
 ) {
 	if (label_name.len == 1 && label_name.chars[0] == '{') {
-		return buxn_asm_emit_lambda_ref(basm, token, type, size);
+		return buxn_asm_emit_lambda_ref(basm, token, type, size, is_runic);
 	}
 
 	buxn_asm_str_t full_name;
@@ -1014,10 +1046,10 @@ buxn_asm_emit_label_ref(
 	const buxn_asm_pstr_t* interned_name = buxn_asm_strintern(basm, full_name);
 	buxn_asm_symtab_node_t* symbol = buxn_asm_find_symbol(basm, interned_name);
 	if (symbol == NULL) {
-		return buxn_asm_emit_forward_ref(basm, token, type, size, interned_name);
+		return buxn_asm_emit_forward_ref(basm, token, type, size, interned_name, is_runic);
 	} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) {
 		symbol->referenced = true;
-		return buxn_asm_emit_backward_ref(basm, token, type, size, symbol, true);
+		return buxn_asm_emit_backward_ref(basm, token, type, size, symbol, true, is_runic);
 	} else {
 		return buxn_asm_error(basm, token, "Invalid reference");
 	}
@@ -1025,11 +1057,12 @@ buxn_asm_emit_label_ref(
 
 static bool
 buxn_asm_emit_jsi(buxn_asm_t* basm, const buxn_asm_token_t* token) {
-	if (!buxn_asm_emit_opcode(basm, token, 0x60)) { return false; }  // JSI
+	if (!buxn_asm_emit_opcode(basm, token, 0x60, false)) { return false; }  // JSI
 	return buxn_asm_emit_label_ref(
 		basm, token,
 		BUXN_ASM_LABEL_REF_REL, BUXN_ASM_LABEL_REF_SHORT,
-		token->lexeme
+		token->lexeme,
+		false
 	);
 }
 
@@ -1061,6 +1094,7 @@ buxn_asm_resolve(buxn_asm_t* basm) {
 			basm, &itr->token,
 			itr->type, itr->size,
 			symbol,
+			false,
 			false
 		);
 		symbol->referenced = true;
@@ -1354,11 +1388,11 @@ buxn_asm_process_lit_number(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 	}
 
 	if (str.len <= 2) {
-		if (!buxn_asm_emit_opcode(basm, start, 0x80)) { return false; }  // LIT
-		if (!buxn_asm_emit_byte(basm, start, number)) { return false; }
+		if (!buxn_asm_emit_opcode(basm, start, 0x80, true)) { return false; }  // LIT
+		if (!buxn_asm_emit_byte(basm, start, number, true)) { return false; }
 	} else {
-		if (!buxn_asm_emit_opcode(basm, start, 0xa0)) { return false; }  // LIT2
-		if (!buxn_asm_emit_short(basm, start, number)) { return false; }
+		if (!buxn_asm_emit_opcode(basm, start, 0xa0, true)) { return false; }  // LIT2
+		if (!buxn_asm_emit_short(basm, start, number, true)) { return false; }
 	}
 
 	return true;
@@ -1377,9 +1411,9 @@ buxn_asm_process_raw_number(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	}
 
 	if (token->lexeme.len <= 2) {
-		if (!buxn_asm_emit_byte(basm, token, number)) { return false; }
+		if (!buxn_asm_emit_byte(basm, token, number, false)) { return false; }
 	} else {
-		if (!buxn_asm_emit_short(basm, token, number)) { return false; }
+		if (!buxn_asm_emit_short(basm, token, number, false)) { return false; }
 	}
 
 	return true;
@@ -1496,30 +1530,32 @@ buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 				buxn_asm_warning(basm, token, "Opcode contains redundant flags");
 			}
 
-			return buxn_asm_emit_opcode(basm, token, opcode_result.opcode);
+			return buxn_asm_emit_opcode(basm, token, opcode_result.opcode, false);
 		} else {
 			return buxn_asm_emit_jsi(basm, token);
 		}
 	} else {
 		buxn_asm_symtab_node_t* symbol = buxn_asm_find_symbol(basm, interned_name);
 		if (symbol == NULL) {
-			if (!buxn_asm_emit_opcode(basm, token, 0x60)) { return false; }  // JSI
+			if (!buxn_asm_emit_opcode(basm, token, 0x60, false)) { return false; }  // JSI
 			return buxn_asm_emit_forward_ref(
 				basm, token,
 				BUXN_ASM_LABEL_REF_REL, BUXN_ASM_LABEL_REF_SHORT,
-				interned_name
+				interned_name,
+				false
 			);
 		} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_MACRO) {
 			symbol->referenced = true;
 			return buxn_asm_expand_macro(basm, token, &symbol->macro);
 		} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) {
 			symbol->referenced = true;
-			if (!buxn_asm_emit_opcode(basm, token, 0x60)) { return false; }  // JSI
+			if (!buxn_asm_emit_opcode(basm, token, 0x60, false)) { return false; }  // JSI
 			return buxn_asm_emit_backward_ref(
 				basm, token,
 				BUXN_ASM_LABEL_REF_REL, BUXN_ASM_LABEL_REF_SHORT,
 				symbol,
-				true
+				true,
+				false
 			);
 		} else {
 			return buxn_asm_error(basm, token, "Unknown symbol type");
@@ -1613,27 +1649,29 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 				}
 				break;
 			case '!':
-				if (!buxn_asm_emit_opcode(basm, &token, 0x40)) {  // JMI
+				if (!buxn_asm_emit_opcode(basm, &token, 0x40, true)) {  // JMI
 					return false;
 				}
 				if (!buxn_asm_emit_label_ref(
 					basm, &token,
 					BUXN_ASM_LABEL_REF_REL,
 					BUXN_ASM_LABEL_REF_SHORT,
-					buxn_asm_str_pop_front(token.lexeme)
+					buxn_asm_str_pop_front(token.lexeme),
+					true
 				)) {
 					return false;
 				}
 				break;
 			case '?':
-				if (!buxn_asm_emit_opcode(basm, &token, 0x20)) {  // JCI
+				if (!buxn_asm_emit_opcode(basm, &token, 0x20, true)) {  // JCI
 					return false;
 				}
 				if (!buxn_asm_emit_label_ref(
 					basm, &token,
 					BUXN_ASM_LABEL_REF_REL,
 					BUXN_ASM_LABEL_REF_SHORT,
-					buxn_asm_str_pop_front(token.lexeme)
+					buxn_asm_str_pop_front(token.lexeme),
+					true
 				)) {
 					return false;
 				}
@@ -1672,7 +1710,7 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 				}
 				break;
 			case '.':
-				if (!buxn_asm_emit_opcode(basm, &token, 0x80)) {  // LIT
+				if (!buxn_asm_emit_opcode(basm, &token, 0x80, true)) {  // LIT
 					return false;
 				}
 				// fallthrough
@@ -1681,13 +1719,14 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 					basm, &token,
 					BUXN_ASM_LABEL_REF_ZERO,
 					BUXN_ASM_LABEL_REF_BYTE,
-					buxn_asm_str_pop_front(token.lexeme)
+					buxn_asm_str_pop_front(token.lexeme),
+					true
 				)) {
 					return false;
 				}
 				break;
 			case ',':
-				if (!buxn_asm_emit_opcode(basm, &token, 0x80)) {  // LIT
+				if (!buxn_asm_emit_opcode(basm, &token, 0x80, true)) {  // LIT
 					return false;
 				}
 				// fallthrough
@@ -1696,13 +1735,14 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 					basm, &token,
 					BUXN_ASM_LABEL_REF_REL,
 					BUXN_ASM_LABEL_REF_BYTE,
-					buxn_asm_str_pop_front(token.lexeme)
+					buxn_asm_str_pop_front(token.lexeme),
+					true
 				)) {
 					return false;
 				}
 				break;
 			case ';':
-				if (!buxn_asm_emit_opcode(basm, &token, 0xa0)) {  // LIT2
+				if (!buxn_asm_emit_opcode(basm, &token, 0xa0, true)) {  // LIT2
 					return false;
 				}
 				// fallthrough
@@ -1711,7 +1751,8 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 					basm, &token,
 					BUXN_ASM_LABEL_REF_ABS,
 					BUXN_ASM_LABEL_REF_SHORT,
-					buxn_asm_str_pop_front(token.lexeme)
+					buxn_asm_str_pop_front(token.lexeme),
+					true
 				)) {
 					return false;
 				}
