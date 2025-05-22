@@ -51,7 +51,7 @@ buxn_asm_put_dbg_sym(
 		current_symbol->addr_max = addr;
 	} else {
 		// Flush previous
-		if (current_symbol->addr_min != 0) {
+		if (current_symbol->region.range.start.line != 0) {
 			barray_push(ctx->debug_symbols, *current_symbol, NULL);
 		}
 
@@ -339,7 +339,7 @@ main(int argc, const char* argv[]) {
 		FILE* dbg_file = fopen(namebuf, "wb");
 		if (dbg_file != NULL) {
 			// Flush last entry
-			if (ctx.current_symbol.addr_min != 0) {
+			if (ctx.current_symbol.region.range.start.line != 0) {
 				barray_push(ctx.debug_symbols, ctx.current_symbol, NULL);
 			}
 
