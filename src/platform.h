@@ -37,7 +37,7 @@ platform_init_fs(void);
 void
 platform_init_dbg(struct buxn_vm_s* vm);
 
-void
+bool
 platform_update_dbg(void);
 
 bool

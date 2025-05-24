@@ -223,15 +223,17 @@ platform_init_dbg(buxn_vm_t* vm) {
 	}
 }
 
-void
+bool
 platform_update_dbg(void) {
-	if (platform_linux.vm == NULL) { return; }
+	if (platform_linux.vm == NULL) { return false; }
 
 	buxn_dbg_transport_fd_update(&platform_linux.transport, platform_linux.dbg);
 	if (buxn_dbg_should_hook(platform_linux.dbg)) {
 		platform_linux.vm->config.hook = buxn_dbg_vm_hook(platform_linux.dbg);
+		return true;
 	} else {
 		platform_linux.vm->config.hook = (buxn_vm_hook_t) { 0 };
+		return false;
 	}
 }
 

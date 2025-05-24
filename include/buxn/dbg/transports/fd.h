@@ -24,7 +24,7 @@ buxn_dbg_transport_fd_wire(
 	void* out_mem
 );
 
-void
+bool
 buxn_dbg_transport_fd_update(buxn_dbg_transport_fd_t* transport, struct buxn_dbg_s* core);
 
 #endif

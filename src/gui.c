@@ -590,7 +590,7 @@ frame(void) {
 	// Exit
 	if (buxn_system_exit_code(app.vm) > 0) { sapp_quit(); }
 
-	platform_update_dbg();
+	if (platform_update_dbg()) { buxn_mouse_update(app.vm); }
 
 	// Console
 	char ch[256];
@@ -778,9 +778,11 @@ process_touch(sapp_event_type type, const sapp_touchpoint* touch) {
 
 static void
 event(const sapp_event* event) {
-	platform_update_dbg();
-
 	bool update_mouse = false;
+	if (platform_update_dbg()) {
+		update_mouse = true;
+	}
+
 	switch (event->type) {
 		case SAPP_EVENTTYPE_MOUSE_UP:
 		case SAPP_EVENTTYPE_MOUSE_DOWN: {

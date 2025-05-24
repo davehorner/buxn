@@ -45,7 +45,7 @@ buxn_dbg_transport_fd_wire(
 	wire->out = bserial_make_ctx(out_mem, config, NULL, &transport->out);
 }
 
-void
+bool
 buxn_dbg_transport_fd_update(buxn_dbg_transport_fd_t* transport, struct buxn_dbg_s* core) {
 	struct pollfd pfd = {
 		.fd = transport->fd,
@@ -54,5 +54,8 @@ buxn_dbg_transport_fd_update(buxn_dbg_transport_fd_t* transport, struct buxn_dbg
 
 	if (poll(&pfd, 1, 0) > 0) {
 		buxn_dbg_request_pause(core);
+		return true;
+	} else {
+		return false;
 	}
 }
