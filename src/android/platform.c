@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <buxn/vm/vm.h>
 #include <android/native_activity.h>
 #include <android/configuration.h>
 #include <android/asset_manager.h>
@@ -90,6 +91,16 @@ platform_init_fs(void) {
 	const char* write_dir = PHYSFS_getPrefDir("bullno1.com", "buxn");
 	PHYSFS_setWriteDir(write_dir);
 	PHYSFS_mount(write_dir, "/", 1);
+}
+
+void
+platform_init_dbg(buxn_vm_t* vm) {
+	(void)vm;
+}
+
+bool
+platform_update_dbg(void) {
+	return false;
 }
 
 bool
