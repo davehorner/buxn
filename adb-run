@@ -2,7 +2,7 @@
 
 if [ ! -z "$BUXN_DBG_FD" ]
 then
-	adb reverse --remove localabstract:buxn/vm
+	adb reverse --remove localabstract:buxn/vm || true
 	adb reverse localabstract:buxn/vm localabstract:buxn/adb/vm
 	socat abstract-listen:buxn/adb/vm fd:$BUXN_DBG_FD &
 fi
