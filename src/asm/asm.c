@@ -1503,8 +1503,12 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 
 	buxn_asm_put_symbol(basm->ctx, current_addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_LABEL,
-		// TODO: It is safer to just intern this?
-		.name = lambda_name,
+		.name = buxn_asm_strintern(
+			basm, (buxn_asm_str_t){
+				.chars = lambda_name,
+				.len = name_ptr - lambda_name,
+			}
+		)->key.chars,
 		.name_is_generated = true,
 		.region = token->region,
 	});

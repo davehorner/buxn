@@ -7,13 +7,16 @@
 #include <errno.h>
 #include <unistd.h>
 #include <buxn/vm/vm.h>
+#include <buxn/dbg/transports/stream.h>
 #include <android/native_activity.h>
 #include <android/configuration.h>
 #include <android/asset_manager.h>
 #include <android/window.h>
+#include "../dbg.h"
 
 static struct {
 	blog_android_logger_options_t log_options;
+	buxn_dbg_integration_t dbg;
 	jobject intent_uri;
 } platform_android = { 0 };
 
@@ -65,6 +68,7 @@ platform_icon(void) {
 
 void
 platform_cleanup(void) {
+	buxn_dbg_integration_cleanup(&platform_android.dbg);
 }
 
 void
@@ -95,12 +99,19 @@ platform_init_fs(void) {
 
 void
 platform_init_dbg(buxn_vm_t* vm) {
-	(void)vm;
+	BLOG_INFO("Trying to connect to debugger");
+	int fd = buxn_dbg_transport_abstract_connect("buxn/vm");
+	if (fd > 0) {
+		BLOG_INFO("Connected to debugger");
+		buxn_dbg_integration_init(&platform_android.dbg, vm, fd);
+	} else {
+		BLOG_INFO("Connection failed: %s", strerror(errno));
+	}
 }
 
 bool
 platform_update_dbg(void) {
-	return false;
+	return buxn_dbg_integration_update(&platform_android.dbg);
 }
 
 bool

@@ -185,12 +185,12 @@ platform_init_fs(void) {
 void
 platform_init_dbg(buxn_vm_t* vm) {
 	const char* debug_fd_env = getenv("BUXN_DBG_FD");
-	int dbg_fd = -1;
 	if (debug_fd_env != NULL) {
 		errno = 0;
 		long fd = strtol(debug_fd_env, NULL, 10);
 		if (errno == 0 && fd >= 0 && fd < INT32_MAX) {
-			dbg_fd = (int)fd;
+			int dbg_fd = (int)fd;
+			BLOG_INFO("Using fd %d for debugging", dbg_fd);
 			buxn_dbg_integration_init(&platform_linux.dbg, vm, dbg_fd);
 		}
 	}

@@ -1,5 +1,21 @@
 #!/bin/sh -e
 
+if [ ! -z "$BUXN_DBG_FD" ]
+then
+	adb reverse --remove localabstract:buxn/vm
+	adb reverse localabstract:buxn/vm localabstract:buxn/adb/vm
+	socat abstract-listen:buxn/adb/vm fd:$BUXN_DBG_FD &
+fi
+
 adb install -r ${1:-bin/Debug/android/buxn.apk}
-adb shell monkey -p com.bullno1.buxn -c android.intent.category.LAUNCHER 1
-adb logcat --pid=$(adb shell pidof -s com.bullno1.buxn)
+if [ -z "$2" ]
+then
+	adb shell monkey -p com.bullno1.buxn -c android.intent.category.LAUNCHER 1
+else
+	adb push $2 /data/local/tmp/boot.rom
+	adb shell am start \
+		-n com.bullno1.buxn/android.app.NativeActivity \
+		-a android.intent.action.VIEW -d file:///data/local/tmp/boot.rom
+fi
+
+#adb logcat --pid=$(adb shell pidof -s com.bullno1.buxn)
