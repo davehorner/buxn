@@ -4,9 +4,7 @@
 #include <physfs.h>
 #include <errno.h>
 #include <buxn/vm/vm.h>
-#include <buxn/dbg/core.h>
-#include <buxn/dbg/wire.h>
-#include <buxn/dbg/transports/fd.h>
+#include "dbg.h"
 #include "bembd.h"
 #include <buxn/devices/console.h>
 #include <buxn/devices/system.h>
@@ -112,35 +110,6 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	int exit_code = 0;
 	vm_data_t devices = { 0 };
 
-	_Alignas(BUXN_DBG_ALIGNMENT) char dbg_mem[BUXN_DBG_SIZE];
-	buxn_dbg_wire_t wire = { 0 };
-	buxn_dbg_transport_fd_t transport;
-	void* dbg_in_mem = NULL;
-	void* dbg_out_mem = NULL;
-	int dbg_fd = -1;
-	buxn_dbg_t* dbg = NULL;
-	{
-		const char* debug_fd_env = getenv("BUXN_DBG_FD");
-		if (debug_fd_env != NULL) {
-			errno = 0;
-			long fd = strtol(debug_fd_env, NULL, 10);
-			if (errno == 0 && fd >= 0 && fd < INT32_MAX) {
-				dbg_fd = (int)fd;
-			}
-		}
-
-		if (dbg_fd >= 0) {
-			buxn_dbg_transport_fd_init(&transport, dbg_fd);
-
-			bserial_ctx_config_t config = buxn_dbg_protocol_recommended_bserial_config();
-			dbg_in_mem = malloc(bserial_ctx_mem_size(config));
-			dbg_out_mem = malloc(bserial_ctx_mem_size(config));
-			buxn_dbg_transport_fd_wire(&transport, &wire, config, dbg_in_mem, dbg_out_mem);
-
-			dbg = buxn_dbg_init(dbg_mem, &wire);
-			buxn_dbg_request_pause(dbg);
-		}
-	}
 
 	buxn_vm_t* vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
 	vm->config = (buxn_vm_config_t){
@@ -148,6 +117,18 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 		.memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS,
 	};
 	buxn_vm_reset(vm, BUXN_VM_RESET_ALL);
+
+	buxn_dbg_integration_t dbg = { 0 };
+	{
+		const char* debug_fd_env = getenv("BUXN_DBG_FD");
+		if (debug_fd_env != NULL) {
+			errno = 0;
+			long fd = strtol(debug_fd_env, NULL, 10);
+			if (errno == 0 && fd >= 0 && fd < INT32_MAX) {
+				buxn_dbg_integration_init(&dbg, vm, (int)fd);
+			}
+		}
+	}
 
 	// Read rom
 	{
@@ -165,10 +146,6 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	fclose(rom_file);
 
 	buxn_console_init(vm, &devices.console, argc, argv);
-
-	if (dbg != NULL) {
-		vm->config.hook = buxn_dbg_vm_hook(dbg);
-	}
 
 	buxn_vm_execute(vm, BUXN_RESET_VECTOR);
 	if ((exit_code = buxn_system_exit_code(vm)) > 0) {
@@ -197,8 +174,7 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	if (exit_code < 0) { exit_code = 0; }
 end:
 	free(vm);
-	free(dbg_in_mem);
-	free(dbg_out_mem);
+	buxn_dbg_integration_cleanup(&dbg);
 
 	PHYSFS_deinit();
 	return exit_code;

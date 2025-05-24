@@ -51,6 +51,7 @@ build_linux() {
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{cli.c.o,vm/vm.c.o,physfs.c.o} \
 		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o} \
+		${OBJ_DIR}/src/dbg.c.o \
 		${OBJ_DIR}/src/dbg/{core.c.o,wire.c.o,protocol.c.o} \
 		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o} \
@@ -99,6 +100,7 @@ build_linux() {
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{gui.c.o,vm/vm.c.o,physfs.c.o,metadata.c.o,libs.c.o,linux/platform.c.o} \
 		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o,screen.c.o,mouse.c.o,audio.c.o,controller.c.o} \
+		${OBJ_DIR}/src/dbg.c.o \
 		${OBJ_DIR}/src/dbg/{core.c.o,wire.c.o,protocol.c.o} \
 		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o} \
@@ -221,6 +223,9 @@ android_link_for() {
 		-Wl,--version-script,src/android/libbuxn.map.txt \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{gui.c.o,vm/vm.c.o,physfs.c.o,metadata.c.o,libs.c.o,android/platform.c.o} \
+		${OBJ_DIR}/src/dbg.c.o \
+		${OBJ_DIR}/src/dbg/{core.c.o,wire.c.o,protocol.c.o} \
+		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o,screen.c.o,mouse.c.o,audio.c.o,controller.c.o} \
 		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o,physfs_platform_android.c.o} \
 		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
@@ -337,6 +342,7 @@ build_cosmo() {
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/{cli.c.o,vm/vm.c.o,physfs.c.o} \
 		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o} \
+		${OBJ_DIR}/src/dbg.c.o \
 		${OBJ_DIR}/src/dbg/{core.c.o,wire.c.o,protocol.c.o} \
 		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o} \
@@ -409,6 +415,7 @@ compile_common() {
 	compile src/dbg/transports/file.c $PROGRAM_FLAGS
 	compile src/dbg/transports/from_str.c $PROGRAM_FLAGS
 	compile src/dbg-wrapper.c $PROGRAM_FLAGS
+	compile src/dbg.c $PROGRAM_FLAGS
 
 	# PhysFS
 	compile deps/physfs/src/physfs.c $PHYSFS_FLAGS

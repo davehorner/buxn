@@ -11,10 +11,7 @@
 #include <poll.h>
 #include <stdlib.h>
 #include <qoi.h>
-#include <buxn/vm/vm.h>
-#include <buxn/dbg/core.h>
-#include <buxn/dbg/wire.h>
-#include <buxn/dbg/transports/fd.h>
+#include "../dbg.h"
 #include "../bembd.h"
 #include "../resources.h"
 
@@ -28,12 +25,7 @@ static struct {
 	int open_error;
 	sapp_icon_desc icon;
 
-	_Alignas(BUXN_DBG_ALIGNMENT) char dbg_mem[BUXN_DBG_SIZE];
-	buxn_dbg_wire_t wire;
-	buxn_dbg_transport_fd_t transport;
-	void* dbg_in_mem;
-	void* dbg_out_mem;
-	buxn_dbg_t* dbg;
+	buxn_dbg_integration_t dbg;
 	buxn_vm_t* vm;
 } platform_linux = { 0 };
 
@@ -168,8 +160,7 @@ platform_init(args_t* args) {
 void
 platform_cleanup(void) {
 	free((void*)platform_linux.icon.images[0].pixels.ptr);
-	free((void*)platform_linux.dbg_in_mem);
-	free((void*)platform_linux.dbg_out_mem);
+	buxn_dbg_integration_cleanup(&platform_linux.dbg);
 }
 
 sapp_icon_desc
@@ -200,41 +191,14 @@ platform_init_dbg(buxn_vm_t* vm) {
 		long fd = strtol(debug_fd_env, NULL, 10);
 		if (errno == 0 && fd >= 0 && fd < INT32_MAX) {
 			dbg_fd = (int)fd;
+			buxn_dbg_integration_init(&platform_linux.dbg, vm, dbg_fd);
 		}
-	}
-
-	if (dbg_fd >= 0) {
-		buxn_dbg_transport_fd_init(&platform_linux.transport, dbg_fd);
-
-		bserial_ctx_config_t config = buxn_dbg_protocol_recommended_bserial_config();
-		platform_linux.dbg_in_mem = malloc(bserial_ctx_mem_size(config));
-		platform_linux.dbg_out_mem = malloc(bserial_ctx_mem_size(config));
-		buxn_dbg_transport_fd_wire(
-			&platform_linux.transport,
-			&platform_linux.wire, config,
-			platform_linux.dbg_in_mem, platform_linux.dbg_out_mem
-		);
-
-		platform_linux.dbg = buxn_dbg_init(platform_linux.dbg_mem, &platform_linux.wire);
-		vm->config.hook = buxn_dbg_vm_hook(platform_linux.dbg);
-		platform_linux.vm = vm;
-
-		buxn_dbg_request_pause(platform_linux.dbg);
 	}
 }
 
 bool
 platform_update_dbg(void) {
-	if (platform_linux.vm == NULL) { return false; }
-
-	buxn_dbg_transport_fd_update(&platform_linux.transport, platform_linux.dbg);
-	if (buxn_dbg_should_hook(platform_linux.dbg)) {
-		platform_linux.vm->config.hook = buxn_dbg_vm_hook(platform_linux.dbg);
-		return true;
-	} else {
-		platform_linux.vm->config.hook = (buxn_vm_hook_t) { 0 };
-		return false;
-	}
+	return buxn_dbg_integration_update(&platform_linux.dbg);
 }
 
 bool
