@@ -17,6 +17,8 @@ typedef struct {
 	const char** argv;
 } args_t;
 
+struct buxn_vm_s;
+
 void
 platform_init(args_t* args);
 
@@ -31,6 +33,12 @@ platform_init_log(void);
 
 void
 platform_init_fs(void);
+
+void
+platform_init_dbg(struct buxn_vm_s* vm);
+
+void
+platform_update_dbg(void);
 
 bool
 platform_open_boot_rom(stream_t* stream);

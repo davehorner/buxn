@@ -13,6 +13,7 @@
 
 #define BLIB_IMPLEMENTATION
 #include <blog.h>
+#include <bserial.h>
 
 #define QOI_IMPLEMENTATION
 #include <qoi.h>

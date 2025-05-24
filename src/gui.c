@@ -555,6 +555,7 @@ init(void) {
 		.memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS,
 	};
 	buxn_vm_reset(app.vm, BUXN_VM_RESET_ALL);
+	platform_init_dbg(app.vm);
 
 	if (!load_boot_rom()) {
 		BLOG_FATAL("Could not load boot rom");
@@ -588,6 +589,8 @@ static void
 frame(void) {
 	// Exit
 	if (buxn_system_exit_code(app.vm) > 0) { sapp_quit(); }
+
+	platform_update_dbg();
 
 	// Console
 	char ch[256];
@@ -775,6 +778,8 @@ process_touch(sapp_event_type type, const sapp_touchpoint* touch) {
 
 static void
 event(const sapp_event* event) {
+	platform_update_dbg();
+
 	bool update_mouse = false;
 	switch (event->type) {
 		case SAPP_EVENTTYPE_MOUSE_UP:
