@@ -57,6 +57,7 @@ buxn_asm_put_dbg_sym(
 
 		// New symbol
 		current_symbol->type = type;
+		current_symbol->id = sym->id;
 		current_symbol->addr_min = current_symbol->addr_max = addr;
 		current_symbol->region = sym->region;
 	}
@@ -96,12 +97,14 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 				}
 			}
 
+			assert(sym->id != 0);
 			buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_LABEL, addr, sym);
 		} break;
 		case BUXN_ASM_SYM_OPCODE:
 			 buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_OPCODE, addr, sym);
 			 break;
 		case BUXN_ASM_SYM_LABEL_REF:
+			assert(sym->id != 0);
 			buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_LABEL_REF, addr, sym);
 			break;
 		case BUXN_ASM_SYM_TEXT:

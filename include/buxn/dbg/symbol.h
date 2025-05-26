@@ -15,6 +15,7 @@ typedef enum {
 
 typedef struct {
 	buxn_dbg_sym_type_t type;
+	uint16_t id;
 	uint16_t addr_min;
 	uint16_t addr_max;
 	buxn_asm_source_region_t region;
@@ -57,11 +58,15 @@ buxn_dbg_sym(bserial_ctx_t* ctx, buxn_dbg_sym_t* entry) {
 			entry->type = int_type;
 		}
 
-		BSERIAL_KEY(ctx, addr_min) {
+		BSERIAL_KEY(ctx, id) {
+			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->id));
+		}
+
+		BSERIAL_KEY(ctx, addr.min) {
 			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->addr_min));
 		}
 
-		BSERIAL_KEY(ctx, addr_max) {
+		BSERIAL_KEY(ctx, addr.max) {
 			BSERIAL_CHECK_STATUS(bserial_any_int(ctx, &entry->addr_max));
 		}
 

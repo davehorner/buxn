@@ -39,6 +39,7 @@ typedef struct {
 typedef struct {
 	buxn_asm_sym_type_t type;
 	bool name_is_generated;
+	uint16_t id;
 	const char* name;
 	buxn_asm_source_region_t region;
 } buxn_asm_sym_t;

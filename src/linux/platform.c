@@ -58,7 +58,7 @@ standalone_init(args_t* args) {
 	const char** argv = args->argv;
 
 	int i;
-	for (i = 0; i < argc; ++i) {
+	for (i = 1; i < argc; ++i) {
 		const char* arg = argv[i];
 		const char* value;
 		if ((value = get_arg(arg, "-log-level=")) != NULL) {

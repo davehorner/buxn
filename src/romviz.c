@@ -321,6 +321,21 @@ end_draw:
 						|| event.ch == 'j'
 					) {
 						view_pos = view_pos + num_bytes_per_row < rom_size ? view_pos + num_bytes_per_row : rom_size - 1;
+					} else if (
+						event.key == TB_KEY_ENTER
+					) {
+						if (focused_symbol != NULL && focused_symbol->type == BUXN_DBG_SYM_LABEL_REF) {
+							for (int i = 0; i < num_symbols; ++i) {
+								if (
+									debug_symbols[i].type == BUXN_DBG_SYM_LABEL
+									&& debug_symbols[i].id == focused_symbol->id
+									&& debug_symbols[i].addr_min >= 256
+								) {
+									view_pos = debug_symbols[i].addr_min - 256;
+									break;
+								}
+							}
+						}
 					}
 					break;
 			}

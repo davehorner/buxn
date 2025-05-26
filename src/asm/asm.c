@@ -114,23 +114,37 @@ typedef struct {
 } buxn_asm_unit_t;
 
 typedef enum {
+	BUXN_ASM_SYMTAB_ENTRY_UNKNOWN = 0,
 	BUXN_ASM_SYMTAB_ENTRY_MACRO,
 	BUXN_ASM_SYMTAB_ENTRY_LABEL,
+	BUXN_ASM_SYMTAB_ENTRY_FORWARD_REF,
 } buxn_asm_symtab_entry_type_t;
 
+typedef struct buxn_asm_forward_ref_s buxn_asm_forward_ref_t;
 typedef struct buxn_asm_symtab_node_s buxn_asm_symtab_node_t;
+
+typedef struct {
+	uint16_t id;
+	uint16_t address;
+} buxn_asm_label_info_t;
+
+typedef struct {
+	uint16_t id;
+	buxn_asm_forward_ref_t* refs;
+} buxn_forward_ref_info_t;
 
 struct buxn_asm_symtab_node_s {
 	const buxn_asm_pstr_t* key;
 	buxn_asm_symtab_node_t* children[BHAMT_NUM_CHILDREN];
 	buxn_asm_symtab_node_t* next;
-	buxn_asm_token_t token;
+	buxn_asm_token_t defining_token;
 	bool referenced;
 
 	buxn_asm_symtab_entry_type_t type;
 	union {
-		uint16_t label_address;
 		buxn_asm_macro_unit_t macro;
+		buxn_asm_label_info_t label;
+		buxn_forward_ref_info_t forward_ref;
 	};
 };
 
@@ -151,15 +165,11 @@ typedef enum {
 	BUXN_ASM_LABEL_REF_SHORT = 2,
 } buxn_asm_label_ref_size_t;
 
-typedef struct buxn_asm_forward_ref_s buxn_asm_forward_ref_t;
-
 struct buxn_asm_forward_ref_s {
 	buxn_asm_forward_ref_t* next;
-	union {
-		const buxn_asm_pstr_t* label_name;
-		uint16_t id;
-	};
 	buxn_asm_token_t token;
+	uint16_t label_id;
+	uint16_t lambda_id;
 	uint16_t addr;
 	buxn_asm_label_ref_type_t type;
 	buxn_asm_label_ref_size_t size;
@@ -178,11 +188,11 @@ typedef struct {
 	bool has_read_buf;
 	bool success;
 
+	uint16_t num_labels;
 	uint16_t num_lambdas;
 	buxn_asm_strpool_t strpool;
 	buxn_asm_symtab_t symtab;
 	buxn_asm_str_t label_scope;
-	buxn_asm_forward_ref_t* forward_refs;
 	buxn_asm_forward_ref_t* lambdas;
 	buxn_asm_forward_ref_t* ref_pool;
 } buxn_asm_t;
@@ -594,7 +604,7 @@ buxn_asm_persist_token(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 // Symbol {{{
 
 static buxn_asm_symtab_node_t*
-buxn_asm_register_symbol(
+buxn_asm_find_or_create_symbol(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
 	buxn_asm_str_t name
@@ -625,12 +635,7 @@ buxn_asm_register_symbol(
 	BHAMT_SEARCH(basm->symtab.root, itr, node, interned_name->hash, interned_name, buxn_asm_ptr_eq);
 
 	if (node != NULL) {
-		buxn_asm_error2(
-			basm,
-			token, "Duplicated definition",
-			&node->token, "Previously defined here"
-		);
-		return NULL;
+		return node;
 	}
 
 	node = *itr = buxn_asm_alloc(
@@ -640,7 +645,7 @@ buxn_asm_register_symbol(
 	);
 	(*node) = (buxn_asm_symtab_node_t){
 		.key = interned_name,
-		.token = buxn_asm_persist_token(basm, token),
+		.defining_token = buxn_asm_persist_token(basm, token),
 	};
 
 	if (basm->symtab.first == NULL) {
@@ -665,26 +670,80 @@ buxn_asm_find_symbol(buxn_asm_t* basm, const buxn_asm_pstr_t* name) {
 
 // Label {{{
 
+static bool
+buxn_asm_emit_backward_ref(
+	buxn_asm_t* basm,
+	const buxn_asm_token_t* token,
+	buxn_asm_label_ref_type_t type,
+	buxn_asm_label_ref_size_t size,
+	const buxn_asm_symtab_node_t* label,
+	bool with_symbol,
+	bool is_runic
+);
+
 static buxn_asm_symtab_node_t*
 buxn_asm_register_label(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
-	buxn_asm_str_t label_name,
-	uint16_t write_addr
+	buxn_asm_str_t label_name
 ) {
-	buxn_asm_symtab_node_t* symbol = buxn_asm_register_symbol(basm, token, label_name);
-	if (symbol == NULL) { return NULL; }
+	buxn_asm_symtab_node_t* symbol = buxn_asm_find_or_create_symbol(basm, token, label_name);
+	if (symbol == NULL) {
+		return NULL;
+	} else if (
+		symbol->type == BUXN_ASM_SYMTAB_ENTRY_UNKNOWN
+		|| symbol->type == BUXN_ASM_SYMTAB_ENTRY_FORWARD_REF
+	) {
+		uint16_t id;
+		buxn_asm_forward_ref_t* forward_refs;
+		if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_UNKNOWN) {
+			id = ++basm->num_labels;  // Starting from 1 since 0 means no id
+			forward_refs = NULL;
+		} else {
+			id = symbol->forward_ref.id;
+			forward_refs = symbol->forward_ref.refs;
+		}
 
-	symbol->type = BUXN_ASM_SYMTAB_ENTRY_LABEL;
-	symbol->label_address = write_addr;
+		symbol->type = BUXN_ASM_SYMTAB_ENTRY_LABEL;
+		symbol->label.id = id;
+		symbol->label.address = basm->write_addr;
 
-	buxn_asm_put_symbol(basm->ctx, write_addr, &(buxn_asm_sym_t){
-		.type = BUXN_ASM_SYM_LABEL,
-		.name = symbol->key->key.chars,
-		.region = token->region,
-	});
+		// Resolve existing forward references
+		uint16_t write_addr = basm->write_addr;
+		for (buxn_asm_forward_ref_t* itr = forward_refs; itr != NULL;) {
+			buxn_asm_forward_ref_t* next = itr->next;
 
-	return symbol;
+			basm->write_addr = itr->addr;
+			buxn_asm_emit_backward_ref(
+				basm, &itr->token,
+				itr->type, itr->size,
+				symbol,
+				false,
+				false
+			);
+
+			itr->next = basm->ref_pool;
+			basm->ref_pool = itr;
+			itr = next;
+		}
+		symbol->referenced = forward_refs != NULL;
+		basm->write_addr = write_addr;
+
+		buxn_asm_put_symbol(basm->ctx, basm->write_addr, &(buxn_asm_sym_t){
+			.type = BUXN_ASM_SYM_LABEL,
+			.name = symbol->key->key.chars,
+			.region = token->region,
+			.id = id,
+		});
+		return symbol;
+	} else {
+		buxn_asm_error2(
+			basm,
+			token, "Duplicated definition",
+			&symbol->defining_token, "Previously defined here"
+		);
+		return NULL;
+	}
 }
 
 static bool
@@ -836,9 +895,10 @@ buxn_asm_emit_addr_placeholder(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_size_t size,
-	const buxn_asm_pstr_t* label_name,
+	buxn_asm_symtab_node_t* symbol,
 	bool is_runic
 ) {
+	assert(symbol == NULL || symbol->type == BUXN_ASM_SYMTAB_ENTRY_FORWARD_REF);
 	buxn_asm_source_region_t region = token->region;
 	if (is_runic) {
 		region.range.start.col += 1;
@@ -846,8 +906,9 @@ buxn_asm_emit_addr_placeholder(
 	}
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
-		.name = label_name != NULL ? label_name->key.chars : 0,
+		.name = symbol != NULL ? symbol->key->key.chars : 0,
 		.region = region,
+		.id = symbol != NULL ? symbol->forward_ref.id : ++basm->num_labels,
 	};
 
 	uint16_t addr = basm->write_addr;
@@ -871,24 +932,29 @@ buxn_asm_emit_forward_ref(
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_type_t type,
 	buxn_asm_label_ref_size_t size,
-	const buxn_asm_pstr_t* label_name,
+	buxn_asm_symtab_node_t* symbol,
 	bool is_runic
 ) {
+	if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_UNKNOWN) {
+		symbol->type = BUXN_ASM_SYMTAB_ENTRY_FORWARD_REF;
+		symbol->forward_ref.id = ++basm->num_labels;
+		symbol->forward_ref.refs = NULL;
+	}
+
 	uint16_t addr = basm->write_addr;
-	if (!buxn_asm_emit_addr_placeholder(basm, token, size, label_name, is_runic)) {
+	if (!buxn_asm_emit_addr_placeholder(basm, token, size, symbol, is_runic)) {
 		return false;
 	}
 
 	buxn_asm_forward_ref_t* ref = buxn_asm_alloc_forward_ref(basm);
 	*ref = (buxn_asm_forward_ref_t){
-		.next = basm->forward_refs,
-		.label_name = label_name,
+		.next = symbol->forward_ref.refs,
 		.token = buxn_asm_persist_token(basm, token),
 		.addr = addr,
 		.type = type,
 		.size = size,
 	};
-	basm->forward_refs = ref;
+	symbol->forward_ref.refs = ref;
 
 	return true;
 }
@@ -909,7 +975,8 @@ buxn_asm_emit_lambda_ref(
 	buxn_asm_forward_ref_t* ref = buxn_asm_alloc_forward_ref(basm);
 	*ref = (buxn_asm_forward_ref_t){
 		.next = basm->lambdas,
-		.id = basm->num_lambdas++,
+		.label_id = basm->num_labels,
+		.lambda_id = basm->num_lambdas++,
 		.token = *token,
 		.addr = addr,
 		.type = type,
@@ -988,17 +1055,17 @@ buxn_asm_emit_backward_ref(
 	const buxn_asm_token_t* token,
 	buxn_asm_label_ref_type_t type,
 	buxn_asm_label_ref_size_t size,
-	const buxn_asm_symtab_node_t* label,
+	const buxn_asm_symtab_node_t* symbol,
 	bool with_symbol,
 	bool is_runic
 ) {
-	assert((label->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) && "Invalid symbol type");
+	assert((symbol->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) && "Invalid symbol type");
 
 	uint16_t write_addr = basm->write_addr;
 	int32_t addr = buxn_asm_calculate_addr(
 		basm, token,
 		type,
-		write_addr, label->label_address
+		write_addr, symbol->label.address
 	);
 
 	buxn_asm_source_region_t region = token->region;
@@ -1008,15 +1075,16 @@ buxn_asm_emit_backward_ref(
 	}
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
-		.name = label->key->key.chars,
+		.name = symbol->key->key.chars,
 		.region = region,
+		.id = symbol->label.id,
 	};
 
 	return buxn_asm_emit_addr(
 		basm, token,
 		type, size,
 		addr,
-		&label->token,
+		&symbol->defining_token,
 		with_symbol ? &sym : NULL
 	);
 }
@@ -1043,13 +1111,17 @@ buxn_asm_emit_label_ref(
 		return buxn_asm_error(basm, token, "Invalid reference");
 	}
 
-	const buxn_asm_pstr_t* interned_name = buxn_asm_strintern(basm, full_name);
-	buxn_asm_symtab_node_t* symbol = buxn_asm_find_symbol(basm, interned_name);
+	buxn_asm_symtab_node_t* symbol = buxn_asm_find_or_create_symbol(basm, token, full_name);
 	if (symbol == NULL) {
-		return buxn_asm_emit_forward_ref(basm, token, type, size, interned_name, is_runic);
+		return false;
 	} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) {
 		symbol->referenced = true;
 		return buxn_asm_emit_backward_ref(basm, token, type, size, symbol, true, is_runic);
+	} else if (
+		symbol->type == BUXN_ASM_SYMTAB_ENTRY_UNKNOWN
+		|| symbol->type == BUXN_ASM_SYMTAB_ENTRY_FORWARD_REF
+	) {
+		return buxn_asm_emit_forward_ref(basm, token, type, size, symbol, is_runic);
 	} else {
 		return buxn_asm_error(basm, token, "Invalid reference");
 	}
@@ -1079,33 +1151,21 @@ buxn_asm_resolve(buxn_asm_t* basm) {
 	}
 
 	for (
-		buxn_asm_forward_ref_t* itr = basm->forward_refs;
-		itr != NULL;
-		itr = itr->next
-	) {
-		buxn_asm_symtab_node_t* symbol = buxn_asm_find_symbol(basm, itr->label_name);
-		if (symbol == NULL || symbol->type != BUXN_ASM_SYMTAB_ENTRY_LABEL) {
-			buxn_asm_error(basm, &itr->token, "Invalid reference");
-			continue;
-		}
-
-		basm->write_addr = itr->addr;
-		buxn_asm_emit_backward_ref(
-			basm, &itr->token,
-			itr->type, itr->size,
-			symbol,
-			false,
-			false
-		);
-		symbol->referenced = true;
-	}
-
-	for (
 		buxn_asm_symtab_node_t* itr = basm->symtab.first;
 		itr != NULL;
 		itr = itr->next
 	) {
-		if (
+		if (itr->type == BUXN_ASM_SYMTAB_ENTRY_FORWARD_REF) {
+			for (
+				buxn_asm_forward_ref_t* jtr = itr->forward_ref.refs;
+				jtr != NULL;
+				jtr = jtr->next
+			) {
+				buxn_asm_error(basm, &jtr->token, "Invalid reference");
+			}
+		} else if (itr->type == BUXN_ASM_SYMTAB_ENTRY_UNKNOWN) {
+			buxn_asm_error(basm, &itr->defining_token, "Internal error: Unknown symbol");
+		} else if (
 			!itr->referenced
 			&& !(
 				itr->key->key.len > 0
@@ -1113,10 +1173,10 @@ buxn_asm_resolve(buxn_asm_t* basm) {
 			)
 			&& !(
 				itr->type == BUXN_ASM_SYMTAB_ENTRY_LABEL
-				&& itr->label_address == BUXN_ASM_RESET_VECTOR
+				&& itr->label.address == BUXN_ASM_RESET_VECTOR
 			)
 		) {
-			buxn_asm_warning(basm, &itr->token, "Unreferenced symbol");
+			buxn_asm_warning(basm, &itr->defining_token, "Unreferenced symbol");
 		}
 	}
 
@@ -1156,15 +1216,12 @@ buxn_asm_process_comment(
 }
 
 static bool
-buxn_asm_process_macro(
+buxn_asm_create_macro(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* start,
-	buxn_asm_unit_t* unit
+	buxn_asm_unit_t* unit,
+	buxn_asm_symtab_node_t* symbol
 ) {
-	buxn_asm_str_t macro_name = buxn_asm_str_pop_front(start->lexeme);
-	buxn_asm_symtab_node_t* symbol = buxn_asm_register_symbol(basm, start, macro_name);
-	if (symbol == NULL) { return false; }
-
 	buxn_asm_token_t token;
 	bool found_open_brace = false;
 	while (!found_open_brace && buxn_asm_next_token(basm, unit, &token)) {
@@ -1253,10 +1310,34 @@ buxn_asm_process_macro(
 }
 
 static bool
+buxn_asm_process_macro(
+	buxn_asm_t* basm,
+	const buxn_asm_token_t* start,
+	buxn_asm_unit_t* unit
+) {
+	buxn_asm_str_t macro_name = buxn_asm_str_pop_front(start->lexeme);
+	buxn_asm_symtab_node_t* symbol = buxn_asm_find_or_create_symbol(basm, start, macro_name);
+	if (symbol == NULL) {
+		return false;
+	} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_UNKNOWN) {
+		return buxn_asm_create_macro(basm, start, unit, symbol);
+	} else {
+		const char* related_message = symbol->type == BUXN_ASM_SYMTAB_ENTRY_FORWARD_REF
+			? "Previously seen here as a label"
+			: "Previously defined here";
+		return buxn_asm_error2(
+			basm,
+			start, "Conflicting definition",
+			&symbol->defining_token, related_message
+		);
+	}
+}
+
+static bool
 buxn_asm_process_global_label(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 	buxn_asm_str_t label_name = buxn_asm_str_pop_front(start->lexeme);
 
-	buxn_asm_symtab_node_t* label = buxn_asm_register_label(basm, start, label_name, basm->write_addr);
+	buxn_asm_symtab_node_t* label = buxn_asm_register_label(basm, start, label_name);
 	if (label == NULL) { return false; }
 
 	buxn_asm_str_t interned_name = label->key->key;
@@ -1281,7 +1362,7 @@ buxn_asm_process_local_label(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 		return false;
 	}
 
-	return buxn_asm_register_label(basm, start, label_name, basm->write_addr);
+	return buxn_asm_register_label(basm, start, label_name);
 }
 
 static bool
@@ -1342,7 +1423,7 @@ buxn_asm_resolve_padding(
 		}
 
 		symbol->referenced = true;
-		*padding_out = symbol->label_address;
+		*padding_out = symbol->label.address;
 		return true;
 	}
 }
@@ -1478,14 +1559,14 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	}
 	basm->write_addr = current_addr;
 
-	// Generate a name for the lambda to make debuggin easier
-	char lambda_name[sizeof("λffff")];
-	// Write the λ character
-	memcpy(lambda_name, "λ", sizeof("λ") - 1);
-	char* name_ptr = lambda_name + sizeof("λ") - 1;
+	// Generate a name for the lambda to make debugging easier
+	// A label can't start with @ so we use that
+	char lambda_name[sizeof("@ffff")];
+	memcpy(lambda_name, "@", sizeof("@") - 1);
+	char* name_ptr = lambda_name + sizeof("@") - 1;
 	// Write the digits
 	{
-		uint16_t lambda_id = ref->id;
+		uint16_t lambda_id = ref->lambda_id;
 		bool start_write = false;
 		for (int i = 0; i < 4; ++i) {
 			uint8_t digit = (lambda_id >> ((3 - i) * 4)) & 0x0f;
@@ -1511,6 +1592,7 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 		)->key.chars,
 		.name_is_generated = true,
 		.region = token->region,
+		.id = ref->label_id,
 	});
 
 	basm->lambdas = ref->next;
@@ -1523,31 +1605,18 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 static bool
 buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	assert((!buxn_asm_is_runic(token->lexeme.chars[0])) && "Runic word encountered");
-	// Inline buxn_asm_strfind here so we get the hash
-	BHAMT_HASH_TYPE initial_hash = chibihash64(token->lexeme.chars, token->lexeme.len, 0);
-	const buxn_asm_pstr_t* interned_name;
-	BHAMT_GET(basm->strpool.root, interned_name, initial_hash, token->lexeme, buxn_asm_str_eq);
-	if (interned_name == NULL) {
-		buxn_asm_opcode_result_t opcode_result;
-		if (buxn_asm_parse_opcode(token->lexeme, &opcode_result)) {
-			if (opcode_result.has_redundant_flag) {
-				buxn_asm_warning(basm, token, "Opcode contains redundant flags");
-			}
 
-			return buxn_asm_emit_opcode(basm, token, opcode_result.opcode, false);
-		} else {
-			return buxn_asm_emit_jsi(basm, token);
+	buxn_asm_opcode_result_t opcode_result;
+	if (buxn_asm_parse_opcode(token->lexeme, &opcode_result)) {
+		if (opcode_result.has_redundant_flag) {
+			buxn_asm_warning(basm, token, "Opcode contains redundant flags");
 		}
+
+		return buxn_asm_emit_opcode(basm, token, opcode_result.opcode, false);
 	} else {
-		buxn_asm_symtab_node_t* symbol = buxn_asm_find_symbol(basm, interned_name);
+		buxn_asm_symtab_node_t* symbol = buxn_asm_find_or_create_symbol(basm, token, token->lexeme);
 		if (symbol == NULL) {
-			if (!buxn_asm_emit_opcode(basm, token, 0x60, false)) { return false; }  // JSI
-			return buxn_asm_emit_forward_ref(
-				basm, token,
-				BUXN_ASM_LABEL_REF_REL, BUXN_ASM_LABEL_REF_SHORT,
-				interned_name,
-				false
-			);
+			return false;
 		} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_MACRO) {
 			symbol->referenced = true;
 			return buxn_asm_expand_macro(basm, token, &symbol->macro);
@@ -1559,6 +1628,17 @@ buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 				BUXN_ASM_LABEL_REF_REL, BUXN_ASM_LABEL_REF_SHORT,
 				symbol,
 				true,
+				false
+			);
+		} else if (
+			symbol->type == BUXN_ASM_SYMTAB_ENTRY_UNKNOWN
+			|| symbol->type == BUXN_ASM_SYMTAB_ENTRY_FORWARD_REF
+		) {
+			if (!buxn_asm_emit_opcode(basm, token, 0x60, false)) { return false; }  // JSI
+			return buxn_asm_emit_forward_ref(
+				basm, token,
+				BUXN_ASM_LABEL_REF_REL, BUXN_ASM_LABEL_REF_SHORT,
+				symbol,
 				false
 			);
 		} else {
