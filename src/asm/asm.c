@@ -1225,22 +1225,29 @@ buxn_asm_create_macro(
 	buxn_asm_token_t token;
 	bool found_open_brace = false;
 	while (!found_open_brace && buxn_asm_next_token(basm, unit, &token)) {
-		if (token.lexeme.len == 1) {
-			switch (token.lexeme.chars[0]) {
-				case '(':
-					if (!buxn_asm_process_comment(basm, &token, unit)) {
-						return false;
-					}
-					break;
-				case '[':
-				case ']':
-					break;
-				case '{':
-					found_open_brace = true;
-					break;
-			}
-		} else {
-			return buxn_asm_error(basm, &token, "Macro must be followed by '{'");
+		switch (token.lexeme.chars[0]) {
+			case '(':
+				if (!buxn_asm_process_comment(basm, &token, unit)) {
+					return false;
+				}
+				break;
+			case '[':
+				// [word is ignored
+				break;
+			case ']':
+				// ] is standalone
+				if (token.lexeme.len != 1) {
+					return buxn_asm_error(basm, &token, "Invalid runic token");
+				}
+				break;
+			case '{':
+				if (token.lexeme.len != 1) {
+					return buxn_asm_error(basm, &token, "Macro must be followed by '{'");
+				}
+				found_open_brace = true;
+				break;
+			default:
+				return buxn_asm_error(basm, &token, "Macro must be followed by '{'");
 		}
 	}
 	if (!found_open_brace) {
@@ -1676,10 +1683,6 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 
 		switch (token.lexeme.chars[0]) {
 			case '(':
-				if (token.lexeme.len != 1) {
-					return buxn_asm_error(basm, &token, "Invalid runic token");
-				}
-
 				if (!buxn_asm_process_comment(basm, &token, unit)) {
 					return false;
 				}
@@ -1688,6 +1691,8 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 			case ')':
 				return buxn_asm_error(basm, &token, "Unexpected rune");
 			case '[':
+				// [word is accepted and ignored
+				break;
 			case ']':
 				if (token.lexeme.len != 1) {
 					return buxn_asm_error(basm, &token, "Invalid runic token");
