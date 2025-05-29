@@ -113,6 +113,8 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 		case BUXN_ASM_SYM_NUMBER:
 			buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_NUMBER, addr, sym);
 			break;
+		case BUXN_ASM_SYM_COMMENT:
+			break;
 	}
 }
 

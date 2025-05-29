@@ -1191,10 +1191,22 @@ buxn_asm_process_comment(
 	const buxn_asm_token_t* start,
 	buxn_asm_unit_t* unit
 ) {
+	buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
+		.type = BUXN_ASM_SYM_COMMENT,
+		.name = start->lexeme.chars,
+		.region = start->region,
+	});
+
 	int depth = 1;
 	buxn_asm_token_t token;
 	while (depth > 0 && buxn_asm_next_token(basm, unit, &token)) {
 		assert((token.lexeme.len > 0) && "Invalid token");
+
+		buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
+			.type = BUXN_ASM_SYM_COMMENT,
+			.name = token.lexeme.chars,
+			.region = token.region,
+		});
 
 		switch (token.lexeme.chars[0]) {
 			case '(': if (token.lexeme.len == 1) { ++depth; } break;
