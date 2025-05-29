@@ -8,7 +8,7 @@
 (doc doc comment )
 (doc (nested-ingored )
 (doc ( )  )
-(doc (no nesting  )
+( (no-inner-named-comment-nesting  )
 
 (
 @|Prelude )
