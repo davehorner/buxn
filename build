@@ -29,7 +29,7 @@ build_linux() {
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
 
 	DEV_FLAGS="-Wall -Wextra -pedantic -Werror"
-	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Iinclude -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -Ideps/termbox2 -DSOKOL_GLES3"
+	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Iinclude -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -Ideps/termbox2 -Ideps/utf8proc -DSOKOL_GLES3"
 	VM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Iinclude"
 	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1 -DPHYSFS_NO_CDROM_SUPPORT=1"
 
@@ -65,6 +65,7 @@ build_linux() {
 		${OBJ_DIR}/src/asm.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
 		${OBJ_DIR}/src/dbg/symtab.c.o \
+		${OBJ_DIR}/deps/utf8proc/utf8proc.c.o \
 		-o ${BIN_DIR}/buxn-asm
 
 	$CC \
@@ -357,6 +358,7 @@ build_cosmo() {
 		${OBJ_DIR}/src/asm.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
 		${OBJ_DIR}/src/dbg/symtab.c.o \
+		${OBJ_DIR}/deps/utf8proc/utf8proc.c.o \
 		-o ${BIN_DIR}/buxn-asm
 
 	$CC \
@@ -446,6 +448,9 @@ compile_desktop() {
 	compile tests/asm.c $PROGRAM_FLAGS
 	compile tests/vm.c $PROGRAM_FLAGS
 	compile tests/dbg.c $PROGRAM_FLAGS
+
+	# utf8proc
+	compile deps/utf8proc/utf8proc.c $PROGRAM_FLAGS
 }
 
 begin_compile() {

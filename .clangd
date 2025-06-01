@@ -14,5 +14,6 @@ CompileFlags:
     - -I./deps/physfs/src
     - -I./deps/chibihash
     - -I./deps/termbox2
+    - -I./deps/utf8proc
     - -DSOKOL_GLCORE
     - -D_DEBUG

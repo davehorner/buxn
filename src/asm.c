@@ -8,6 +8,7 @@
 #include <blog.h>
 #include <buxn/asm/asm.h>
 #include <buxn/dbg/symtab.h>
+#include <utf8proc.h>
 #define BSERIAL_STDIO
 #include <bserial.h>
 
@@ -32,7 +33,7 @@ struct buxn_asm_ctx_s {
 
 	barena_t arena;
 	file_table_t file_table;
-	barray(char) line_buf;
+	barray(utf8proc_uint8_t) line_buf;
 };
 
 static void
@@ -192,19 +193,50 @@ print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_source_region_t* region) {
 
 	// Print the squiggly pointer
 	fprintf(stderr, "      | ");
-	for (int i = 0; i < region->range.start.col - 1; ++i) {
+	utf8proc_ssize_t offset = 0;
+	utf8proc_ssize_t line_len = (utf8proc_ssize_t)barray_len(ctx->line_buf);
+	while (true) {
+		utf8proc_int32_t codepoint;
+		utf8proc_ssize_t num_bytes = utf8proc_iterate(ctx->line_buf + offset, line_len - offset, &codepoint);
+		if (num_bytes < 0) { break; }
+		if (offset + num_bytes >= region->range.start.col) { break; }
+
+		offset += num_bytes;
+		if (offset >= line_len) { break; }
+
 		// Replay the characters in the exact order with space replacing any
 		// non-tab characters
-		if (ctx->line_buf[i] == '\t') {
+		if (codepoint == '\t') {
 			fprintf(stderr, "\t");
 		} else {
-			fprintf(stderr, " ");
+			fprintf(stderr, "%*s", utf8proc_charwidth(codepoint), "");
 		}
 	}
+
+	// Print the caret
 	fprintf(stderr, "^");
-	int length = region->range.end.col - region->range.start.col - 1;
-	for (int i = 0; i < length; ++i) {
-		fprintf(stderr, "~");
+	// The first character could be wide
+	{
+		utf8proc_int32_t codepoint;
+		utf8proc_ssize_t num_bytes = utf8proc_iterate(ctx->line_buf + offset, line_len - offset, &codepoint);
+		int char_width = utf8proc_charwidth(codepoint);
+		for (int i = 0; i < char_width - 1; ++i) {
+			fprintf(stderr, "~");
+		}
+		offset += num_bytes;
+	}
+
+	for (; offset < region->range.end.col && offset < line_len;) {
+		utf8proc_int32_t codepoint;
+		utf8proc_ssize_t num_bytes = utf8proc_iterate(ctx->line_buf + offset, line_len - offset, &codepoint);
+		offset += num_bytes;
+		if (num_bytes < 0) { break; }
+		if (offset >= region->range.end.col) { break; }
+
+		int char_width = utf8proc_charwidth(codepoint);
+		for (int i = 0; i < char_width; ++i) {
+			fprintf(stderr, "~");
+		}
 	}
 	fprintf(stderr, "\n");
 }
