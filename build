@@ -64,6 +64,7 @@ build_linux() {
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/asm.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
+		${OBJ_DIR}/src/dbg/symtab.c.o \
 		-o ${BIN_DIR}/buxn-asm
 
 	$CC \
@@ -77,6 +78,7 @@ build_linux() {
 		-fuse-ld=mold \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/romviz.c.o \
+		${OBJ_DIR}/src/dbg/symtab.c.o \
 		-o ${BIN_DIR}/buxn-romviz
 
 	$CC \
@@ -354,6 +356,7 @@ build_cosmo() {
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/asm.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
+		${OBJ_DIR}/src/dbg/symtab.c.o \
 		-o ${BIN_DIR}/buxn-asm
 
 	$CC \
@@ -364,6 +367,7 @@ build_cosmo() {
 	$CC \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/romviz.c.o \
+		${OBJ_DIR}/src/dbg/symtab.c.o \
 		-o ${BIN_DIR}/buxn-romviz
 
 	$CC \
@@ -417,6 +421,7 @@ compile_common() {
 	compile src/dbg/transports/from_str.c $PROGRAM_FLAGS
 	compile src/dbg-wrapper.c $PROGRAM_FLAGS
 	compile src/dbg.c $PROGRAM_FLAGS
+	compile src/dbg/symtab.c $PROGRAM_FLAGS
 
 	# PhysFS
 	compile deps/physfs/src/physfs.c $PHYSFS_FLAGS

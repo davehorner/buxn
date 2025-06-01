@@ -7,8 +7,9 @@
 #include <barray.h>
 #include <blog.h>
 #include <buxn/asm/asm.h>
+#include <buxn/dbg/symtab.h>
 #define BSERIAL_STDIO
-#include <buxn/dbg/symbol.h>
+#include <bserial.h>
 
 typedef struct {
 	int len;
@@ -21,6 +22,7 @@ struct buxn_asm_ctx_s {
 	uint16_t rom_size;
 	uint16_t num_macros;
 	uint16_t num_labels;
+	uint32_t num_files;
 	char rom[UINT16_MAX];
 
 	FILE* sym_file;
@@ -120,7 +122,7 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 
 buxn_asm_file_t*
 buxn_asm_fopen(buxn_asm_ctx_t* ctx, const char* filename) {
-	(void)ctx;
+	++ctx->num_files;
 	return (void*)fopen(filename, "rb");
 }
 
@@ -346,20 +348,32 @@ main(int argc, const char* argv[]) {
 				barray_push(ctx.debug_symbols, ctx.current_symbol, NULL);
 			}
 
-			bserial_ctx_config_t config = buxn_dbg_sym_recommended_bserial_config();
-			void* mem = barena_malloc(&ctx.arena, bserial_ctx_mem_size(config));
-			bserial_stdio_out_t stdio_out;
-			bserial_out_t* out = bserial_stdio_init_out(&stdio_out, dbg_file);
-			bserial_ctx_t* bserial = bserial_make_ctx(mem, config, NULL, out);
+			bserial_stdio_out_t bserial_out;
+			buxn_dbg_symtab_writer_opts_t writer_opts = {
+				.num_files = ctx.num_files,
+				.output = bserial_stdio_init_out(&bserial_out, dbg_file),
+			};
+			buxn_dbg_symtab_writer_t* writer = buxn_dbg_make_symtab_writer(
+				barena_malloc(&ctx.arena, buxn_dbg_symtab_writer_mem_size(&writer_opts)),
+				&writer_opts
+			);
+			buxn_dbg_symtab_io_status_t status = buxn_dbg_write_symtab(
+				writer,
+				&(buxn_dbg_symtab_t){
+					.num_symbols = barray_len(ctx.debug_symbols),
+					.symbols = ctx.debug_symbols,
+				}
+			);
 
-			uint16_t size = barray_len(ctx.debug_symbols);
-			buxn_dbg_sym_table(bserial, &size);
-			for (uint16_t i = 0; i < size; ++i) {
-				buxn_dbg_sym(bserial, &ctx.debug_symbols[i]);
-			}
-
-			if (bserial_status(bserial) != BSERIAL_OK) {
-				BLOG_ERROR("Error while writing debug file: %s", strerror(errno));
+			switch (status) {
+				case BUXN_DBG_SYMTAB_OK:
+					break;
+				case BUXN_DBG_SYMTAB_IO_ERROR:
+					BLOG_ERROR("Error while writing debug file: %s", strerror(errno));
+					break;
+				case BUXN_DBG_SYMTAB_MALFORMED:
+					BLOG_ERROR("Error while writing debug file: %s", "Malformed symbol table");
+					break;
 			}
 
 			fclose(dbg_file);

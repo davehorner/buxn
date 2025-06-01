@@ -5,8 +5,9 @@
 #include <string.h>
 #include <bhash.h>
 #include <buxn/vm/opcodes.h>
+#include <buxn/dbg/symtab.h>
 #define BSERIAL_STDIO
-#include <buxn/dbg/symbol.h>
+#include <bserial.h>
 
 #define SPACE_PER_BYTE 3
 #define HEADER_LINES 3
@@ -32,18 +33,17 @@ static buxn_dbg_sym_t*
 find_symbol(
 	uint16_t address,
 	int* current_index,
-	buxn_dbg_sym_t* symbols,
-	int num_symbols
+	buxn_dbg_symtab_t* symtab
 ) {
-	int index = *current_index;
-	for (; index < num_symbols; ++index) {
-		if (symbols[index].type == BUXN_DBG_SYM_LABEL) { continue; }
-		if (symbols[index].addr_min <= address && address <= symbols[index].addr_max) {
+	uint32_t index = *current_index;
+	for (; index < symtab->num_symbols; ++index) {
+		if (symtab->symbols[index].type == BUXN_DBG_SYM_LABEL) { continue; }
+		if (symtab->symbols[index].addr_min <= address && address <= symtab->symbols[index].addr_max) {
 			*current_index = index;
-			return &symbols[index];
+			return &symtab->symbols[index];
 		}
 
-		if (symbols[index].addr_min > address) {
+		if (symtab->symbols[index].addr_min > address) {
 			*current_index = index;
 			return NULL;
 		}
@@ -98,8 +98,7 @@ main(int argc, const char* argv[]) {
 		fclose(rom_file);
 	}
 
-	buxn_dbg_sym_t* debug_symbols = NULL;
-	int num_symbols = 0;
+	buxn_dbg_symtab_t* symtab = NULL;
 	{
 		size_t len = strlen(argv[1]) + 5;
 		char* dbg_filename = barena_malloc(&arena, len);
@@ -110,31 +109,26 @@ main(int argc, const char* argv[]) {
 			goto end;
 		}
 
-		bserial_ctx_config_t config = buxn_dbg_sym_recommended_bserial_config();
-		void* mem = barena_malloc(&arena, bserial_ctx_mem_size(config));
 		bserial_stdio_in_t stdio_in;
-		bserial_in_t* in = bserial_stdio_init_in(&stdio_in, dbg_file);
-		bserial_ctx_t* bserial = bserial_make_ctx(mem, config, in, NULL);
+		buxn_dbg_symtab_reader_opts_t reader_opts = {
+			.input = bserial_stdio_init_in(&stdio_in, dbg_file),
+		};
+		buxn_dbg_symtab_reader_t* reader = buxn_dbg_make_symtab_reader(
+			barena_malloc(&arena, buxn_dbg_symtab_reader_mem_size(&reader_opts)),
+			&reader_opts
+		);
 
-		uint16_t count = 0;
-		if (buxn_dbg_sym_table(bserial, &count) != BSERIAL_OK) {
+		if (buxn_dbg_read_symtab_header(reader) != BUXN_DBG_SYMTAB_OK) {
 			fprintf(stderr, "Error while reading debug file\n");
 			fclose(dbg_file);
 			goto end;
 		}
-		num_symbols = count;
-		debug_symbols = barena_memalign(
-			&arena,
-			sizeof(buxn_dbg_sym_t) * num_symbols,
-			_Alignof(buxn_dbg_sym_t)
-		);
 
-		for (int i = 0; i < num_symbols; ++i) {
-			if (buxn_dbg_sym(bserial, &debug_symbols[i]) != BSERIAL_OK) {
-				fprintf(stderr, "Error while reading debug symbol\n");
-				fclose(dbg_file);
-				goto end;
-			}
+		symtab = barena_malloc(&arena, buxn_dbg_symtab_mem_size(reader));
+		if (buxn_dbg_read_symtab(reader, symtab) != BUXN_DBG_SYMTAB_OK) {
+			fprintf(stderr, "Error while reading debug file\n");
+			fclose(dbg_file);
+			goto end;
 		}
 
 		fclose(dbg_file);
@@ -171,9 +165,7 @@ main(int argc, const char* argv[]) {
 				int index = x + (y + line_offset) * num_bytes_per_row;
 				if (index >= rom_size) { goto end_draw; }
 
-				buxn_dbg_sym_t* symbol = find_symbol(
-					index + 256, &symbol_index, debug_symbols, num_symbols
-				);
+				buxn_dbg_sym_t* symbol = find_symbol(index + 256, &symbol_index, symtab);
 				if (index == view_pos) {
 					focused_symbol = symbol;
 				}
@@ -325,13 +317,13 @@ end_draw:
 						event.key == TB_KEY_ENTER
 					) {
 						if (focused_symbol != NULL && focused_symbol->type == BUXN_DBG_SYM_LABEL_REF) {
-							for (int i = 0; i < num_symbols; ++i) {
+							for (uint32_t i = 0; i < symtab->num_symbols; ++i) {
 								if (
-									debug_symbols[i].type == BUXN_DBG_SYM_LABEL
-									&& debug_symbols[i].id == focused_symbol->id
-									&& debug_symbols[i].addr_min >= 256
+									symtab->symbols[i].type == BUXN_DBG_SYM_LABEL
+									&& symtab->symbols[i].id == focused_symbol->id
+									&& symtab->symbols[i].addr_min >= 256
 								) {
-									view_pos = debug_symbols[i].addr_min - 256;
+									view_pos = symtab->symbols[i].addr_min - 256;
 									break;
 								}
 							}
