@@ -371,7 +371,7 @@ main(int argc, const char* argv[]) {
 	bool success = buxn_asm(&ctx, argv[1]);
 
 	// Write .dbg file
-	{
+	if (success) {
 		snprintf(namebuf, namebuf_len, "%s.dbg", rom_filename);
 		FILE* dbg_file = fopen(namebuf, "wb");
 		if (dbg_file != NULL) {
