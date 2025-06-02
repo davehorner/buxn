@@ -5,6 +5,7 @@ main() {
 	export PLATFORM=${2:-linux}
 	export OBJ_DIR=".build/$BUILD_TYPE/$PLATFORM"
 	export BIN_DIR="bin/$BUILD_TYPE/$PLATFORM"
+	export INCLUDE_FLAGS="-Iinclude -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -Ideps/termbox2 -Ideps/utf8proc"
 
 	rm -f .build/commands
 	mkdir -p .build
@@ -29,7 +30,7 @@ build_linux() {
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
 
 	DEV_FLAGS="-Wall -Wextra -pedantic -Werror"
-	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Iinclude -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -Ideps/termbox2 -Ideps/utf8proc -DSOKOL_GLES3"
+	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} ${INCLUDE_FLAGS} -DSOKOL_GLES3"
 	VM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Iinclude"
 	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1 -DPHYSFS_NO_CDROM_SUPPORT=1"
 
@@ -280,7 +281,7 @@ android_get_tools() {
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
 
 	DEV_FLAGS="-Wall -Wextra -pedantic -Werror"
-	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Iinclude -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -DSOKOL_GLES3"
+	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} ${INCLUDE_FLAGS} -DSOKOL_GLES3"
 	VM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Iinclude"
 	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1"
 }
@@ -329,7 +330,7 @@ build_cosmo() {
 	eval "BUILD_TYPE_FLAGS=\${$BUILD_TYPE}"
 
 	DEV_FLAGS="-Wall -Wextra -pedantic -Werror"
-	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -std=c11 -Iinclude -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -Ideps/termbox2"
+	PROGRAM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} ${INCLUDE_FLAGS} -std=c11"
 	VM_FLAGS="${BUILD_TYPE_FLAGS} ${DEV_FLAGS} -Iinclude"
 	PHYSFS_FLAGS="${BUILD_TYPE_FLAGS} -DPHYSFS_SUPPORTS_DEFAULT=0 -DPHYSFS_SUPPORTS_ZIP=1 -DPHYSFS_NO_CDROM_SUPPORT=1"
 
