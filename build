@@ -5,7 +5,7 @@ main() {
 	export PLATFORM=${2:-linux}
 	export OBJ_DIR=".build/$BUILD_TYPE/$PLATFORM"
 	export BIN_DIR="bin/$BUILD_TYPE/$PLATFORM"
-	export INCLUDE_FLAGS="-Iinclude -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/chibihash -Ideps/termbox2 -Ideps/utf8proc"
+	export INCLUDE_FLAGS="-Iinclude -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/termbox2 -Ideps/utf8proc"
 
 	rm -f .build/commands
 	mkdir -p .build

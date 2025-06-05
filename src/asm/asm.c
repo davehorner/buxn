@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <assert.h>
-#include <chibihash64.h>
+#include "chibihash64.h"
 #define BHAMT_HASH_TYPE uint64_t
 #include "hamt.h"
 
