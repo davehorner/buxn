@@ -255,7 +255,7 @@
 // addr -- | ret16
 #define BUXN_POLY_OP_JSR(K_, R_, S_) \
 	{ \
-		BUXN_UOP_PUSH2R(pc); \
+		BUXN_POLY_PUSH(BUXN_NOT(R_), 1)(pc); \
 		a = BUXN_POLY_POP(K_, R_, S_)(); \
 		BUXN_POLY_JMP(S_)(a); \
 	}
