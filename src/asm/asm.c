@@ -102,6 +102,7 @@ typedef struct {
 	buxn_asm_token_link_t* first;
 	buxn_asm_token_link_t* last;
 	buxn_asm_token_link_t* current;
+	uint16_t id;
 	bool expanding;
 } buxn_asm_macro_unit_t;
 
@@ -190,6 +191,7 @@ typedef struct {
 
 	uint16_t num_labels;
 	uint16_t num_lambdas;
+	uint16_t num_macros;
 	buxn_asm_strpool_t strpool;
 	buxn_asm_symtab_t symtab;
 	buxn_asm_str_t label_scope;
@@ -1319,10 +1321,13 @@ buxn_asm_create_macro(
 		);
 	}
 
+	uint16_t id = ++basm->num_macros;
+	macro->id = id;
 	buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_MACRO,
 		.name = symbol->key->key.chars,
 		.region = start->region,
+		.id = id,
 	});
 
 	return true;
@@ -1523,8 +1528,9 @@ static bool
 buxn_asm_expand_macro(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
-	buxn_asm_macro_unit_t* macro
+	buxn_asm_symtab_node_t* symbol
 ) {
+	buxn_asm_macro_unit_t* macro = &symbol->macro;
 	if (basm->preprocessor_depth >= BUXN_ASM_MAX_PREPROCESSOR_DEPTH) {
 		return buxn_asm_error(basm, token, "Max preprocessor depth depth reached");
 	}
@@ -1532,6 +1538,13 @@ buxn_asm_expand_macro(
 	if (macro->expanding) {
 		return buxn_asm_error(basm, token, "Macro recursion detected");
 	}
+
+	buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
+		.type = BUXN_ASM_SYM_MACRO_REF,
+		.name = symbol->key->key.chars,
+		.region = token->region,
+		.id = macro->id,
+	});
 
 	macro->expanding = true;
 	macro->current = macro->first;
@@ -1638,7 +1651,7 @@ buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 			return false;
 		} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_MACRO) {
 			symbol->referenced = true;
-			return buxn_asm_expand_macro(basm, token, &symbol->macro);
+			return buxn_asm_expand_macro(basm, token, symbol);
 		} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) {
 			symbol->referenced = true;
 			if (!buxn_asm_emit_opcode(basm, token, 0x60, false)) { return false; }  // JSI
