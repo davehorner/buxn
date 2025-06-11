@@ -1208,6 +1208,7 @@ buxn_asm_process_comment(
 			.type = BUXN_ASM_SYM_COMMENT,
 			.name = token.lexeme.chars,
 			.region = token.region,
+			.id = depth,
 		});
 
 		switch (token.lexeme.chars[0]) {
