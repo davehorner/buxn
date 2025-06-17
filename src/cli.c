@@ -96,6 +96,7 @@ buxn_console_handle_write(struct buxn_vm_s* vm, buxn_console_t* device, char c) 
 	(void)vm;
 	(void)device;
 	fputc(c, stdout);
+	fflush(stdout);
 }
 
 void
@@ -103,6 +104,7 @@ buxn_console_handle_error(struct buxn_vm_s* vm, buxn_console_t* device, char c) 
 	(void)vm;
 	(void)device;
 	fputc(c, stderr);
+	fflush(stdout);
 }
 
 static int
