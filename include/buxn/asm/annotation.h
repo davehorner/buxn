@@ -4,8 +4,6 @@
 #include <stddef.h>
 #include "asm.h"
 
-typedef struct buxn_anno_ctx_s buxn_anno_ctx_t;
-
 typedef enum {
 	BUXN_ANNOTATION_IMMEDIATE,
 	BUXN_ANNOTATION_PREFIX,
@@ -27,13 +25,25 @@ typedef struct {
 	buxn_asm_source_region_t region;
 } buxn_anno_t;
 
+typedef void (*buxn_anno_handler_t)(
+	void* ctx,
+	uint16_t addr,
+	const buxn_asm_sym_t* sym,
+	const buxn_anno_t* annotation,
+	const buxn_asm_source_region_t* region
+);
+
 typedef struct {
-	buxn_anno_ctx_t* ctx;
 	buxn_anno_t* annotations;
 	size_t num_annotations;
+	void* ctx;
+	buxn_anno_handler_t handler;
 
 	// For internal use
-	buxn_asm_sym_t current_sym;
+	buxn_asm_sym_t current_def;
+	buxn_asm_sym_t last_rom_sym;
+	uint16_t current_def_addr;
+	uint16_t last_rom_addr;
 	buxn_anno_t* current_annotation;
 	buxn_asm_sym_t comment_start;
 	buxn_asm_sym_t comment_first_token;
@@ -42,23 +52,6 @@ typedef struct {
 } buxn_anno_spec_t;
 
 void
-buxn_anno_handle_symbol(buxn_anno_spec_t* spec, const buxn_asm_sym_t* sym);
-
-// Must be provided by the host program
-
-extern void
-buxn_anno_handle_custom(
-	buxn_anno_ctx_t* ctx,
-	const buxn_anno_t* annotation,
-	const buxn_asm_sym_t* sym,
-	const buxn_asm_source_region_t* region
-);
-
-extern void
-buxn_anno_handle_type(
-	buxn_anno_ctx_t* ctx,
-	const buxn_asm_sym_t* sym,
-	const buxn_asm_source_region_t* region
-);
+buxn_anno_handle_symbol(buxn_anno_spec_t* spec, uint16_t addr, const buxn_asm_sym_t* sym);
 
 #endif
