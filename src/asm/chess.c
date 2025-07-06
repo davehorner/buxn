@@ -731,11 +731,15 @@ buxn_chess_check_stack(
 
 		if (
 			(sig_value.semantics & BUXN_CHESS_SEM_ADDRESS)
-			&& (actual_value.semantics & BUXN_CHESS_SEM_ADDRESS) == 0
+			&& (
+				(actual_value.semantics & BUXN_CHESS_SEM_ADDRESS) == 0
+				&&
+				(actual_value.semantics & BUXN_CHESS_SEM_CONST) == 0
+			)
 		) {
 			buxn_chess_report_exec_warning(
 				ctx,
-				"%s stack #%d: An address value (%.*s) is constructed from a value that is not derived from an address (%.*s)",
+				"%s stack #%d: An address value (%.*s) is constructed from a value that is not derived from an address or constant (%.*s)",
 				stack_name,
 				value_index,
 				(int)sig_value.name.len, sig_value.name.chars,
@@ -1764,6 +1768,16 @@ buxn_chess_parse_value(buxn_chess_t* chess, const buxn_asm_sym_t* sym, size_t le
 		value.semantics |= BUXN_CHESS_SEM_SIZE_SHORT;
 	} else {
 		value.name = buxn_chess_strcpy(chess, sym->name, len);
+	}
+
+	if (
+		value.name.len > 0
+		&&
+		value.name.chars[0] == '['
+		&&
+		value.name.chars[value.name.len - 1] == ']'
+	) {
+		value.semantics |= BUXN_CHESS_SEM_ADDRESS;
 	}
 
 	char first_char = sym->name[0];
