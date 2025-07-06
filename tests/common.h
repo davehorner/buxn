@@ -4,6 +4,7 @@
 #include <xincbin.h>
 #include <barena.h>
 #include <buxn/asm/asm.h>
+#include <buxn/asm/chess.h>
 #include <buxn/devices/console.h>
 #include <buxn/devices/mouse.h>
 
@@ -15,6 +16,7 @@ typedef struct {
 struct buxn_asm_ctx_s {
 	buxn_vfs_entry_t* vfs;
 	barena_t* arena;
+	buxn_chess_t* chess;
 
 	bool suppress_report;
 	char rom[UINT16_MAX];

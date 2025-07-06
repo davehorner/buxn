@@ -97,8 +97,6 @@ buxn_anno_handle_symbol(
 			spec->comment_start.name = NULL;
 			spec->comment_first_token.name = NULL;
 			spec->comment_last_token.name = NULL;
-			spec->current_def.name = NULL;
-			spec->current_def_addr = 0;
 			spec->current_annotation = NULL;
 		} else {  // Intermediate
 			if (spec->comment_first_token.name == NULL) {
@@ -127,5 +125,8 @@ buxn_anno_handle_symbol(
 				anno->region.filename = NULL;
 			}
 		}
+	} else {
+		spec->current_def.name = NULL;
+		spec->current_def_addr = 0;
 	}
 }

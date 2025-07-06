@@ -25,9 +25,9 @@ buxn_asm_put_rom(buxn_asm_ctx_t* ctx, uint16_t address, uint8_t value) {
 
 void
 buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sym) {
-	(void)ctx;
-	(void)addr;
-	(void)sym;
+	if (ctx->chess != NULL) {
+		buxn_chess_handle_symbol(ctx->chess, addr, sym);
+	}
 }
 
 buxn_asm_file_t*
@@ -88,6 +88,21 @@ buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm
 			"%s (`%s`)", report->message, report->token
 		);
 	}
+}
+
+void*
+buxn_chess_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment) {
+	return buxn_asm_alloc(ctx, size, alignment);
+}
+
+uint8_t
+buxn_chess_get_rom(buxn_asm_ctx_t* ctx, uint16_t address) {
+	return ctx->rom[address - 256];
+}
+
+void
+buxn_chess_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
+	buxn_asm_report(ctx, type, report);
 }
 
 uint8_t

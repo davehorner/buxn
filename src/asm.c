@@ -6,7 +6,10 @@
 #include <bhash.h>
 #include <barray.h>
 #include <blog.h>
+#include <barg.h>
+#include <bmacro.h>
 #include <buxn/asm/asm.h>
+#include <buxn/asm/chess.h>
 #include <buxn/dbg/symtab.h>
 #include <utf8proc.h>
 #define BSERIAL_STDIO
@@ -34,6 +37,8 @@ struct buxn_asm_ctx_s {
 	barena_t arena;
 	file_table_t file_table;
 	barray(utf8proc_uint8_t) line_buf;
+
+	buxn_chess_t* chess;
 };
 
 static void
@@ -120,6 +125,10 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 			break;
 		case BUXN_ASM_SYM_MACRO_REF:
 			break;
+	}
+
+	if (ctx->chess != NULL) {
+		buxn_chess_handle_symbol(ctx->chess, addr, sym);
 	}
 }
 
@@ -279,6 +288,21 @@ buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm
 	}
 }
 
+void*
+buxn_chess_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment) {
+	return buxn_asm_alloc(ctx, size, alignment);
+}
+
+uint8_t
+buxn_chess_get_rom(buxn_asm_ctx_t* ctx, uint16_t address) {
+	return ctx->rom[address - 256];
+}
+
+void
+buxn_chess_report( buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
+	buxn_asm_report(ctx, type, report);
+}
+
 static bool
 write_rom(buxn_asm_ctx_t* ctx, const char* rom_path) {
 	FILE* rom_file = NULL;
@@ -339,10 +363,39 @@ main(int argc, const char* argv[]) {
 		.with_colors = true,
 	});
 
-	if (argc < 3) {
-		fprintf(stderr, "Usage: buxn-asm <in.tal> <out.rom>\n");
+	bool type_check;
+	barg_opt_t opts[] = {
+		{
+			.name = "chess",
+			.short_name = 'c',
+			.summary = "Enable the type checker",
+			.description = "Because chess is better than checker",
+			.boolean = true,
+			.parser = barg_boolean(&type_check),
+		},
+		barg_opt_help(),
+	};
+
+	barg_t barg = {
+		.usage = "buxn-asm [options] [--] <in.tal> <out.rom>",
+		.summary = "uxntal assembler",
+		.opts = opts,
+		.num_opts = BCOUNT_OF(opts),
+		.allow_positional = true,
+	};
+
+	barg_result_t result = barg_parse(&barg, argc, argv);
+	if (result.status != BARG_OK) {
+		barg_print_result(&barg, result, stderr);
+		return result.status == BARG_PARSE_ERROR;
+	}
+	if (argc - result.arg_index != 2) {
+		result.status = BARG_SHOW_HELP;
+		barg_print_result(&barg, result, stderr);
 		return 1;
 	}
+	const char* src_filename = argv[result.arg_index];
+	const char* rom_filename = argv[result.arg_index + 1];
 
 	barena_pool_t arena_pool;
 	barena_pool_init(&arena_pool, 1);
@@ -356,7 +409,6 @@ main(int argc, const char* argv[]) {
 	bhash_init(&ctx.file_table, config);
 
 	// temp buf for extra filenames
-	const char* rom_filename = argv[2];
 	size_t rom_filename_len = strlen(rom_filename);
 	size_t namebuf_len = rom_filename_len + 5;
 	char* namebuf = barena_memalign(&ctx.arena, rom_filename_len + 5, _Alignof(char));
@@ -370,7 +422,13 @@ main(int argc, const char* argv[]) {
 		}
 	}
 
-	bool success = buxn_asm(&ctx, argv[1]);
+	if (type_check) {
+		ctx.chess = buxn_chess_begin(&ctx);
+	}
+	bool success = buxn_asm(&ctx, src_filename);
+	if (ctx.chess != NULL) {
+		success &= buxn_chess_end(ctx.chess);
+	}
 
 	// Write .dbg file
 	if (success) {
@@ -425,7 +483,7 @@ main(int argc, const char* argv[]) {
 	barena_reset(&ctx.arena);
 	barena_pool_cleanup(&arena_pool);
 
-	success &= write_rom(&ctx, argv[2]);
+	success &= write_rom(&ctx, rom_filename);
 
 	if (success) {
 		BLOG_INFO(
@@ -454,3 +512,4 @@ main(int argc, const char* argv[]) {
 #include <bhash.h>
 #include <barray.h>
 #include <bserial.h>
+#include <barg.h>

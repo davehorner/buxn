@@ -835,6 +835,7 @@ buxn_asm_emit_opcode(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t op
 	buxn_asm_put_symbol(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_OPCODE,
 		.region = region,
+		.id = opcode,
 	});
 
 	return true;
@@ -853,6 +854,7 @@ buxn_asm_emit_byte(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t byte
 	buxn_asm_put_symbol(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_NUMBER,
 		.region = region,
+		.id = byte,
 	});
 
 	return true;
@@ -871,6 +873,7 @@ buxn_asm_emit_short(buxn_asm_t* basm, const buxn_asm_token_t* token, uint16_t sh
 	buxn_asm_put_symbol2(basm->ctx, addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_NUMBER,
 		.region = region,
+		.id = short_
 	});
 
 	return true;
@@ -1689,6 +1692,7 @@ buxn_asm_process_text(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_TEXT,
 		.region = token->region,
+		.id = token->lexeme.len,
 	};
 	uint16_t addr = basm->write_addr;
 	for (int i = 1; i < token->lexeme.len; ++i) {
