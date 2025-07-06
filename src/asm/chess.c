@@ -901,16 +901,28 @@ buxn_chess_boolean_op(
 	buxn_chess_value_t a = buxn_chess_pop(ctx);
 	buxn_chess_value_t result = {
 		.name = buxn_chess_name_binary(ctx->chess, a.name, b.name),
-		.semantics = BUXN_CHESS_SEM_SIZE_BYTE,
+		.semantics = BUXN_CHESS_SEM_SIZE_BYTE | BUXN_CHESS_SEM_CONST,
 	};
 	if (
 		(a.semantics & BUXN_CHESS_SEM_CONST)
 		&& (b.semantics & BUXN_CHESS_SEM_CONST)
 	) {
-		result.semantics |= BUXN_CHESS_SEM_CONST;
 		result.value = op(a.value, b.value);
+		buxn_chess_push(ctx, result);
+	} else {
+		// EQU/NEQ before a JMP is a common idiom
+		// To support that, we'd have to fork in a boolean op
+		buxn_chess_entry_t* entry = buxn_chess_fork(ctx);
+		buxn_chess_raw_push(
+			buxn_chess_op_flag_r(ctx)
+				? &entry->state.rst
+				: &entry->state.wst,
+			result
+		);
+
+		result.value = 1;
+		buxn_chess_push(ctx, result);
 	}
-	buxn_chess_push(ctx, result);
 }
 
 static inline bool
