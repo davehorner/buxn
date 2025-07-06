@@ -1659,17 +1659,21 @@ buxn_chess_copy_stack(buxn_chess_stack_t* dst, const buxn_chess_stack_t* src) {
 
 static void
 buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
+
+	buxn_chess_exec_ctx_t ctx = {
+		.chess = chess,
+		.entry = entry,
+		.pc = entry->address,
+		.start_sym = chess->symbols[entry->address],
+	};
+	if (ctx.start_sym == NULL) { return; }
+
 	BUXN_CHESS_DEBUG(
 		"Analyzing %.*s from %s",
 		(int)entry->info->value.name.len, entry->info->value.name.chars,
 		buxn_chess_format_address(chess, entry->address)
 	);
 
-	buxn_chess_exec_ctx_t ctx = {
-		.chess = chess,
-		.entry = entry,
-		.pc = entry->address,
-	};
 	void* region = buxn_chess_begin_mem_region(chess->ctx);
 	BUXN_CHESS_DEBUG(
 		"WST(%d):%s",
@@ -1690,7 +1694,6 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 	buxn_chess_copy_stack(&ctx.init_wst, &ctx.entry->state.wst);
 	buxn_chess_copy_stack(&ctx.init_rst, &ctx.entry->state.rst);
 
-	ctx.start_sym = chess->symbols[ctx.pc];
 	ctx.current_sym = ctx.start_sym;
 
 	while (!ctx.terminated) {
