@@ -1702,6 +1702,8 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		uint16_t pc = ctx.pc++;
 		const buxn_asm_sym_t* current_sym = chess->symbols[pc];
 		ctx.current_opcode = buxn_chess_get_rom(chess->ctx, pc);
+		(void)buxn_chess_opcode_names;  // Suppress warning in release build
+		(void)buxn_chess_format_address;
 		BUXN_CHESS_DEBUG(
 			"Executing %s at %s",
 			buxn_chess_opcode_names[ctx.current_opcode],
@@ -1852,7 +1854,7 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 				chess->anno_handler = NULL;
 			}
 		} else {
-			buxn_chess_sig_stack_t* stack;
+			buxn_chess_sig_stack_t* stack = &chess->current_signature->wst_in;
 			switch (chess->sig_parse_state) {
 				case BUXN_CHESS_PARSE_WST_IN:
 					stack = &chess->current_signature->wst_in;
