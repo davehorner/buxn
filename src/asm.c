@@ -477,7 +477,7 @@ main(int argc, const char* argv[]) {
 		ctx.chess = buxn_chess_begin(&ctx);
 	}
 	bool success = buxn_asm(&ctx, src_filename);
-	if (ctx.chess != NULL && success) {
+	if (ctx.chess != NULL && success && ctx.rom_size > 0) {
 		success &= buxn_chess_end(ctx.chess);
 	}
 
