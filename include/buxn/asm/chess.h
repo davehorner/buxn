@@ -26,12 +26,24 @@ extern uint8_t
 buxn_chess_get_rom(buxn_asm_ctx_t* ctx, uint16_t address);
 
 extern void*
+buxn_chess_begin_mem_region(buxn_asm_ctx_t* ctx);
+
+extern void
+buxn_chess_end_mem_region(buxn_asm_ctx_t* ctx, void* region);
+
+extern void*
 buxn_chess_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment);
 
 extern void
 buxn_chess_report(
 	buxn_asm_ctx_t* ctx,
 	buxn_asm_report_type_t type,
+	const buxn_asm_report_t* report
+);
+
+extern void
+buxn_chess_report_info(
+	buxn_asm_ctx_t* ctx,
 	const buxn_asm_report_t* report
 );
 

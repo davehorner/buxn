@@ -14,12 +14,12 @@
 #		define BUXN_CHESS_DEBUG(...)
 #	else
 #		include <blog.h>
-#		define BUXN_CHESS_DEBUG(...) BLOG_DEBUG(__VA_ARGS__)
+#		define BUXN_CHESS_DEBUG(...) BLOG_TRACE(__VA_ARGS__)
 #	endif
 #endif
 
 #define BUXN_CHESS_MAX_ARG_LEN 16
-#define BUXN_CHESS_MAX_ARGS 4
+#define BUXN_CHESS_MAX_ARGS 8
 #define BUXN_CHESS_MAX_SIG_TOKENS (BUXN_CHESS_MAX_ARGS * 4 + 1)
 
 #define BUXN_CHESS_MEM_NONE        (0)
@@ -40,6 +40,13 @@
 #define BUXN_CHESS_OP_2 0x20
 
 #define BUXN_CHESS_ADDR_EQ(LHS, RHS) (LHS == RHS)
+
+#define DEFINE_OPCODE_NAME(NAME, VALUE) \
+	[VALUE] = BSTRINGIFY(NAME),
+
+static const char* buxn_chess_opcode_names[256] = {
+	BUXN_OPCODE_DISPATCH(DEFINE_OPCODE_NAME)
+};
 
 typedef void (*buxn_chess_anno_handler_t)(buxn_chess_t* chess, const buxn_asm_sym_t* sym);
 
@@ -123,7 +130,7 @@ typedef struct buxn_chess_entry_s buxn_chess_entry_t;
 
 struct buxn_chess_entry_s {
 	buxn_chess_entry_t* next;
-	buxn_chess_addr_info_t* info;
+	const buxn_chess_addr_info_t* info;
 	buxn_chess_state_t state;
 	uint16_t address;
 };
@@ -134,14 +141,16 @@ typedef struct {
 
 	buxn_chess_stack_t* wsp;
 	buxn_chess_stack_t* rsp;
-	buxn_chess_stack_t shadow_wst;
-	buxn_chess_stack_t shadow_rst;
+	buxn_chess_stack_t init_wst;
+	buxn_chess_stack_t init_rst;
 
 	const buxn_asm_sym_t* start_sym;
 	const buxn_asm_sym_t* current_sym;
 	uint16_t pc;
 	uint8_t current_opcode;
 	bool terminated;
+	buxn_asm_source_region_t error_region;
+	bool entry_reported;
 } buxn_chess_exec_ctx_t;
 
 struct buxn_chess_s {
@@ -277,7 +286,7 @@ buxn_chess_vprintf(buxn_chess_t* chess, const char* fmt, va_list args) {
 	int len = vsnprintf(NULL, 0, fmt, args_copy);
 	va_end(args_copy);
 	char* chars = buxn_chess_alloc(chess->ctx, len + 1, _Alignof(char));
-	vsnprintf(chars, len, fmt, args);
+	vsnprintf(chars, len + 1, fmt, args);
 
 	return (buxn_chess_str_t){
 		.chars = chars,
@@ -318,15 +327,20 @@ buxn_chess_format_stack(
 	for (uint8_t i = 0; i < print_len; ++i) {
 		parts[i] = buxn_chess_format_value(chess, value[i]);
 	}
-	return buxn_chess_printf(
+	buxn_chess_str_t str = buxn_chess_printf(
 		chess,
-		"%.*s%.*s%.*s%.*s%s",
+		"%.*s%.*s%.*s%.*s%.*s%.*s%.*s%.*s%s",
 		(int)parts[0].len, parts[0].chars,
 		(int)parts[1].len, parts[1].chars,
 		(int)parts[2].len, parts[2].chars,
 		(int)parts[3].len, parts[3].chars,
+		(int)parts[4].len, parts[4].chars,
+		(int)parts[5].len, parts[5].chars,
+		(int)parts[6].len, parts[6].chars,
+		(int)parts[7].len, parts[7].chars,
 		len > BUXN_CHESS_MAX_ARGS ? " ..." : ""
 	);
+	return str;
 }
 
 static buxn_chess_str_t
@@ -361,6 +375,23 @@ buxn_chess_format_address(buxn_chess_t* chess, uint16_t addr) {
 	return chess->addr_fmt_buf;
 }
 
+static buxn_chess_str_t
+buxn_chess_name_from_symbol(
+	buxn_chess_t* chess,
+	const buxn_asm_sym_t* sym,
+	uint16_t value
+) {
+	if (sym != NULL && sym->name != NULL) {
+		return (buxn_chess_str_t){
+			// symbol names are interned so they can just be quoted
+			.chars = sym->name,
+			.len = strlen(sym->name),
+		};
+	} else {
+		return buxn_chess_printf(chess, "load@0x%04x", value);
+	}
+}
+
 // }}}
 
 // Symbolic execution {{{
@@ -376,16 +407,59 @@ buxn_chess_terminate(buxn_chess_exec_ctx_t* ctx) {
 }
 
 static void
+buxn_chess_maybe_report_exec_begin(
+	buxn_chess_exec_ctx_t* ctx
+) {
+	if (ctx->entry_reported) { return; }
+
+	void* region = buxn_chess_begin_mem_region(ctx->chess->ctx);
+	buxn_chess_str_t init_wst_str = buxn_chess_format_stack(
+		ctx->chess,
+		ctx->init_wst.content, ctx->init_wst.len
+	);
+	buxn_chess_str_t init_rst_str;
+	if (ctx->entry->info->value.signature->type == BUXN_CHESS_SUBROUTINE) {
+		// Exclude the implicit return address
+		init_rst_str = buxn_chess_format_stack(
+			ctx->chess,
+			ctx->init_rst.content + 1, ctx->init_rst.len - 1
+		);
+	} else {
+		init_rst_str = buxn_chess_format_stack(
+			ctx->chess,
+			ctx->init_rst.content, ctx->init_rst.len
+		);
+	}
+
+	buxn_chess_report(
+		ctx->chess->ctx,
+		BUXN_ASM_REPORT_WARNING,
+		&(buxn_asm_report_t){
+			.message = buxn_chess_printf(
+				ctx->chess,
+				"Found issues with %.*s starting with (%.*s .%.*s ) from here",
+				(int)ctx->entry->info->value.name.len, ctx->entry->info->value.name.chars,
+				(int)init_wst_str.len, init_wst_str.chars,
+				(int)init_rst_str.len, init_rst_str.chars
+			).chars,
+			.region = &ctx->start_sym->region,
+		}
+	);
+	buxn_chess_end_mem_region(ctx->chess->ctx, region);
+	ctx->entry_reported = true;
+}
+
+static void
 buxn_chess_report_exec_error(
 	buxn_chess_exec_ctx_t* ctx,
 	const char* message
 ) {
+	buxn_chess_maybe_report_exec_begin(ctx);
 	buxn_chess_report_error(ctx->chess, &(buxn_asm_report_t){
 		.message = message,
 		.region = &ctx->current_sym->region,
-		.related_message = "Started from here",
-		.related_region = &ctx->start_sym->region,
 	});
+	ctx->error_region = ctx->current_sym->region;
 	buxn_chess_terminate(ctx);
 }
 
@@ -394,14 +468,13 @@ buxn_chess_report_exec_warning(
 	buxn_chess_exec_ctx_t* ctx,
 	const char* message
 ) {
+	buxn_chess_maybe_report_exec_begin(ctx);
 	buxn_chess_report(
 		ctx->chess->ctx,
 		BUXN_ASM_REPORT_WARNING,
 		&(buxn_asm_report_t){
 			.message = message,
 			.region = &ctx->current_sym->region,
-			.related_message = "Started from here",
-			.related_region = &ctx->start_sym->region,
 		}
 	);
 }
@@ -434,8 +507,8 @@ buxn_chess_queue_routine(buxn_chess_t* chess, buxn_chess_addr_info_t* routine) {
 	if (signature->type == BUXN_CHESS_SUBROUTINE) {
 		buxn_chess_raw_push(&entry->state.rst, (buxn_chess_value_t){
 			.name = {
-				.chars = "@return",
-				.len = BLIT_STRLEN("@return"),
+				.chars = "@return-root",
+				.len = BLIT_STRLEN("@return-root"),
 			},
 			.semantics = BUXN_CHESS_SEM_SIZE_SHORT | BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_RETURN,
 		});
@@ -525,6 +598,7 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 
 		buxn_chess_value_t result = {
 			.name = buxn_chess_name_binary(ctx->chess, hi.name, lo.name),
+			.semantics = BUXN_CHESS_SEM_SIZE_SHORT,
 		};
 		if (
 			(hi.semantics & BUXN_CHESS_SEM_CONST)
@@ -579,19 +653,38 @@ buxn_chess_push(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t value) {
 	buxn_chess_push_ex(ctx, buxn_chess_op_flag_r(ctx), value);
 }
 
+typedef enum {
+	BUXN_CHESS_CHECK_STACK_EXACT,
+	BUXN_CHESS_CHECK_STACK_AT_LEAST,
+} buxn_chess_stack_check_type_t;
+
 static void
 buxn_chess_check_stack(
 	buxn_chess_exec_ctx_t* ctx,
+	buxn_chess_stack_check_type_t check_type,
 	const char* stack_name,
 	buxn_chess_stack_t* stack,
 	const buxn_chess_sig_stack_t* signature
 ) {
+	void* region = buxn_chess_begin_mem_region(ctx->chess->ctx);
 	uint8_t sig_size = 0;
 	for (uint8_t i = 0; i < signature->len; ++i) {
 		sig_size += buxn_chess_value_size(signature->content[i]);
 	}
 
-	if (stack->size != sig_size) {
+	bool match = false;
+	const char* prefix = "";
+	switch (check_type) {
+		case BUXN_CHESS_CHECK_STACK_EXACT:
+			match = stack->size == sig_size;
+			break;
+		case BUXN_CHESS_CHECK_STACK_AT_LEAST:
+			match = stack->size >= sig_size;
+			prefix = "at least ";
+			break;
+	}
+
+	if (!match) {
 		buxn_chess_str_t sig_str = buxn_chess_format_stack(
 			ctx->chess, signature->content, signature->len
 		);
@@ -602,13 +695,16 @@ buxn_chess_check_stack(
 			ctx,
 			buxn_chess_printf(
 				ctx->chess,
-				"%s stack size mismatch: Expecting %d (%.*s ), got %d (%.*s )",
+				"%s stack size mismatch: Expecting %s%d (%.*s ), got %d (%.*s )",
 				stack_name,
+				prefix,
 				sig_size, (int)sig_str.len, sig_str.chars,
 				stack->size, (int)stack_str.len, stack_str.chars
 			).chars
 		);
 	}
+
+	if (ctx->terminated) { return; }
 
 	// Type check individual elements
 	for (uint8_t i = 0; i < signature->len; ++i) {
@@ -684,19 +780,23 @@ buxn_chess_check_stack(
 			}
 		}
 	}
+
+	buxn_chess_end_mem_region(ctx->chess->ctx, region);
 }
 
 static void
 buxn_chess_check_return(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_check_stack(
 		ctx,
-		"Working",
+		BUXN_CHESS_CHECK_STACK_EXACT,
+		"Output working",
 		&ctx->entry->state.wst,
 		&ctx->entry->info->value.signature->wst_out
 	);
 	buxn_chess_check_stack(
 		ctx,
-		"Return",
+		BUXN_CHESS_CHECK_STACK_EXACT,
+		"Output return",
 		&ctx->entry->state.rst,
 		&ctx->entry->info->value.signature->rst_out
 	);
@@ -711,6 +811,7 @@ buxn_chess_fork(buxn_chess_exec_ctx_t* ctx) {
 	);
 	buxn_chess_entry_t* new_entry = buxn_chess_alloc_entry(ctx->chess);
 	*new_entry = *ctx->entry;
+	new_entry->address = ctx->pc;
 	new_entry->next = ctx->chess->verification_list;
 	ctx->chess->verification_list = new_entry;
 	return new_entry;
@@ -864,7 +965,11 @@ static enum {
 		}
 	} else {
 		// Absolute jump
-		if (addr.semantics & (BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_RETURN)) {
+		if (
+			(addr.semantics & BUXN_CHESS_SEM_ADDRESS)
+			&&
+			(addr.semantics & BUXN_CHESS_SEM_RETURN)
+		) {
 			if (ctx->entry->info->value.signature->type == BUXN_CHESS_VECTOR) {
 				buxn_chess_report_exec_error(ctx, "Vector routine makes a normal return");
 			}
@@ -881,7 +986,7 @@ static enum {
 	}
 
 	buxn_chess_addr_info_t* addr_info = buxn_chess_addr_info(ctx->chess, ctx->pc);
-	if (addr_info != NULL && addr_info->value.semantics & BUXN_CHESS_SEM_ROUTINE) {
+	if (addr_info != NULL && (addr_info->value.semantics & BUXN_CHESS_SEM_ROUTINE)) {
 		// The target jump can be short-circuited into just applying the signature effect
 		// without jumping
 		const buxn_chess_signature_t* sig = addr_info->value.signature;
@@ -895,8 +1000,20 @@ static enum {
 		}
 
 		// Gather inputs directly from the real stack
-		buxn_chess_check_stack(ctx, "Working", &ctx->entry->state.wst, &sig->wst_in);
-		buxn_chess_check_stack(ctx, "Return", &ctx->entry->state.rst, &sig->rst_in);
+		buxn_chess_check_stack(
+			ctx,
+			BUXN_CHESS_CHECK_STACK_AT_LEAST,
+			"Input working",
+			&ctx->entry->state.wst,
+			&sig->wst_in
+		);
+		buxn_chess_check_stack(
+			ctx,
+			BUXN_CHESS_CHECK_STACK_AT_LEAST,
+			"Input return",
+			&ctx->entry->state.rst,
+			&sig->rst_in
+		);
 		// Push outputs
 		for (uint8_t i = 0; i < sig->wst_out.len; ++i) {
 			buxn_chess_push_ex(ctx, false, sig->wst_out.content[i]);
@@ -950,6 +1067,22 @@ buxn_chess_jump_no_return(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 		// Check return type and terminate
 		if (ctx->entry->info->value.signature->type == BUXN_CHESS_VECTOR) {
 			buxn_chess_report_exec_error(ctx, "Vector routine makes a normal return");
+			return;
+		}
+
+		if (ctx->entry->state.rst.len != 1)  {
+			buxn_chess_report_exec_error(ctx, "Invalid return stack, expecting only return address");
+			return;
+		}
+
+		buxn_chess_value_t return_addr = buxn_chess_pop_ex(ctx, true, true);
+		if (!(
+			(return_addr.semantics & BUXN_CHESS_SEM_ADDRESS)
+			&&
+			(return_addr.semantics & BUXN_CHESS_SEM_RETURN)
+		)) {
+			buxn_chess_report_exec_error(ctx, "Invalid return stack, expecting only return address");
+			return;
 		}
 
 		buxn_chess_check_return(ctx);
@@ -959,25 +1092,27 @@ buxn_chess_jump_no_return(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 }
 
 static void
-buxn_chess_jump_stash(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
+buxn_chess_jump_stash(
+	buxn_chess_exec_ctx_t* ctx,
+	buxn_chess_value_t addr,
+	bool flag_r
+) {
 	buxn_chess_value_t pc = {
 		.name = {
-			.chars = "@return",
-			.len = BLIT_STRLEN("@return"),
+			.chars = "@return-sub",
+			.len = BLIT_STRLEN("@return-sub"),
 		},
 		.semantics = BUXN_CHESS_SEM_SIZE_SHORT | BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_CONST,
 		.value = ctx->pc,
 	};
-	buxn_chess_push_ex(ctx, !buxn_chess_op_flag_r(ctx), pc);
+	buxn_chess_push_ex(ctx, !flag_r, pc);
 	if (buxn_chess_jump(ctx, addr) == BUXN_CHESS_JUMP_SUBROUTINE) {
 		// This jump was short-circuited
 		// Continue from the saved pc
 		buxn_chess_pop_from(  // The short-circuit code does not pop
 			ctx,
 			// The stacks are reversed
-			buxn_chess_op_flag_r(ctx)
-				? &ctx->entry->state.wst
-				: &ctx->entry->state.rst,
+			flag_r ? &ctx->entry->state.wst : &ctx->entry->state.rst,
 			2
 		);
 		ctx->pc = pc.value;
@@ -994,21 +1129,19 @@ static void
 buxn_chess_JCN(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t addr = buxn_chess_pop(ctx);
 	buxn_chess_value_t cond = buxn_chess_pop_ex(ctx, false, buxn_chess_op_flag_r(ctx));
+	(void)cond;
 
-	if (cond.semantics & BUXN_CHESS_SEM_CONST) {
-		if (cond.value != 0) {
-			buxn_chess_jump_no_return(ctx, addr);
-		}
-	} else {
-		buxn_chess_fork(ctx);  // False branch
-		buxn_chess_jump_no_return(ctx, addr);  // True branch
-	}
+	// We should not check cond for const-ness
+	// Since we only run two iterations of a numeric loop, if the inputs are
+	// constant, we will never fork a branch that exits the loop
+	buxn_chess_fork(ctx);  // False branch
+	buxn_chess_jump_no_return(ctx, addr);  // True branch
 }
 
 static void
 buxn_chess_JSR(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t addr = buxn_chess_pop(ctx);
-	buxn_chess_jump_stash(ctx, addr);
+	buxn_chess_jump_stash(ctx, addr, buxn_chess_op_flag_r(ctx));
 }
 
 static void
@@ -1022,7 +1155,9 @@ buxn_chess_load(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 	if (ctx->terminated) { return; }
 
 	if ((addr.semantics & BUXN_CHESS_SEM_ADDRESS) == 0) {
-		buxn_chess_report_exec_warning(ctx, "Not loading from a known address or an offset of one");
+		buxn_chess_report_exec_warning(
+			ctx, "Not loading from a known address or an offset of one"
+		);
 	}
 
 	buxn_chess_value_t value = { 0 };
@@ -1031,9 +1166,15 @@ buxn_chess_load(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 		buxn_chess_addr_info_t* addr_info = buxn_chess_addr_info(ctx->chess, addr.value);
 		if (addr_info != NULL) {  // Load from label
 			value = addr_info->value;
+			value.name = buxn_chess_printf(
+				ctx->chess,
+				"load@%.*s",
+				(int)addr_info->value.name.len,
+				addr_info->value.name.chars
+			);
 		} else {
 			const buxn_asm_sym_t* symbol = ctx->chess->symbols[addr.value];
-			if (symbol->type == BUXN_ASM_SYM_OPCODE) {
+			if (symbol != NULL && symbol->type == BUXN_ASM_SYM_OPCODE) {
 				buxn_chess_report_exec_warning(ctx, "Loading from executable region");
 			}
 			value.name = buxn_chess_printf(ctx->chess, "load@0x%04x", ctx->pc);
@@ -1125,7 +1266,11 @@ buxn_chess_DEI(buxn_chess_exec_ctx_t* ctx) {
 	// TODO: Device layout annotation
 	// TODO: Check that label is device address
 	buxn_chess_value_t addr = buxn_chess_pop_ex(ctx, false, buxn_chess_op_flag_r(ctx));
-	buxn_chess_value_t value = { 0 };
+	buxn_chess_value_t value = {
+		.name = buxn_chess_printf(
+			ctx->chess, "dei@%.*s", (int)addr.name.len, addr.name.chars
+		),
+	};
 
 	if ((addr.semantics & BUXN_CHESS_SEM_ADDRESS) == 0) {
 		buxn_chess_report_exec_warning(ctx, "DEI from non-label");
@@ -1276,14 +1421,24 @@ buxn_chess_EOR(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_bin_op(ctx, buxn_chess_op_xor);
 }
 
-static inline uint16_t
-buxn_chess_op_sft(uint16_t lhs, uint16_t rhs) {
-	return (lhs >> (rhs & 0x0f)) << ((rhs & 0xf0) >> 4);
-}
-
 static void
 buxn_chess_SFT(buxn_chess_exec_ctx_t* ctx) {
-	buxn_chess_bin_op(ctx, buxn_chess_op_sft);
+	buxn_chess_value_t shift = buxn_chess_pop_ex(ctx, false, buxn_chess_op_flag_r(ctx));
+	buxn_chess_value_t value = buxn_chess_pop(ctx);
+	buxn_chess_value_t result = {
+		.name = buxn_chess_name_binary(ctx->chess, value.name, shift.name),
+		.semantics = buxn_chess_op_flag_2(ctx)
+			? BUXN_CHESS_SEM_SIZE_SHORT
+			: BUXN_CHESS_SEM_SIZE_BYTE,
+	};
+	if (
+		(value.semantics & BUXN_CHESS_SEM_CONST)
+		&& (shift.semantics & BUXN_CHESS_SEM_CONST)
+	) {
+		result.semantics |= BUXN_CHESS_SEM_CONST;
+		result.value = (value.value >> (shift.value & 0x0f)) << ((shift.value & 0xf0) >> 4);
+	}
+	buxn_chess_push(ctx, result);
 }
 
 static buxn_chess_value_t
@@ -1302,10 +1457,7 @@ buxn_chess_immediate_jump_target(buxn_chess_exec_ctx_t* ctx) {
 			(buxn_chess_get_rom(ctx->chess->ctx, target_addr_hi) << 8)
 			|(buxn_chess_get_rom(ctx->chess->ctx, target_addr_lo) << 0);
 		return (buxn_chess_value_t){
-			.name = {
-				.chars = symbol_lo->name,
-				.len = strlen(symbol_lo->name),
-			},
+			.name = buxn_chess_name_from_symbol(ctx->chess, symbol_hi, ctx->pc + distant),
 			.semantics = BUXN_CHESS_SEM_SIZE_SHORT | BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_CONST,
 			.value = ctx->pc + distant,
 		};
@@ -1319,15 +1471,13 @@ static void
 buxn_chess_JCI(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t addr = buxn_chess_immediate_jump_target(ctx);
 	buxn_chess_value_t cond = buxn_chess_pop_ex(ctx, false, false);
+	(void)cond;
 
-	if (cond.semantics & BUXN_CHESS_SEM_CONST) {
-		if (cond.value != 0) {
-			buxn_chess_jump_no_return(ctx, addr);
-		}
-	} else {
-		buxn_chess_fork(ctx);  // False branch
-		buxn_chess_jump_no_return(ctx, addr);  // True branch
-	}
+	// We should not check cond for const-ness
+	// Since we only run two iterations of a numeric loop, if the inputs are
+	// constant, we will never fork a branch that exits the loop
+	buxn_chess_fork(ctx);  // False branch
+	buxn_chess_jump_no_return(ctx, addr);  // True branch
 }
 
 static void
@@ -1339,7 +1489,7 @@ buxn_chess_JMI(buxn_chess_exec_ctx_t* ctx) {
 static void
 buxn_chess_JSI(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t addr = buxn_chess_immediate_jump_target(ctx);
-	buxn_chess_jump_stash(ctx, addr);
+	buxn_chess_jump_stash(ctx, addr, false);
 }
 
 static buxn_chess_value_t
@@ -1349,26 +1499,20 @@ buxn_chess_make_lit_byte(
 	const buxn_asm_sym_t* symbol
 ) {
 	buxn_chess_value_t value = { 0 };
-	if (symbol->type == BUXN_ASM_SYM_LABEL_REF) {
+	if (symbol == NULL) {
+		buxn_chess_report_exec_warning(ctx, "Loading unlabelled literal");
+		value.name = buxn_chess_printf(ctx->chess, "lit@0x%04x", addr);
+	} else if (symbol->type == BUXN_ASM_SYM_LABEL_REF) {
 		// TODO: copy label annotations
-		value.name = (buxn_chess_str_t){
-			.chars = symbol->name,
-			.len = strlen(symbol->name),
-		};
 		value.semantics |= BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_CONST;
 		value.value = buxn_chess_get_rom(ctx->chess->ctx, addr);
-	} else if (
-		symbol->type == BUXN_ASM_SYM_NUMBER
-		// TODO: introduce annotation for instruction quoting
-		|| symbol->type == BUXN_ASM_SYM_OPCODE  // Quoting instruction
-	) {
+		value.name = buxn_chess_name_from_symbol(ctx->chess, symbol, value.value);
+	} else {
 		value.value = buxn_chess_get_rom(ctx->chess->ctx, addr);
 		value.name = buxn_chess_printf(ctx->chess, "0x%02x", value.value);
 		value.semantics |= BUXN_CHESS_SEM_CONST;
-	} else {
-		buxn_chess_report_exec_warning(ctx, "Loading unlabelled literal");
-		value.name = buxn_chess_printf(ctx->chess, "lit@0x%04x", addr);
 	}
+
 	return value;
 }
 
@@ -1385,9 +1529,6 @@ buxn_chess_LIT(buxn_chess_exec_ctx_t* ctx) {
 			value.semantics &= ~BUXN_CHESS_SEM_SIZE_SHORT;
 		} else if (symbol != NULL) {
 			value = buxn_chess_make_lit_byte(ctx, lit_addr, symbol);
-		} else {
-			buxn_chess_report_exec_warning(ctx, "Loading unlabelled literal");
-			value.name = buxn_chess_printf(ctx->chess, "lit@0x%04x", lit_addr);
 		}
 
 		buxn_chess_push(ctx, value);
@@ -1396,12 +1537,32 @@ buxn_chess_LIT(buxn_chess_exec_ctx_t* ctx) {
 		uint16_t lit_addr_lo = ctx->pc++;
 		buxn_asm_sym_t* symbol_hi = ctx->chess->symbols[lit_addr_hi];
 		buxn_asm_sym_t* symbol_lo = ctx->chess->symbols[lit_addr_lo];
-		buxn_chess_addr_info_t* addr_info = buxn_chess_addr_info(ctx->chess, lit_addr_hi);
+		buxn_chess_addr_info_t* addr_info_hi = buxn_chess_addr_info(ctx->chess, lit_addr_hi);
+		buxn_chess_addr_info_t* addr_info_lo = buxn_chess_addr_info(ctx->chess, lit_addr_lo);
 
-		if (addr_info != NULL) {  // Door
-			buxn_chess_value_t value = addr_info->value;
-			value.semantics |= BUXN_CHESS_SEM_SIZE_SHORT;
-			buxn_chess_push(ctx, value);
+		if (addr_info_hi != NULL) {  // Door
+			if (addr_info_lo == NULL && symbol_lo == NULL) {
+				buxn_chess_value_t value = addr_info_hi->value;
+				value.semantics |= BUXN_CHESS_SEM_SIZE_SHORT;
+				buxn_chess_push(ctx, value);
+			} else if (addr_info_lo != NULL) {
+				buxn_chess_value_t value_hi = addr_info_hi->value;
+				value_hi.semantics &= ~BUXN_CHESS_SEM_SIZE_SHORT;
+				buxn_chess_push(ctx, value_hi);
+
+				buxn_chess_value_t value_lo = addr_info_lo->value;
+				value_lo.semantics &= ~BUXN_CHESS_SEM_SIZE_SHORT;
+				buxn_chess_push(ctx, value_lo);
+			} else /* if (symbol_lo != NULL) */ {
+				buxn_chess_value_t value_hi = addr_info_hi->value;
+				value_hi.semantics &= ~BUXN_CHESS_SEM_SIZE_SHORT;
+				buxn_chess_push(ctx, value_hi);
+
+				buxn_chess_push(
+					ctx,
+					buxn_chess_make_lit_byte(ctx, lit_addr_lo, symbol_lo)
+				);
+			}
 		} else if (symbol_hi == symbol_lo) {  // The same symbol
 			if (symbol_hi != NULL) {
 				buxn_chess_value_t value = {
@@ -1409,14 +1570,11 @@ buxn_chess_LIT(buxn_chess_exec_ctx_t* ctx) {
 				};
 				if (symbol_hi->type == BUXN_ASM_SYM_LABEL_REF) {
 					// TODO: copy label annotations
-					value.name = (buxn_chess_str_t){
-						.chars = symbol_hi->name,
-						.len = strlen(symbol_hi->name),
-					};
 					value.semantics |= BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_CONST;
 					value.value =
 						  (buxn_chess_get_rom(ctx->chess->ctx, lit_addr_hi) << 8)
 						| (buxn_chess_get_rom(ctx->chess->ctx, lit_addr_lo) << 0);
+					value.name = buxn_chess_name_from_symbol(ctx->chess, symbol_hi, value.value);
 				} else if (
 					symbol_hi->type == BUXN_ASM_SYM_NUMBER
 					// TODO: introduce annotation for instruction quoting
@@ -1436,6 +1594,7 @@ buxn_chess_LIT(buxn_chess_exec_ctx_t* ctx) {
 				buxn_chess_report_exec_warning(ctx, "Loading unlabelled literal");
 				buxn_chess_value_t value = {
 					.name = buxn_chess_printf(ctx->chess, "lit@0x%04x", lit_addr_hi),
+					.semantics = BUXN_CHESS_SEM_SIZE_SHORT,
 				};
 				buxn_chess_push(ctx, value);
 			}
@@ -1467,7 +1626,7 @@ buxn_chess_copy_stack(buxn_chess_stack_t* dst, const buxn_chess_stack_t* src) {
 static void
 buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 	BUXN_CHESS_DEBUG(
-		"Executing %.*s from %s",
+		"Analyzing %.*s from %s",
 		(int)entry->info->value.name.len, entry->info->value.name.chars,
 		buxn_chess_format_address(chess, entry->address)
 	);
@@ -1477,28 +1636,57 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		.entry = entry,
 		.pc = entry->address,
 	};
+	void* region = buxn_chess_begin_mem_region(chess->ctx);
+	BUXN_CHESS_DEBUG(
+		"WST(%d):%s",
+		ctx.entry->state.wst.len,
+		buxn_chess_format_stack(chess, ctx.entry->state.wst.content, ctx.entry->state.wst.len).chars
+	);
+	BUXN_CHESS_DEBUG(
+		"RST(%d):%s",
+		ctx.entry->state.rst.len,
+		buxn_chess_format_stack(chess, ctx.entry->state.rst.content, ctx.entry->state.rst.len).chars
+	);
+	buxn_chess_end_mem_region(chess->ctx, region);
+
+	buxn_chess_stack_t shadow_wst;
+	buxn_chess_stack_t shadow_rst;
+	buxn_chess_stack_t saved_wst = { .len = 0, .size = 0 };
+	buxn_chess_stack_t saved_rst = { .len = 0, .size = 0 };
+	buxn_chess_copy_stack(&ctx.init_wst, &ctx.entry->state.wst);
+	buxn_chess_copy_stack(&ctx.init_rst, &ctx.entry->state.rst);
+
 	ctx.start_sym = chess->symbols[ctx.pc];
 	ctx.current_sym = ctx.start_sym;
+
 	while (!ctx.terminated) {
 		if (ctx.pc < 256) {
 			buxn_chess_report_exec_error(&ctx, "Execution reached zero page");
 			return;
 		}
 
-		ctx.current_opcode = buxn_chess_get_rom(chess->ctx, ctx.pc++);
-		const buxn_asm_sym_t* current_sym = chess->symbols[ctx.pc];
+		uint16_t pc = ctx.pc++;
+		const buxn_asm_sym_t* current_sym = chess->symbols[pc];
+		ctx.current_opcode = buxn_chess_get_rom(chess->ctx, pc);
+		BUXN_CHESS_DEBUG(
+			"Executing %s at %s",
+			buxn_chess_opcode_names[ctx.current_opcode],
+			buxn_chess_format_address(chess, pc)
+		);
 		if (current_sym == NULL || current_sym->type != BUXN_ASM_SYM_OPCODE) {
 			buxn_chess_report_exec_error(&ctx, "Execution reached non opcode");
 			return;
 		}
 		ctx.current_sym = current_sym;
 
+		buxn_chess_copy_stack(&saved_wst, &ctx.entry->state.wst);
+		buxn_chess_copy_stack(&saved_rst, &ctx.entry->state.rst);
 		if (buxn_chess_op_flag_k(&ctx)) {
 			// Apply pop to shadow stack
-			buxn_chess_copy_stack(&ctx.shadow_wst, &ctx.entry->state.wst);
-			buxn_chess_copy_stack(&ctx.shadow_rst, &ctx.entry->state.rst);
-			ctx.wsp = &ctx.shadow_wst;
-			ctx.rsp = &ctx.shadow_rst;
+			buxn_chess_copy_stack(&shadow_wst, &ctx.entry->state.wst);
+			buxn_chess_copy_stack(&shadow_rst, &ctx.entry->state.rst);
+			ctx.wsp = &shadow_wst;
+			ctx.rsp = &shadow_rst;
 		} else {
 			// Pop directly from stack
 			ctx.wsp = &ctx.entry->state.wst;
@@ -1508,6 +1696,33 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		switch (ctx.current_opcode) {
 			BUXN_OPCODE_DISPATCH(BUXN_CHESS_DISPATCH)
 		}
+
+		void* region = buxn_chess_begin_mem_region(chess->ctx);
+		BUXN_CHESS_DEBUG(
+			"WST(%d):%s",
+			ctx.entry->state.wst.len,
+			buxn_chess_format_stack(chess, ctx.entry->state.wst.content, ctx.entry->state.wst.len).chars
+		);
+		BUXN_CHESS_DEBUG(
+			"RST(%d):%s",
+			ctx.entry->state.rst.len,
+			buxn_chess_format_stack(chess, ctx.entry->state.rst.content, ctx.entry->state.rst.len).chars
+		);
+		buxn_chess_end_mem_region(chess->ctx, region);
+	}
+
+	// Dump stack before error
+	if (ctx.error_region.filename != NULL) {
+		buxn_chess_str_t extra_msg = buxn_chess_printf(
+			chess,
+			"Stack before error:%s .%s",
+			buxn_chess_format_stack(chess, saved_wst.content, saved_wst.len).chars,
+			buxn_chess_format_stack(chess, saved_rst.content, saved_rst.len).chars
+		);
+		buxn_chess_report_info(chess->ctx, &(buxn_asm_report_t){
+			.region = &ctx.error_region,
+			.message = extra_msg.chars,
+		});
 	}
 }
 
@@ -1711,7 +1926,24 @@ buxn_chess_begin(buxn_asm_ctx_t* ctx) {
 
 bool
 buxn_chess_end(buxn_chess_t* chess) {
-	// TODO: automatically enqueue 0x0100 as "RESET" if not already enqueued
+	// Automatically enqueue 0x0100 as "RESET" if not already enqueued
+	buxn_chess_addr_info_t* reset = buxn_chess_ensure_addr_info(chess, 0x0100);
+	if (!reset->queued) {
+		reset->value.semantics |= BUXN_CHESS_SEM_ROUTINE;
+		reset->value.signature = buxn_chess_alloc(
+			chess->ctx, sizeof(buxn_chess_signature_t), _Alignof(buxn_chess_signature_t)
+		);
+		*reset->value.signature = (buxn_chess_signature_t){
+			.type = BUXN_CHESS_VECTOR,
+		};
+		buxn_chess_queue_routine(chess, reset);
+	}
+	if (reset->value.name.len == 0) {
+		reset->value.name = (buxn_chess_str_t){
+			.chars = "RESET",
+			.len = BLIT_STRLEN("RESET"),
+		};
+	}
 
 	// Run everything on the verification list
 	while (chess->verification_list != NULL) {

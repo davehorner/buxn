@@ -8,15 +8,13 @@
 #include <buxn/dbg/symtab.h>
 #define BSERIAL_STDIO
 #include <bserial.h>
+#include <bmacro.h>
 
 #define SPACE_PER_BYTE 3
 #define HEADER_LINES 3
 
 #define DEFINE_OPCODE_NAME(NAME, VALUE) \
-	[VALUE] = STRINGIFY(NAME),
-
-#define STRINGIFY(X) STRINGIFY2(X)
-#define STRINGIFY2(X) #X
+	[VALUE] = BSTRINGIFY(NAME),
 
 typedef struct {
 	char* content;

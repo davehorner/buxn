@@ -252,14 +252,12 @@ print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_source_region_t* region) {
 	fprintf(stderr, "\n");
 }
 
-void
-buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
-	(void)ctx;
-	blog_level_t level = BLOG_LEVEL_INFO;
-	switch (type) {
-		case BUXN_ASM_REPORT_ERROR: level = BLOG_LEVEL_ERROR; break;
-		case BUXN_ASM_REPORT_WARNING: level = BLOG_LEVEL_WARN; break;
-	}
+static void
+buxn_asm_log(
+	buxn_asm_ctx_t* ctx,
+	blog_level_t level,
+	const buxn_asm_report_t* report
+) {
 	if (report->token == NULL) {
 		blog_write(
 			level,
@@ -274,7 +272,7 @@ buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm
 		);
 	}
 
-	if (report->region->range.start.line != 0) {
+	if (report->region->range.start.line != 0 && level != BLOG_LEVEL_INFO) {
 		print_file_region(ctx, report->region);
 	}
 
@@ -288,9 +286,34 @@ buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm
 	}
 }
 
+void
+buxn_asm_report(
+	buxn_asm_ctx_t* ctx,
+	buxn_asm_report_type_t type,
+	const buxn_asm_report_t* report
+) {
+	(void)ctx;
+	blog_level_t level = BLOG_LEVEL_INFO;
+	switch (type) {
+		case BUXN_ASM_REPORT_ERROR: level = BLOG_LEVEL_ERROR; break;
+		case BUXN_ASM_REPORT_WARNING: level = BLOG_LEVEL_WARN; break;
+	}
+	buxn_asm_log(ctx, level, report);
+}
+
 void*
 buxn_chess_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment) {
 	return buxn_asm_alloc(ctx, size, alignment);
+}
+
+void*
+buxn_chess_begin_mem_region(buxn_asm_ctx_t* ctx) {
+	return (void*)barena_snapshot(&ctx->arena);
+}
+
+void
+buxn_chess_end_mem_region(buxn_asm_ctx_t* ctx, void* region) {
+	barena_restore(&ctx->arena, (barena_snapshot_t)region);
 }
 
 uint8_t
@@ -299,8 +322,13 @@ buxn_chess_get_rom(buxn_asm_ctx_t* ctx, uint16_t address) {
 }
 
 void
-buxn_chess_report( buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
+buxn_chess_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
 	buxn_asm_report(ctx, type, report);
+}
+
+void
+buxn_chess_report_info(buxn_asm_ctx_t* ctx, const buxn_asm_report_t* report) {
+	buxn_asm_log(ctx, BLOG_LEVEL_INFO, report);
 }
 
 static bool
@@ -358,12 +386,16 @@ main(int argc, const char* argv[]) {
 		.current_filename = __FILE__,
 		.current_depth_in_project = 1,
 	});
-	blog_add_file_logger(log_level, &(blog_file_logger_options_t){
-		.file = stderr,
-		.with_colors = true,
-	});
+	blog_logger_id_t logger = blog_add_file_logger(
+		log_level,
+		&(blog_file_logger_options_t){
+			.file = stderr,
+			.with_colors = true,
+		}
+	);
 
-	bool type_check;
+	bool type_check = false;
+	bool verbose = false;
 	barg_opt_t opts[] = {
 		{
 			.name = "chess",
@@ -372,6 +404,13 @@ main(int argc, const char* argv[]) {
 			.description = "Because chess is better than checker",
 			.boolean = true,
 			.parser = barg_boolean(&type_check),
+		},
+		{
+			.name = "verbose",
+			.short_name = 'v',
+			.summary = "Enable verbose logging",
+			.boolean = true,
+			.parser = barg_boolean(&verbose),
 		},
 		barg_opt_help(),
 	};
@@ -396,6 +435,10 @@ main(int argc, const char* argv[]) {
 	}
 	const char* src_filename = argv[result.arg_index];
 	const char* rom_filename = argv[result.arg_index + 1];
+
+	if (verbose) {
+		blog_set_min_log_level(logger, BLOG_LEVEL_TRACE);
+	}
 
 	barena_pool_t arena_pool;
 	barena_pool_init(&arena_pool, 1);
@@ -483,7 +526,9 @@ main(int argc, const char* argv[]) {
 	barena_reset(&ctx.arena);
 	barena_pool_cleanup(&arena_pool);
 
-	success &= write_rom(&ctx, rom_filename);
+	if (success) {
+		success &= write_rom(&ctx, rom_filename);
+	}
 
 	if (success) {
 		BLOG_INFO(

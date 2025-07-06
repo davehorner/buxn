@@ -100,9 +100,25 @@ buxn_chess_get_rom(buxn_asm_ctx_t* ctx, uint16_t address) {
 	return ctx->rom[address - 256];
 }
 
+void*
+buxn_chess_begin_mem_region(buxn_asm_ctx_t* ctx) {
+	return (void*)barena_snapshot(ctx->arena);
+}
+
+void
+buxn_chess_end_mem_region(buxn_asm_ctx_t* ctx, void* region) {
+	barena_restore(ctx->arena, (barena_snapshot_t)region);
+}
+
 void
 buxn_chess_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
 	buxn_asm_report(ctx, type, report);
+}
+
+void
+buxn_chess_report_info(buxn_asm_ctx_t* ctx, const buxn_asm_report_t* report) {
+	(void)ctx;
+	(void)report;
 }
 
 uint8_t
