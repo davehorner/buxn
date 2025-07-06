@@ -1695,7 +1695,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 
 	while (!ctx.terminated) {
 		if (ctx.pc < 256) {
-			buxn_chess_report_exec_error(&ctx, "Execution reached zero page");
+			buxn_chess_report_exec_error(&ctx, "Execution will reach zero page");
 			return;
 		}
 
@@ -1708,7 +1708,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 			buxn_chess_format_address(chess, pc)
 		);
 		if (current_sym == NULL || current_sym->type != BUXN_ASM_SYM_OPCODE) {
-			buxn_chess_report_exec_error(&ctx, "Execution reached non opcode");
+			buxn_chess_report_exec_error(&ctx, "Execution will reach non opcode");
 			return;
 		}
 		ctx.current_sym = current_sym;
