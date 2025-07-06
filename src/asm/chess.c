@@ -1156,15 +1156,17 @@ buxn_chess_STH(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_push_ex(ctx, !buxn_chess_op_flag_r(ctx), a);
 }
 
+static inline bool
+buxn_chess_value_is_address(buxn_chess_value_t addr) {
+	return (addr.semantics & BUXN_CHESS_SEM_ADDRESS)
+		|| (addr.semantics & BUXN_CHESS_SEM_CONST);
+}
+
 static void
 buxn_chess_load(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 	if (ctx->terminated) { return; }
 
-	if (
-		(addr.semantics & BUXN_CHESS_SEM_ADDRESS) == 0
-		&&
-		(addr.semantics & BUXN_CHESS_SEM_CONST) == 0
-	) {
+	if (!buxn_chess_value_is_address(addr)) {
 		buxn_chess_report_exec_warning(
 			ctx,
 			"Load address (%.*s) is not a constant or an offset of one",
@@ -1213,11 +1215,7 @@ buxn_chess_store(
 ) {
 	if (ctx->terminated) { return; }
 
-	if (
-		(addr.semantics & BUXN_CHESS_SEM_ADDRESS) == 0
-		&&
-		(addr.semantics & BUXN_CHESS_SEM_CONST) == 0
-	) {
+	if (!buxn_chess_value_is_address(addr)) {
 		buxn_chess_report_exec_warning(
 			ctx,
 			"Store address (%.*s) is not a constant or an offset of one",
@@ -1300,8 +1298,12 @@ buxn_chess_DEI(buxn_chess_exec_ctx_t* ctx) {
 		),
 	};
 
-	if ((addr.semantics & BUXN_CHESS_SEM_ADDRESS) == 0) {
-		buxn_chess_report_exec_warning(ctx, "DEI from non-label");
+	if (!buxn_chess_value_is_address(addr)) {
+		buxn_chess_report_exec_warning(
+			ctx,
+			"DEI from non-address value (%.*s)",
+			(int)addr.name.len, addr.name.chars
+		);
 	}
 
 	// TODO: Use device layout to figure out the correct size to read
@@ -1319,8 +1321,12 @@ buxn_chess_DEO(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t value = buxn_chess_pop(ctx);
 	(void)value;
 
-	if ((addr.semantics & BUXN_CHESS_SEM_ADDRESS) == 0) {
-		buxn_chess_report_exec_warning(ctx, "DEO from non-label");
+	if (!buxn_chess_value_is_address(addr)) {
+		buxn_chess_report_exec_warning(
+			ctx,
+			"DEO from non-address value (%.*s)",
+			(int)addr.name.len, addr.name.chars
+		);
 	}
 }
 
