@@ -2068,6 +2068,7 @@ buxn_chess_handle_symbol(
 		sym->type == BUXN_ASM_SYM_OPCODE
 		|| sym->type == BUXN_ASM_SYM_LABEL_REF
 		|| sym->type == BUXN_ASM_SYM_NUMBER
+		|| sym->type == BUXN_ASM_SYM_TEXT
 	) {
 		assert(addr >= 256 && "Code is put in zero-page");
 
