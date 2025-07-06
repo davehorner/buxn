@@ -965,12 +965,9 @@ buxn_chess_LTH(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_boolean_op(ctx, buxn_chess_bool_lth);
 }
 
-static enum {
-	BUXN_CHESS_JUMP_TERMINATED,
-	BUXN_CHESS_JUMP_CONTINUE,
-	BUXN_CHESS_JUMP_SUBROUTINE,
-} buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
-	if (ctx->terminated) { return BUXN_CHESS_JUMP_TERMINATED; }
+static const buxn_chess_addr_info_t*
+buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
+	if (ctx->terminated) { return NULL; }
 
 	uint16_t from_pc = ctx->pc;
 	if ((addr.semantics & BUXN_CHESS_SEM_SIZE_MASK) == BUXN_CHESS_SEM_SIZE_BYTE) {
@@ -979,7 +976,7 @@ static enum {
 			ctx->pc = (uint16_t)((int32_t)ctx->pc + (int32_t)(int8_t)addr.value);
 		} else {
 			buxn_chess_report_exec_error(ctx, "Jumping to unknown address");
-			return BUXN_CHESS_JUMP_TERMINATED;
+			return NULL;
 		}
 	} else {
 		// Absolute jump
@@ -994,12 +991,12 @@ static enum {
 			buxn_chess_check_return(ctx);
 			buxn_chess_terminate(ctx);
 			BUXN_CHESS_DEBUG("Terminated by jumping to return address");
-			return BUXN_CHESS_JUMP_TERMINATED;
+			return NULL;
 		} else if (addr.semantics & BUXN_CHESS_SEM_CONST) {
 			ctx->pc = addr.value;
 		} else {
 			buxn_chess_report_exec_error(ctx, "Jumping to unknown address");
-			return BUXN_CHESS_JUMP_TERMINATED;
+			return NULL;
 		}
 	}
 
@@ -1014,7 +1011,7 @@ static enum {
 			&& sig->type == BUXN_CHESS_VECTOR
 		) {
 			buxn_chess_report_exec_error(ctx, "Subroutine calls into a vector");
-			return BUXN_CHESS_JUMP_TERMINATED;
+			return NULL;
 		}
 
 		// Gather inputs directly from the real stack
@@ -1042,7 +1039,7 @@ static enum {
 
 		// Check the subroutine
 		buxn_chess_queue_routine(ctx->chess, addr_info);
-		return BUXN_CHESS_JUMP_SUBROUTINE;
+		return addr_info;
 	} else {
 		// Make the jump if it was not made before
 		// The first time a backward jump is applied, the effect of the loop
@@ -1066,41 +1063,46 @@ static enum {
 				_Alignof(buxn_chess_jump_arc_t)
 			);
 			*jump_node = (buxn_chess_jump_arc_t){ .key = jump_key };
-			return BUXN_CHESS_JUMP_CONTINUE;
+			return NULL;
 		} else {
 			BUXN_CHESS_DEBUG(
 				"Terminated by repeated jump to %s",
 				buxn_chess_format_address(ctx->chess, ctx->pc)
 			);
 			buxn_chess_terminate(ctx);
-			return BUXN_CHESS_JUMP_TERMINATED;
+			return NULL;
 		}
 	}
 }
 
 static void
 buxn_chess_jump_no_return(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
-	if (buxn_chess_jump(ctx, addr) == BUXN_CHESS_JUMP_SUBROUTINE) {
+	const buxn_chess_addr_info_t* subroutine = buxn_chess_jump(ctx, addr);
+	if (subroutine != NULL) {
 		// This jump was short-circuited
 		// Check return type and terminate
-		if (ctx->entry->info->value.signature->type == BUXN_CHESS_VECTOR) {
-			buxn_chess_report_exec_error(ctx, "Vector routine makes a normal return");
+		if (
+			ctx->entry->info->value.signature->type != subroutine->value.signature->type
+		) {
+			buxn_chess_report_exec_error(ctx, "Tail call into a routine of a different type");
 			return;
 		}
 
-		if (ctx->entry->state.rst.len != 1)  {
-			buxn_chess_report_exec_error(ctx, "Invalid return stack, expecting only return address");
-			return;
-		}
+		if (ctx->entry->info->value.signature->type == BUXN_CHESS_SUBROUTINE) {
+			if (ctx->entry->state.rst.len != 1)  {
+				buxn_chess_report_exec_error(ctx, "Invalid return stack, expecting only return address");
+				return;
+			}
 
-		buxn_chess_value_t return_addr = buxn_chess_pop_ex(ctx, true, true);
-		if (!(
-			(return_addr.semantics & BUXN_CHESS_SEM_ADDRESS)
-			&&
-			(return_addr.semantics & BUXN_CHESS_SEM_RETURN)
-		)) {
-			buxn_chess_report_exec_error(ctx, "Invalid return stack, expecting only return address");
-			return;
+			buxn_chess_value_t return_addr = buxn_chess_pop_ex(ctx, true, true);
+			if (!(
+				(return_addr.semantics & BUXN_CHESS_SEM_ADDRESS)
+				&&
+				(return_addr.semantics & BUXN_CHESS_SEM_RETURN)
+			)) {
+				buxn_chess_report_exec_error(ctx, "Invalid return stack, expecting only return address");
+				return;
+			}
 		}
 
 		buxn_chess_check_return(ctx);
@@ -1124,7 +1126,8 @@ buxn_chess_jump_stash(
 		.value = ctx->pc,
 	};
 	buxn_chess_push_ex(ctx, !flag_r, pc);
-	if (buxn_chess_jump(ctx, addr) == BUXN_CHESS_JUMP_SUBROUTINE) {
+	const buxn_chess_addr_info_t* subroutine = buxn_chess_jump(ctx, addr);
+	if (subroutine != NULL) {
 		// This jump was short-circuited
 		// Continue from the saved pc
 		buxn_chess_pop_from(  // The short-circuit code does not pop
