@@ -4,6 +4,7 @@
 #include <string.h>
 #include <limits.h>
 #include <assert.h>
+#include <stdio.h>
 #include <bmacro.h>
 #include <stdarg.h>
 #define BHAMT_HASH_TYPE uint32_t
@@ -13,8 +14,7 @@
 #	ifdef NDEBUG
 #		define BUXN_CHESS_DEBUG(...)
 #	else
-#		include <blog.h>
-#		define BUXN_CHESS_DEBUG(...) BLOG_TRACE(__VA_ARGS__)
+#		define BUXN_CHESS_DEBUG(...) (BFORMAT_CHECK(__VA_ARGS__), buxn_chess_debug(__FILE__, __LINE__, __VA_ARGS__))
 #	endif
 #endif
 

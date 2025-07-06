@@ -47,4 +47,7 @@ buxn_chess_report_info(
 	const buxn_asm_report_t* report
 );
 
+extern void
+buxn_chess_debug(const char* filename, int line, const char* fmt, ...);
+
 #endif

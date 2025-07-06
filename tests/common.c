@@ -121,6 +121,13 @@ buxn_chess_report_info(buxn_asm_ctx_t* ctx, const buxn_asm_report_t* report) {
 	(void)report;
 }
 
+void
+buxn_chess_debug(const char* filename, int line, const char* fmt, ...) {
+	(void)filename;
+	(void)line;
+	(void)fmt;
+}
+
 uint8_t
 buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 	buxn_test_devices_t* devices = vm->config.userdata;

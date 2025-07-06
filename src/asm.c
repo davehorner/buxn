@@ -331,6 +331,14 @@ buxn_chess_report_info(buxn_asm_ctx_t* ctx, const buxn_asm_report_t* report) {
 	buxn_asm_log(ctx, BLOG_LEVEL_INFO, report);
 }
 
+void
+buxn_chess_debug(const char* filename, int line, const char* fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	blog_vwrite(BLOG_LEVEL_TRACE, filename, line, fmt, args);
+	va_end(args);
+}
+
 static bool
 write_rom(buxn_asm_ctx_t* ctx, const char* rom_path) {
 	FILE* rom_file = NULL;
@@ -469,7 +477,7 @@ main(int argc, const char* argv[]) {
 		ctx.chess = buxn_chess_begin(&ctx);
 	}
 	bool success = buxn_asm(&ctx, src_filename);
-	if (ctx.chess != NULL) {
+	if (ctx.chess != NULL && success) {
 		success &= buxn_chess_end(ctx.chess);
 	}
 
