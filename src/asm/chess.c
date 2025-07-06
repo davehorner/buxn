@@ -1156,9 +1156,15 @@ static void
 buxn_chess_load(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 	if (ctx->terminated) { return; }
 
-	if ((addr.semantics & BUXN_CHESS_SEM_ADDRESS) == 0) {
+	if (
+		(addr.semantics & BUXN_CHESS_SEM_ADDRESS) == 0
+		&&
+		(addr.semantics & BUXN_CHESS_SEM_CONST) == 0
+	) {
 		buxn_chess_report_exec_warning(
-			ctx, "Not loading from a known address or an offset of one"
+			ctx,
+			"Load address (%.*s) is not a constant or an offset of one",
+			(int)addr.name.len, addr.name.chars
 		);
 	}
 
@@ -1177,7 +1183,11 @@ buxn_chess_load(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 		} else {
 			const buxn_asm_sym_t* symbol = ctx->chess->symbols[addr.value];
 			if (symbol != NULL && symbol->type == BUXN_ASM_SYM_OPCODE) {
-				buxn_chess_report_exec_warning(ctx, "Loading from executable region");
+				buxn_chess_report_exec_warning(
+					ctx,
+					"Load address (%.*s) points to an executable region",
+					(int)addr.name.len, addr.name.chars
+				);
 			}
 			value.name = buxn_chess_printf(ctx->chess, "load@0x%04x", ctx->pc);
 		}
@@ -1199,8 +1209,16 @@ buxn_chess_store(
 ) {
 	if (ctx->terminated) { return; }
 
-	if ((addr.semantics & BUXN_CHESS_SEM_ADDRESS) == 0) {
-		buxn_chess_report_exec_warning(ctx, "Not storing to a known address or an offset of one");
+	if (
+		(addr.semantics & BUXN_CHESS_SEM_ADDRESS) == 0
+		&&
+		(addr.semantics & BUXN_CHESS_SEM_CONST) == 0
+	) {
+		buxn_chess_report_exec_warning(
+			ctx,
+			"Store address (%.*s) is not a constant or an offset of one",
+			(int)addr.name.len, addr.name.chars
+		);
 	}
 
 	if (addr.semantics & BUXN_CHESS_SEM_CONST) {
@@ -1211,8 +1229,12 @@ buxn_chess_store(
 			// TODO: checked store
 		} else {
 			const buxn_asm_sym_t* symbol = ctx->chess->symbols[addr.value];
-			if (symbol->type == BUXN_ASM_SYM_OPCODE) {
-				buxn_chess_report_exec_warning(ctx, "Storing to executable region");
+			if (symbol != NULL && symbol->type == BUXN_ASM_SYM_OPCODE) {
+				buxn_chess_report_exec_warning(
+					ctx,
+					"Store address (%.*s) points to an executable region",
+					(int)addr.name.len, addr.name.chars
+				);
 			}
 		}
 	}
