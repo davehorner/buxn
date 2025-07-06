@@ -1914,8 +1914,7 @@ buxn_chess_parse_signature(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 	if (sym != NULL) {
 		size_t len = strlen(sym->name);
 		if (
-			(len == 1 && sym->name[0] == '.')
-			|| (len == 2 && sym->name[0] == '-' && sym->name[1] == '-')
+			(len == 2 && sym->name[0] == '-' && sym->name[1] == '-')
 			|| (len == 2 && sym->name[0] == '-' && sym->name[1] == '>')
 		) {
 			// Use the actual parser now that we have confirmed that this is
