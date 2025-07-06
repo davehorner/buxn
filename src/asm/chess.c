@@ -449,34 +449,48 @@ buxn_chess_maybe_report_exec_begin(
 	ctx->entry_reported = true;
 }
 
+BFORMAT_ATTRIBUTE(2, 3)
 static void
 buxn_chess_report_exec_error(
 	buxn_chess_exec_ctx_t* ctx,
-	const char* message
+	const char* fmt,
+	...
 ) {
 	buxn_chess_maybe_report_exec_begin(ctx);
+	void* region = buxn_chess_begin_mem_region(ctx->chess->ctx);
+	va_list args;
+	va_start(args, fmt);
 	buxn_chess_report_error(ctx->chess, &(buxn_asm_report_t){
-		.message = message,
+		.message = buxn_chess_vprintf(ctx->chess, fmt, args).chars,
 		.region = &ctx->current_sym->region,
 	});
+	va_end(args);
+	buxn_chess_end_mem_region(ctx->chess->ctx, region);
 	ctx->error_region = ctx->current_sym->region;
 	buxn_chess_terminate(ctx);
 }
 
+BFORMAT_ATTRIBUTE(2, 3)
 static void
 buxn_chess_report_exec_warning(
 	buxn_chess_exec_ctx_t* ctx,
-	const char* message
+	const char* fmt,
+	...
 ) {
 	buxn_chess_maybe_report_exec_begin(ctx);
+	void* region = buxn_chess_begin_mem_region(ctx->chess->ctx);
+	va_list args;
+	va_start(args, fmt);
 	buxn_chess_report(
 		ctx->chess->ctx,
 		BUXN_ASM_REPORT_WARNING,
 		&(buxn_asm_report_t){
-			.message = message,
+			.message = buxn_chess_vprintf(ctx->chess, fmt, args).chars,
 			.region = &ctx->current_sym->region,
 		}
 	);
+	va_end(args);
+	buxn_chess_end_mem_region(ctx->chess->ctx, region);
 }
 
 static void
@@ -693,14 +707,11 @@ buxn_chess_check_stack(
 		);
 		buxn_chess_report_exec_error(
 			ctx,
-			buxn_chess_printf(
-				ctx->chess,
-				"%s stack size mismatch: Expecting %s%d (%.*s ), got %d (%.*s )",
-				stack_name,
-				prefix,
-				sig_size, (int)sig_str.len, sig_str.chars,
-				stack->size, (int)stack_str.len, stack_str.chars
-			).chars
+			"%s stack size mismatch: Expecting %s%d (%.*s ), got %d (%.*s )",
+			stack_name,
+			prefix,
+			sig_size, (int)sig_str.len, sig_str.chars,
+			stack->size, (int)stack_str.len, stack_str.chars
 		);
 	}
 
@@ -724,14 +735,11 @@ buxn_chess_check_stack(
 		) {
 			buxn_chess_report_exec_warning(
 				ctx,
-				buxn_chess_printf(
-					ctx->chess,
-					"%s stack #%d: An address value (%.*s) is constructed from a value that is not derived from an address (%.*s)",
-					stack_name,
-					value_index,
-					(int)sig_value.name.len, sig_value.name.chars,
-					(int)actual_value.name.len, actual_value.name.chars
-				).chars
+				"%s stack #%d: An address value (%.*s) is constructed from a value that is not derived from an address (%.*s)",
+				stack_name,
+				value_index,
+				(int)sig_value.name.len, sig_value.name.chars,
+				(int)actual_value.name.len, actual_value.name.chars
 			);
 		}
 
@@ -742,14 +750,11 @@ buxn_chess_check_stack(
 		) {
 			buxn_chess_report_exec_error(
 				ctx,
-				buxn_chess_printf(
-					ctx->chess,
-					"%s stack #%d: A routine value (%.*s) cannot be constructed from a non-routine value (%.*s)",
-					stack_name,
-					value_index,
-					(int)sig_value.name.len, sig_value.name.chars,
-					(int)actual_value.name.len, actual_value.name.chars
-				).chars
+				"%s stack #%d: A routine value (%.*s) cannot be constructed from a non-routine value (%.*s)",
+				stack_name,
+				value_index,
+				(int)sig_value.name.len, sig_value.name.chars,
+				(int)actual_value.name.len, actual_value.name.chars
 			);
 		}
 
@@ -766,16 +771,13 @@ buxn_chess_check_stack(
 			)) {
 				buxn_chess_report_exec_error(
 					ctx,
-					buxn_chess_printf(
-						ctx->chess,
-						"%s stack #%d: A value of type \"%.*s\" (%.*s) cannot be constructed from a value of type \"%.*s\" (%.*s)",
-						stack_name,
-						value_index,
-						(int)sig_value.type.len, sig_value.type.chars,
-						(int)sig_value.name.len, sig_value.name.chars,
-						(int)actual_value.type.len, actual_value.type.chars,
-						(int)actual_value.name.len, actual_value.name.chars
-					).chars
+					"%s stack #%d: A value of type \"%.*s\" (%.*s) cannot be constructed from a value of type \"%.*s\" (%.*s)",
+					stack_name,
+					value_index,
+					(int)sig_value.type.len, sig_value.type.chars,
+					(int)sig_value.name.len, sig_value.name.chars,
+					(int)actual_value.type.len, actual_value.type.chars,
+					(int)actual_value.name.len, actual_value.name.chars
 				);
 			}
 		}
@@ -1713,6 +1715,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 
 	// Dump stack before error
 	if (ctx.error_region.filename != NULL) {
+		void* region = buxn_chess_begin_mem_region(chess->ctx);
 		buxn_chess_str_t extra_msg = buxn_chess_printf(
 			chess,
 			"Stack before error:%s .%s",
@@ -1723,6 +1726,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 			.region = &ctx.error_region,
 			.message = extra_msg.chars,
 		});
+		buxn_chess_end_mem_region(chess->ctx, region);
 	}
 }
 
