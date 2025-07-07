@@ -51,34 +51,6 @@ static btest_suite_t basm = {
 	.cleanup_per_test = cleanup_per_test,
 };
 
-static inline bool
-buxn_asm_str(buxn_asm_ctx_t* basm, const char* str, const char* file, int line) {
-	barena_snapshot_t snapshot = barena_snapshot(basm->arena);
-
-	int size = snprintf(NULL, 0, "%s:%d", file, line);
-	char* filename = barena_malloc(basm->arena, size + 1);
-	snprintf(filename, size + 1, "%s:%d", file, line);
-
-	basm->vfs = (buxn_vfs_entry_t[]) {
-		{
-			.name = filename,
-			.content = { .data = (const unsigned char*)str, .size = strlen(str) }
-		},
-		{ 0 },
-	};
-	basm->rom_size = 0;
-	basm->num_errors = 0;
-	basm->num_warnings = 0;
-
-	bool result = buxn_asm(basm, filename);
-
-	barena_restore(basm->arena, snapshot);
-
-	return result;
-}
-
-#define buxn_asm_str(basm, str) buxn_asm_str(basm, str, __FILE__, __LINE__)
-
 BTEST(basm, warning) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 

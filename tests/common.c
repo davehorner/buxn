@@ -11,6 +11,38 @@ struct buxn_asm_file_s {
 	size_t pos;
 };
 
+bool
+(buxn_asm_str)(buxn_asm_ctx_t* basm, const char* str, const char* file, int line) {
+	barena_snapshot_t snapshot = barena_snapshot(basm->arena);
+
+	int size = snprintf(NULL, 0, "%s:%d", file, line);
+	char* filename = barena_malloc(basm->arena, size + 1);
+	snprintf(filename, size + 1, "%s:%d", file, line);
+
+	basm->vfs = (buxn_vfs_entry_t[]) {
+		{
+			.name = filename,
+			.content = { .data = (const unsigned char*)str, .size = strlen(str) }
+		},
+		{ 0 },
+	};
+	basm->rom_size = 0;
+	basm->num_errors = 0;
+	basm->num_warnings = 0;
+
+	if (basm->enable_chess) {
+		basm->chess = buxn_chess_begin(basm);
+	}
+	bool result = buxn_asm(basm, filename);
+	if (result && basm->enable_chess) {
+		result &= buxn_chess_end(basm->chess);
+	}
+
+	barena_restore(basm->arena, snapshot);
+
+	return result;
+}
+
 void*
 buxn_asm_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment) {
 	return barena_memalign(ctx->arena, size, alignment);

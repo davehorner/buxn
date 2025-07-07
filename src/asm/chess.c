@@ -1656,6 +1656,7 @@ buxn_chess_LIT(buxn_chess_exec_ctx_t* ctx) {
 					value.name = buxn_chess_name_from_symbol(ctx->chess, symbol_hi, value.value);
 				} else if (
 					symbol_hi->type == BUXN_ASM_SYM_NUMBER
+					|| symbol_hi->type == BUXN_ASM_SYM_TEXT
 					// TODO: introduce annotation for instruction quoting
 					|| symbol_hi->type == BUXN_ASM_SYM_OPCODE  // Quoting instruction
 				) {

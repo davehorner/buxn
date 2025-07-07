@@ -114,7 +114,7 @@ build_linux() {
 	$CC \
 		-fuse-ld=mold \
 		${BUILD_TYPE_FLAGS} \
-		${OBJ_DIR}/tests/{main,common,asm,vm,dbg}.c.o \
+		${OBJ_DIR}/tests/{main,common,asm,vm,dbg,chess}.c.o \
 		${OBJ_DIR}/src/dbg/{core.c.o,wire.c.o,protocol.c.o} \
 		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
@@ -388,7 +388,7 @@ build_cosmo() {
 
 	$CC \
 		${BUILD_TYPE_FLAGS} \
-		${OBJ_DIR}/tests/{main,common,asm,vm,dbg}.c.o \
+		${OBJ_DIR}/tests/{main,common,asm,vm,dbg,chess}.c.o \
 		${OBJ_DIR}/src/dbg/{core.c.o,wire.c.o,protocol.c.o} \
 		${OBJ_DIR}/src/dbg/transports/fd.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
@@ -451,6 +451,7 @@ compile_desktop() {
 	compile tests/main.c $PROGRAM_FLAGS
 	compile tests/common.c $PROGRAM_FLAGS
 	compile tests/asm.c $PROGRAM_FLAGS
+	compile tests/chess.c $PROGRAM_FLAGS
 	compile tests/vm.c $PROGRAM_FLAGS
 	compile tests/dbg.c $PROGRAM_FLAGS
 

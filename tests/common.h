@@ -17,6 +17,7 @@ struct buxn_asm_ctx_s {
 	buxn_vfs_entry_t* vfs;
 	barena_t* arena;
 	buxn_chess_t* chess;
+	bool enable_chess;
 
 	bool suppress_report;
 	char rom[UINT16_MAX];
@@ -32,5 +33,10 @@ typedef struct {
 
 	void (*system_dbg)(struct buxn_vm_s* vm, uint8_t value);
 } buxn_test_devices_t;
+
+bool
+buxn_asm_str(buxn_asm_ctx_t* basm, const char* str, const char* file, int line);
+
+#define buxn_asm_str(basm, str) buxn_asm_str(basm, str, __FILE__, __LINE__)
 
 #endif
