@@ -49,6 +49,24 @@ static const char* buxn_chess_opcode_names[256] = {
 	BUXN_OPCODE_DISPATCH(DEFINE_OPCODE_NAME)
 };
 
+#define BUXN_CHESS_INTERNAL_REGION() \
+	{ \
+		.filename = "src/asm/chess.c", \
+		.range = { \
+			.start = { .line = __LINE__ }, \
+			.end = { .line = __LINE__ } \
+		}, \
+	}
+
+#define BUXN_CHESS_VALUE_FMT "%.*s from %s:%d:%d:%d"
+#define BUXN_CHESS_VALUE_FMT_ARGS(VALUE) \
+	(int)((VALUE).name.len), \
+	((VALUE).name.chars), \
+	((VALUE).region.filename != NULL ? (VALUE).region.filename : "<unknown>"), \
+	((VALUE).region.range.start.line), \
+	((VALUE).region.range.start.col), \
+	((VALUE).region.range.start.byte)
+
 typedef void (*buxn_chess_anno_handler_t)(buxn_chess_t* chess, const buxn_asm_sym_t* sym);
 
 typedef struct {
@@ -62,6 +80,7 @@ typedef struct {
 	buxn_chess_str_t name;
 	buxn_chess_str_t type;
 	buxn_chess_signature_t* signature;
+	buxn_asm_source_region_t region;
 	uint16_t value;
 	uint8_t semantics;
 } buxn_chess_value_t;
@@ -522,10 +541,11 @@ buxn_chess_queue_routine(buxn_chess_t* chess, buxn_chess_addr_info_t* routine) {
 	if (signature->type == BUXN_CHESS_SUBROUTINE) {
 		buxn_chess_raw_push(&entry->state.rst, (buxn_chess_value_t){
 			.name = {
-				.chars = "@return-root",
-				.len = BLIT_STRLEN("@return-root"),
+				.chars = "RETURN",
+				.len = BLIT_STRLEN("RETURN"),
 			},
 			.semantics = BUXN_CHESS_SEM_SIZE_SHORT | BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_RETURN,
+			.region = BUXN_CHESS_INTERNAL_REGION(),
 		});
 	}
 	for (uint8_t i = 0; i < signature->rst_in.len; ++i) {
@@ -560,10 +580,18 @@ static inline buxn_chess_value_t
 buxn_chess_value_error(void) {
 	return (buxn_chess_value_t){
 		.name = {
-			.chars = "(error)",
-			.len = BLIT_STRLEN("(error)")
-		}
+			.chars = "ERROR",
+			.len = BLIT_STRLEN("ERROR")
+		},
+		.region = BUXN_CHESS_INTERNAL_REGION(),
 	};
+}
+
+static inline buxn_asm_source_region_t
+buxn_chess_pc_region(buxn_chess_exec_ctx_t* ctx) {
+	return ctx->current_sym != NULL
+		? ctx->current_sym->region
+		: (buxn_asm_source_region_t) { 0 };
 }
 
 static buxn_chess_value_t
@@ -587,6 +615,7 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 				"%.*s-lo",
 				(int)top.name.len, top.name.chars
 			),
+			.region = buxn_chess_pc_region(ctx),
 		};
 		buxn_chess_value_t hi = {
 			.name = buxn_chess_printf(
@@ -594,6 +623,7 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 				"%.*s-hi",
 				(int)top.name.len, top.name.chars
 			),
+			.region = buxn_chess_pc_region(ctx),
 		};
 		if (top.semantics & BUXN_CHESS_SEM_CONST) {
 			lo.semantics |= BUXN_CHESS_SEM_CONST;
@@ -618,6 +648,7 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 		buxn_chess_value_t result = {
 			.name = buxn_chess_name_binary(ctx->chess, hi.name, lo.name),
 			.semantics = BUXN_CHESS_SEM_SIZE_SHORT,
+			.region = buxn_chess_pc_region(ctx),
 		};
 		if (
 			(hi.semantics & BUXN_CHESS_SEM_CONST)
@@ -663,6 +694,10 @@ buxn_chess_pop(buxn_chess_exec_ctx_t* ctx) {
 static void
 buxn_chess_push_ex(buxn_chess_exec_ctx_t* ctx, bool flag_r, buxn_chess_value_t value) {
 	if (ctx->terminated) { return; }
+
+	if (value.region.filename == NULL) {
+		value.region = buxn_chess_pc_region(ctx);
+	}
 
 	uint8_t value_size = buxn_chess_value_size(value);
 	// Push is always applied directly to the real stack
@@ -752,11 +787,12 @@ buxn_chess_check_stack(
 		) {
 			buxn_chess_report_exec_warning(
 				ctx,
-				"%s stack #%d: An address value (%.*s) is constructed from a value that is not derived from an address or constant (%.*s)",
+				"%s stack #%d: An address value (" BUXN_CHESS_VALUE_FMT ") "
+				"is constructed from a non-address (" BUXN_CHESS_VALUE_FMT ")",
 				stack_name,
 				value_index,
-				(int)sig_value.name.len, sig_value.name.chars,
-				(int)actual_value.name.len, actual_value.name.chars
+				BUXN_CHESS_VALUE_FMT_ARGS(sig_value),
+				BUXN_CHESS_VALUE_FMT_ARGS(actual_value)
 			);
 		}
 
@@ -1046,12 +1082,16 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 			&ctx->entry->state.rst,
 			&sig->rst_in
 		);
-		// Push outputs
+		// Push outputs with overidden origin region
 		for (uint8_t i = 0; i < sig->wst_out.len; ++i) {
-			buxn_chess_push_ex(ctx, false, sig->wst_out.content[i]);
+			buxn_chess_value_t output = sig->wst_out.content[i];
+			output.region = buxn_chess_pc_region(ctx);
+			buxn_chess_push_ex(ctx, false, output);
 		}
 		for (uint8_t i = 0; i < sig->rst_out.len; ++i) {
-			buxn_chess_push_ex(ctx, true, sig->rst_out.content[i]);
+			buxn_chess_value_t output = sig->rst_out.content[i];
+			output.region = buxn_chess_pc_region(ctx);
+			buxn_chess_push_ex(ctx, true, output);
 		}
 
 		// Check the subroutine
@@ -1136,8 +1176,8 @@ buxn_chess_jump_stash(
 ) {
 	buxn_chess_value_t pc = {
 		.name = {
-			.chars = "@return-sub",
-			.len = BLIT_STRLEN("@return-sub"),
+			.chars = "RETURN-SUB",
+			.len = BLIT_STRLEN("RETURN-SUB"),
 		},
 		.semantics = BUXN_CHESS_SEM_SIZE_SHORT | BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_CONST,
 		.value = ctx->pc,
@@ -1217,8 +1257,8 @@ buxn_chess_load(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 	if (!buxn_chess_value_is_address(addr)) {
 		buxn_chess_report_exec_warning(
 			ctx,
-			"Load address (%.*s) is not a constant or an offset of one",
-			(int)addr.name.len, addr.name.chars
+			"Load address (" BUXN_CHESS_VALUE_FMT ") is not a constant or an offset of one",
+			BUXN_CHESS_VALUE_FMT_ARGS(addr)
 		);
 	}
 
@@ -1239,8 +1279,8 @@ buxn_chess_load(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 			if (symbol != NULL && symbol->type == BUXN_ASM_SYM_OPCODE) {
 				buxn_chess_report_exec_warning(
 					ctx,
-					"Load address (%.*s) points to an executable region",
-					(int)addr.name.len, addr.name.chars
+					"Load address (" BUXN_CHESS_VALUE_FMT ") points to an executable region",
+					BUXN_CHESS_VALUE_FMT_ARGS(addr)
 				);
 			}
 			value.name = buxn_chess_printf(ctx->chess, "load@0x%04x", ctx->pc);
@@ -1266,8 +1306,8 @@ buxn_chess_store(
 	if (!buxn_chess_value_is_address(addr)) {
 		buxn_chess_report_exec_warning(
 			ctx,
-			"Store address (%.*s) is not a constant or an offset of one",
-			(int)addr.name.len, addr.name.chars
+			"Store address (" BUXN_CHESS_VALUE_FMT ") is not a constant or an offset of one",
+			BUXN_CHESS_VALUE_FMT_ARGS(addr)
 		);
 	}
 
@@ -1282,8 +1322,8 @@ buxn_chess_store(
 			if (symbol != NULL && symbol->type == BUXN_ASM_SYM_OPCODE) {
 				buxn_chess_report_exec_warning(
 					ctx,
-					"Store address (%.*s) points to an executable region",
-					(int)addr.name.len, addr.name.chars
+					"Store address (" BUXN_CHESS_VALUE_FMT ") points to an executable region",
+					BUXN_CHESS_VALUE_FMT_ARGS(addr)
 				);
 			}
 		}
@@ -1349,8 +1389,8 @@ buxn_chess_DEI(buxn_chess_exec_ctx_t* ctx) {
 	if (!buxn_chess_value_is_address(addr)) {
 		buxn_chess_report_exec_warning(
 			ctx,
-			"DEI from non-address value (%.*s)",
-			(int)addr.name.len, addr.name.chars
+			"DEI from non-address value (" BUXN_CHESS_VALUE_FMT ")",
+			BUXN_CHESS_VALUE_FMT_ARGS(addr)
 		);
 	}
 
@@ -1372,8 +1412,8 @@ buxn_chess_DEO(buxn_chess_exec_ctx_t* ctx) {
 	if (!buxn_chess_value_is_address(addr)) {
 		buxn_chess_report_exec_warning(
 			ctx,
-			"DEO from non-address value (%.*s)",
-			(int)addr.name.len, addr.name.chars
+			"DEO from non-address value (" BUXN_CHESS_VALUE_FMT ")",
+			BUXN_CHESS_VALUE_FMT_ARGS(addr)
 		);
 	}
 }
@@ -1545,6 +1585,7 @@ buxn_chess_immediate_jump_target(buxn_chess_exec_ctx_t* ctx) {
 			.name = buxn_chess_name_from_symbol(ctx->chess, symbol_hi, ctx->pc + distant),
 			.semantics = BUXN_CHESS_SEM_SIZE_SHORT | BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_CONST,
 			.value = ctx->pc + distant,
+			.region = BUXN_CHESS_INTERNAL_REGION(),
 		};
 	} else {
 		buxn_chess_report_exec_error(ctx, "Invalid jump address");
@@ -1819,7 +1860,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 
 static buxn_chess_value_t
 buxn_chess_parse_value(buxn_chess_t* chess, const buxn_asm_sym_t* sym, size_t len) {
-	buxn_chess_value_t value = { 0 };
+	buxn_chess_value_t value = { .region = sym->region };
 	if (sym->name[len - 1] == '*') {
 		value.name = buxn_chess_strcpy(chess, sym->name, len - 1);
 		value.semantics |= BUXN_CHESS_SEM_SIZE_SHORT;
