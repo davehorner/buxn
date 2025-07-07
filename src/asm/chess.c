@@ -90,6 +90,13 @@ struct buxn_chess_value_s {
 	uint16_t semantics;
 };
 
+typedef struct buxn_chess_value_node_s buxn_chess_value_node_t;
+
+struct buxn_chess_value_node_s {
+	buxn_chess_value_node_t* next;
+	buxn_chess_value_t value;
+};
+
 typedef enum {
 	BUXN_CHESS_VECTOR,
 	BUXN_CHESS_SUBROUTINE,
@@ -169,6 +176,8 @@ typedef struct {
 	buxn_chess_stack_t init_wst;
 	buxn_chess_stack_t init_rst;
 
+	buxn_chess_value_node_t* values;
+
 	const buxn_asm_sym_t* start_sym;
 	const buxn_asm_sym_t* current_sym;
 	uint16_t pc;
@@ -197,6 +206,9 @@ struct buxn_chess_s {
 
 	buxn_chess_entry_t* entry_pool;
 	buxn_chess_entry_t* verification_list;
+
+	buxn_chess_value_node_t* value_pool;
+
 	bool success;
 
 	buxn_asm_sym_t* last_sym;
@@ -608,14 +620,21 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 		stack->size -= top_size;
 		return top;
 	} else if (top_size > size) {  // Break the top value into hi and lo
-		// TODO: This value should be recycled
-		// The arena would take care of it anyway but peak memory usage
-		// might be a bit higher
-		buxn_chess_value_t* whole_value = buxn_chess_alloc(
-			ctx->chess->ctx,
-			sizeof(buxn_chess_value_t),
-			_Alignof(buxn_chess_value_t)
-		);
+		buxn_chess_value_node_t* node;
+		if (ctx->chess->value_pool != NULL) {
+			node = ctx->chess->value_pool;
+			ctx->chess->value_pool = node->next;
+		} else {
+			node = buxn_chess_alloc(
+				ctx->chess->ctx,
+				sizeof(buxn_chess_value_node_t),
+				_Alignof(buxn_chess_value_node_t)
+			);
+		}
+
+		node->next = ctx->values;
+		ctx->values = node;
+		buxn_chess_value_t* whole_value = &node->value;
 		*whole_value = top;
 
 		buxn_chess_value_t lo = {
@@ -1784,7 +1803,6 @@ buxn_chess_copy_stack(buxn_chess_stack_t* dst, const buxn_chess_stack_t* src) {
 
 static void
 buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
-
 	buxn_chess_exec_ctx_t ctx = {
 		.chess = chess,
 		.entry = entry,
@@ -1824,7 +1842,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 	while (!ctx.terminated) {
 		if (ctx.pc < 256) {
 			buxn_chess_report_exec_error(&ctx, "Execution will reach zero page");
-			return;
+			break;
 		}
 
 		uint16_t pc = ctx.pc++;
@@ -1839,7 +1857,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		);
 		if (current_sym == NULL || current_sym->type != BUXN_ASM_SYM_OPCODE) {
 			buxn_chess_report_exec_error(&ctx, "Execution will reach non opcode");
-			return;
+			break;
 		}
 		ctx.current_sym = current_sym;
 
@@ -1889,6 +1907,14 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 			.message = extra_msg.chars,
 		});
 		buxn_chess_end_mem_region(chess->ctx, region);
+	}
+
+	// Recycle value nodes
+	while (ctx.values != NULL) {
+		buxn_chess_value_node_t* node = ctx.values;
+		ctx.values = node->next;
+		node->next = chess->value_pool;
+		chess->value_pool = node;
 	}
 }
 
@@ -2048,7 +2074,9 @@ buxn_chess_parse_signature(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			// a signature
 			if (chess->current_signature == NULL) {
 				chess->current_signature = buxn_chess_alloc(
-					chess->ctx, sizeof(buxn_chess_signature_t), _Alignof(buxn_chess_signature_t)
+					chess->ctx,
+					sizeof(buxn_chess_signature_t),
+					_Alignof(buxn_chess_signature_t)
 				);
 			}
 			memset(chess->current_signature, 0, sizeof(*chess->current_signature));
