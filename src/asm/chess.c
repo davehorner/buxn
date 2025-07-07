@@ -697,6 +697,13 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 		) {
 			result.semantics |= BUXN_CHESS_SEM_FORKED;
 		}
+		if (
+			(hi.semantics & BUXN_CHESS_SEM_ADDRESS)
+			&&
+			(lo.semantics & BUXN_CHESS_SEM_ADDRESS)
+		) {
+			result.semantics |= BUXN_CHESS_SEM_ADDRESS;
+		}
 
 		return result;
 	}
@@ -778,7 +785,6 @@ buxn_chess_check_stack(
 	buxn_chess_stack_t* stack,
 	const buxn_chess_sig_stack_t* signature
 ) {
-	void* region = buxn_chess_begin_mem_region(ctx->chess->ctx);
 	uint8_t sig_size = 0;
 	for (uint8_t i = 0; i < signature->len; ++i) {
 		sig_size += buxn_chess_value_size(signature->content[i]);
@@ -885,8 +891,6 @@ buxn_chess_check_stack(
 			}
 		}
 	}
-
-	buxn_chess_end_mem_region(ctx->chess->ctx, region);
 }
 
 static void
@@ -909,12 +913,13 @@ buxn_chess_check_return(buxn_chess_exec_ctx_t* ctx) {
 
 static buxn_chess_entry_t*
 buxn_chess_fork(buxn_chess_exec_ctx_t* ctx) {
-	BUXN_CHESS_DEBUG(
-		"Forked %.*s at %s",
-		(int)ctx->entry->info->value.name.len, ctx->entry->info->value.name.chars,
-		buxn_chess_format_address(ctx->chess, ctx->pc)
-	);
 	buxn_chess_entry_t* new_entry = buxn_chess_alloc_entry(ctx->chess);
+	BUXN_CHESS_DEBUG(
+		"Forked %.*s at %s (%p)",
+		(int)ctx->entry->info->value.name.len, ctx->entry->info->value.name.chars,
+		buxn_chess_format_address(ctx->chess, ctx->pc),
+		(void*)new_entry
+	);
 	*new_entry = *ctx->entry;
 	new_entry->address = ctx->pc;
 	new_entry->next = ctx->chess->verification_list;
@@ -1075,9 +1080,33 @@ buxn_chess_LTH(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_boolean_op(ctx, buxn_chess_bool_lth);
 }
 
-static const buxn_chess_addr_info_t*
+static void
+buxn_chess_abs_jmp(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
+	if (
+		(addr.semantics & BUXN_CHESS_SEM_ADDRESS)
+		&&
+		(addr.semantics & BUXN_CHESS_SEM_RETURN)
+	) {
+		if (ctx->entry->info->value.signature->type == BUXN_CHESS_VECTOR) {
+			buxn_chess_report_exec_error(ctx, "Vector routine makes a normal return");
+		}
+		buxn_chess_check_return(ctx);
+		buxn_chess_terminate(ctx);
+		BUXN_CHESS_DEBUG("Terminated by jumping to return address");
+	} else if (addr.semantics & BUXN_CHESS_SEM_CONST) {
+		ctx->pc = addr.value;
+	} else {
+		buxn_chess_report_exec_error(
+			ctx,
+			"Jumping to an unknown address: " BUXN_CHESS_VALUE_FMT,
+			BUXN_CHESS_VALUE_FMT_ARGS(addr)
+		);
+	}
+}
+
+static void
 buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
-	if (ctx->terminated) { return NULL; }
+	if (ctx->terminated) { return; }
 
 	uint16_t from_pc = ctx->pc;
 	if ((addr.semantics & BUXN_CHESS_SEM_SIZE_MASK) == BUXN_CHESS_SEM_SIZE_BYTE) {
@@ -1085,30 +1114,17 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 		if (addr.semantics & BUXN_CHESS_SEM_CONST) {
 			ctx->pc = (uint16_t)((int32_t)ctx->pc + (int32_t)(int8_t)addr.value);
 		} else {
-			buxn_chess_report_exec_error(ctx, "Jumping to unknown address");
-			return NULL;
+			buxn_chess_report_exec_error(
+				ctx,
+				"Jumping to an unknown address: " BUXN_CHESS_VALUE_FMT,
+				BUXN_CHESS_VALUE_FMT_ARGS(addr)
+			);
 		}
 	} else {
 		// Absolute jump
-		if (
-			(addr.semantics & BUXN_CHESS_SEM_ADDRESS)
-			&&
-			(addr.semantics & BUXN_CHESS_SEM_RETURN)
-		) {
-			if (ctx->entry->info->value.signature->type == BUXN_CHESS_VECTOR) {
-				buxn_chess_report_exec_error(ctx, "Vector routine makes a normal return");
-			}
-			buxn_chess_check_return(ctx);
-			buxn_chess_terminate(ctx);
-			BUXN_CHESS_DEBUG("Terminated by jumping to return address");
-			return NULL;
-		} else if (addr.semantics & BUXN_CHESS_SEM_CONST) {
-			ctx->pc = addr.value;
-		} else {
-			buxn_chess_report_exec_error(ctx, "Jumping to unknown address");
-			return NULL;
-		}
+		buxn_chess_abs_jmp(ctx, addr);
 	}
+	if (ctx->terminated) { return; }
 
 	buxn_chess_addr_info_t* addr_info = buxn_chess_addr_info(ctx->chess, ctx->pc);
 	if (addr_info != NULL && (addr_info->value.semantics & BUXN_CHESS_SEM_ROUTINE)) {
@@ -1120,8 +1136,8 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 			ctx->entry->info->value.signature->type == BUXN_CHESS_SUBROUTINE
 			&& sig->type == BUXN_CHESS_VECTOR
 		) {
-			buxn_chess_report_exec_error(ctx, "Subroutine calls into a vector");
-			return NULL;
+			buxn_chess_report_exec_error(ctx, "Subroutine jumps into a vector");
+			return;
 		}
 
 		// Gather inputs directly from the real stack
@@ -1151,9 +1167,33 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 			buxn_chess_push_ex(ctx, true, output);
 		}
 
+		if (sig->type == BUXN_CHESS_SUBROUTINE) {
+			if (ctx->entry->state.rst.size >= 2) {
+				// Simulate a JMP2r
+				buxn_chess_value_t return_addr = buxn_chess_pop_from(
+					ctx,
+					&ctx->entry->state.rst,
+					2
+				);
+				// TODO: In theory, we could continue to short-circuit
+				// This would require a trampoline (while loop) outside of this
+				// function
+				// The trace printing would be a bit more involved
+				buxn_chess_abs_jmp(ctx, return_addr);
+			} else {
+				buxn_chess_report_exec_error(
+					ctx,
+					"RST is too small to contain a return address"
+				);
+			}
+		} else {
+			BUXN_CHESS_DEBUG("Terminated by jumping into a vector");
+			buxn_chess_check_return(ctx);
+			buxn_chess_terminate(ctx);
+		}
+
 		// Check the subroutine
 		buxn_chess_queue_routine(ctx->chess, addr_info);
-		return addr_info;
 	} else {
 		// Only make the jump if it was not made before
 		// The first time a backward jump is applied, the effect of the loop
@@ -1185,43 +1225,6 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 			);
 			buxn_chess_terminate(ctx);
 		}
-		return NULL;
-	}
-}
-
-static void
-buxn_chess_jump_no_return(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
-	const buxn_chess_addr_info_t* subroutine = buxn_chess_jump(ctx, addr);
-	if (subroutine != NULL) {
-		// This jump was short-circuited
-		// Check return type and terminate
-		if (
-			ctx->entry->info->value.signature->type != subroutine->value.signature->type
-		) {
-			buxn_chess_report_exec_error(ctx, "Tail call into a routine of a different type");
-			return;
-		}
-
-		if (ctx->entry->info->value.signature->type == BUXN_CHESS_SUBROUTINE) {
-			if (ctx->entry->state.rst.len != 1)  {
-				buxn_chess_report_exec_error(ctx, "Invalid return stack, expecting only return address");
-				return;
-			}
-
-			buxn_chess_value_t return_addr = buxn_chess_pop_ex(ctx, true, true);
-			if (!(
-				(return_addr.semantics & BUXN_CHESS_SEM_ADDRESS)
-				&&
-				(return_addr.semantics & BUXN_CHESS_SEM_RETURN)
-			)) {
-				buxn_chess_report_exec_error(ctx, "Invalid return stack, expecting only return address");
-				return;
-			}
-		}
-
-		buxn_chess_check_return(ctx);
-		buxn_chess_terminate(ctx);
-		BUXN_CHESS_DEBUG("Terminated by subroutine tail call");
 	}
 }
 
@@ -1240,18 +1243,7 @@ buxn_chess_jump_stash(
 		.value = ctx->pc,
 	};
 	buxn_chess_push_ex(ctx, !flag_r, pc);
-	const buxn_chess_addr_info_t* subroutine = buxn_chess_jump(ctx, addr);
-	if (subroutine != NULL) {
-		// This jump was short-circuited
-		// Continue from the saved pc
-		buxn_chess_pop_from(  // The short-circuit code does not pop
-			ctx,
-			// The stacks are reversed
-			flag_r ? &ctx->entry->state.wst : &ctx->entry->state.rst,
-			2
-		);
-		ctx->pc = pc.value;
-	}
+	buxn_chess_jump(ctx, addr);
 }
 
 static void
@@ -1267,19 +1259,19 @@ buxn_chess_jump_conditional(
 	) {
 		// If this is a forked boolean value, directly follow
 		if (cond.value != 0) {
-			buxn_chess_jump_no_return(ctx, addr);
+			buxn_chess_jump(ctx, addr);
 		}
 	} else {
 		// Otherwise, fork
 		buxn_chess_fork(ctx);  // False branch
-		buxn_chess_jump_no_return(ctx, addr);  // True branch
+		buxn_chess_jump(ctx, addr);  // True branch
 	}
 }
 
 static void
 buxn_chess_JMP(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t addr = buxn_chess_pop(ctx);
-	buxn_chess_jump_no_return(ctx, addr);
+	buxn_chess_jump(ctx, addr);
 }
 
 static void
@@ -1660,7 +1652,7 @@ buxn_chess_JCI(buxn_chess_exec_ctx_t* ctx) {
 static void
 buxn_chess_JMI(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t addr = buxn_chess_immediate_jump_target(ctx);
-	buxn_chess_jump_no_return(ctx, addr);
+	buxn_chess_jump(ctx, addr);
 }
 
 static void
@@ -1809,12 +1801,14 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		.pc = entry->address,
 		.start_sym = chess->symbols[entry->address],
 	};
+	// TODO: Report error
 	if (ctx.start_sym == NULL) { return; }
 
 	BUXN_CHESS_DEBUG(
-		"Analyzing %.*s from %s",
+		"Analyzing %.*s from %s (%p)",
 		(int)entry->info->value.name.len, entry->info->value.name.chars,
-		buxn_chess_format_address(chess, entry->address)
+		buxn_chess_format_address(chess, entry->address),
+		(void*)entry
 	);
 
 	void* region = buxn_chess_begin_mem_region(chess->ctx);
