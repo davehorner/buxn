@@ -34,6 +34,7 @@
 #define BUXN_CHESS_SEM_RETURN     (1 << 3)
 #define BUXN_CHESS_SEM_ROUTINE    (1 << 4)
 #define BUXN_CHESS_SEM_NOMINAL    (1 << 5)
+#define BUXN_CHESS_SEM_FORKED     (1 << 6)
 
 #define BUXN_CHESS_OP_K 0x80
 #define BUXN_CHESS_OP_R 0x40
@@ -600,6 +601,10 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 			hi.semantics |= BUXN_CHESS_SEM_CONST;
 			hi.value = top.value >> 8;
 		}
+		if (top.semantics & BUXN_CHESS_SEM_FORKED) {
+			lo.semantics |= BUXN_CHESS_SEM_FORKED;
+			hi.semantics |= BUXN_CHESS_SEM_FORKED;
+		}
 
 		stack->content[stack->len - 1] = hi;
 		stack->size -= 1;
@@ -616,10 +621,18 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 		};
 		if (
 			(hi.semantics & BUXN_CHESS_SEM_CONST)
-			&& (lo.semantics & BUXN_CHESS_SEM_CONST)
+			&&
+			(lo.semantics & BUXN_CHESS_SEM_CONST)
 		) {
 			result.semantics |= BUXN_CHESS_SEM_CONST;
 			result.value = (hi.value << 8) | lo.value;
+		}
+		if (
+			(hi.semantics & BUXN_CHESS_SEM_FORKED)
+			&&
+			(lo.semantics & BUXN_CHESS_SEM_FORKED)
+		) {
+			result.semantics |= BUXN_CHESS_SEM_FORKED;
 		}
 
 		return result;
@@ -901,12 +914,18 @@ buxn_chess_boolean_op(
 	buxn_chess_value_t a = buxn_chess_pop(ctx);
 	buxn_chess_value_t result = {
 		.name = buxn_chess_name_binary(ctx->chess, a.name, b.name),
-		.semantics = BUXN_CHESS_SEM_SIZE_BYTE | BUXN_CHESS_SEM_CONST,
+		.semantics = BUXN_CHESS_SEM_SIZE_BYTE | BUXN_CHESS_SEM_CONST | BUXN_CHESS_SEM_FORKED,
 	};
 	if (
 		(a.semantics & BUXN_CHESS_SEM_CONST)
-		&& (b.semantics & BUXN_CHESS_SEM_CONST)
+		&&
+		(b.semantics & BUXN_CHESS_SEM_CONST)
+		&&
+		(a.semantics & BUXN_CHESS_SEM_FORKED)
+		&&
+		(b.semantics & BUXN_CHESS_SEM_FORKED)
 	) {
+		// If both LHS and RHS are forked, create a single output value
 		result.value = op(a.value, b.value);
 		buxn_chess_push(ctx, result);
 	} else {
@@ -914,9 +933,7 @@ buxn_chess_boolean_op(
 		// To support that, we'd have to fork in a boolean op
 		buxn_chess_entry_t* entry = buxn_chess_fork(ctx);
 		buxn_chess_raw_push(
-			buxn_chess_op_flag_r(ctx)
-				? &entry->state.rst
-				: &entry->state.wst,
+			buxn_chess_op_flag_r(ctx) ? &entry->state.rst : &entry->state.wst,
 			result
 		);
 
@@ -1041,7 +1058,7 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 		buxn_chess_queue_routine(ctx->chess, addr_info);
 		return addr_info;
 	} else {
-		// Make the jump if it was not made before
+		// Only make the jump if it was not made before
 		// The first time a backward jump is applied, the effect of the loop
 		// body is already applied once
 		// Applying it just one more time is enough to confirm that it is
@@ -1056,6 +1073,7 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 			jump_hash, jump_key,
 			BUXN_CHESS_ADDR_EQ
 		);
+
 		if (jump_node == NULL) {
 			*itr = jump_node = buxn_chess_alloc(
 				ctx->chess->ctx,
@@ -1063,15 +1081,14 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 				_Alignof(buxn_chess_jump_arc_t)
 			);
 			*jump_node = (buxn_chess_jump_arc_t){ .key = jump_key };
-			return NULL;
 		} else {
 			BUXN_CHESS_DEBUG(
 				"Terminated by repeated jump to %s",
 				buxn_chess_format_address(ctx->chess, ctx->pc)
 			);
 			buxn_chess_terminate(ctx);
-			return NULL;
 		}
+		return NULL;
 	}
 }
 
@@ -1141,6 +1158,28 @@ buxn_chess_jump_stash(
 }
 
 static void
+buxn_chess_jump_conditional(
+	buxn_chess_exec_ctx_t* ctx,
+	buxn_chess_value_t cond,
+	buxn_chess_value_t addr
+) {
+	if (
+		(cond.semantics & BUXN_CHESS_SEM_CONST)
+		&&
+		(cond.semantics & BUXN_CHESS_SEM_FORKED)
+	) {
+		// If this is a forked boolean value, directly follow
+		if (cond.value != 0) {
+			buxn_chess_jump_no_return(ctx, addr);
+		}
+	} else {
+		// Otherwise, fork
+		buxn_chess_fork(ctx);  // False branch
+		buxn_chess_jump_no_return(ctx, addr);  // True branch
+	}
+}
+
+static void
 buxn_chess_JMP(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t addr = buxn_chess_pop(ctx);
 	buxn_chess_jump_no_return(ctx, addr);
@@ -1150,13 +1189,7 @@ static void
 buxn_chess_JCN(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t addr = buxn_chess_pop(ctx);
 	buxn_chess_value_t cond = buxn_chess_pop_ex(ctx, false, buxn_chess_op_flag_r(ctx));
-	(void)cond;
-
-	// We should not check cond for const-ness
-	// Since we only run two iterations of a numeric loop, if the inputs are
-	// constant, we will never fork a branch that exits the loop
-	buxn_chess_fork(ctx);  // False branch
-	buxn_chess_jump_no_return(ctx, addr);  // True branch
+	buxn_chess_jump_conditional(ctx, cond, addr);
 }
 
 static void
@@ -1360,7 +1393,8 @@ buxn_chess_bin_op(
 	};
 	if (
 		(a.semantics & BUXN_CHESS_SEM_CONST)
-		&& (b.semantics & BUXN_CHESS_SEM_CONST)
+		&&
+		(b.semantics & BUXN_CHESS_SEM_CONST)
 	) {
 		result.semantics |= BUXN_CHESS_SEM_CONST;
 		result.value = op(a.value, b.value);
@@ -1383,7 +1417,8 @@ buxn_chess_bin_pointer_arith(
 	};
 	if (
 		(a.semantics & BUXN_CHESS_SEM_CONST)
-		&& (b.semantics & BUXN_CHESS_SEM_CONST)
+		&&
+		(b.semantics & BUXN_CHESS_SEM_CONST)
 	) {
 		result.semantics |= BUXN_CHESS_SEM_CONST;
 		result.value = op(a.value, b.value);
@@ -1482,7 +1517,8 @@ buxn_chess_SFT(buxn_chess_exec_ctx_t* ctx) {
 	};
 	if (
 		(value.semantics & BUXN_CHESS_SEM_CONST)
-		&& (shift.semantics & BUXN_CHESS_SEM_CONST)
+		&&
+		(shift.semantics & BUXN_CHESS_SEM_CONST)
 	) {
 		result.semantics |= BUXN_CHESS_SEM_CONST;
 		result.value = (value.value >> (shift.value & 0x0f)) << ((shift.value & 0xf0) >> 4);
@@ -1520,13 +1556,7 @@ static void
 buxn_chess_JCI(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t addr = buxn_chess_immediate_jump_target(ctx);
 	buxn_chess_value_t cond = buxn_chess_pop_ex(ctx, false, false);
-	(void)cond;
-
-	// We should not check cond for const-ness
-	// Since we only run two iterations of a numeric loop, if the inputs are
-	// constant, we will never fork a branch that exits the loop
-	buxn_chess_fork(ctx);  // False branch
-	buxn_chess_jump_no_return(ctx, addr);  // True branch
+	buxn_chess_jump_conditional(ctx, cond, addr);
 }
 
 static void
