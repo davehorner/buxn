@@ -1981,10 +1981,7 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			addr_info->value.signature = chess->current_signature;
 			chess->current_signature = NULL;
 
-			// Queue the vector for verification
-			if (addr_info->value.signature->type == BUXN_CHESS_VECTOR) {
-				buxn_chess_queue_routine(chess, addr_info);
-			}
+			buxn_chess_queue_routine(chess, addr_info);
 		} else {
 			buxn_chess_report(
 				chess->ctx,

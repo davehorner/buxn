@@ -81,3 +81,74 @@ BTEST(chess, lit) {
 	BTEST_EXPECT(buxn_asm_str(basm, "LIT2 \"ab POP2 BRK"));
 	BTEST_EXPECT(basm->num_warnings == 0);
 }
+
+BTEST(chess, jump) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+
+	// Constant jump
+	BTEST_EXPECT(buxn_asm_str(basm, "#01 #02 GTHk JMP SWP POP POP BRK"));
+	BTEST_EXPECT(basm->num_warnings == 0);
+
+	// Do not get stuck in loop
+	BTEST_EXPECT(buxn_asm_str(basm, "&>l !/>l"));
+	BTEST_EXPECT(basm->num_warnings == 0);
+
+	// Recursion
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"BRK\n" // End reset
+			"@print-string ( [str]* -- )\n"
+			" LDAk DUP ?{ POP POP2 JMP2r }\n"
+			" POP\n"
+			" INC2 !print-string"
+		)
+	);
+	BTEST_EXPECT(basm->num_warnings == 0);
+
+	// Unknown jump
+	basm->suppress_report = true;
+	BTEST_EXPECT(
+		!buxn_asm_str(
+			basm,
+			"BRK\n" // End reset
+			"@Unknown ( [str]* -- )\n"
+			" JMP2\n"
+		)
+	);
+	BTEST_EXPECT(basm->num_errors == 1);
+	basm->suppress_report = false;
+
+	// Branch fail
+	basm->suppress_report = true;
+
+	BTEST_EXPECT(
+		!buxn_asm_str(
+			basm,
+			"BRK\n" // End reset
+			"@branching ( [a]* -- c )\n"
+			"LDAk #01 EQU ?&one\n"
+			"LDAk #02 EQU ?&two\n"
+			"POP2 #ff JMP2r\n"
+			"&one POP2 JMP2r\n" // Fail here
+			"&two ADD JMP2r\n"
+		)
+	);
+	BTEST_EXPECT(basm->num_errors == 1);
+
+	BTEST_EXPECT(
+		!buxn_asm_str(
+			basm,
+			"BRK\n" // End reset
+			"@branching ( [a]* -- c )\n"
+			"LDAk #01 EQU ?&one\n"
+			"LDAk #02 EQU ?&two\n"
+			"POP2 JMP2r\n" // Fail here
+			"&one POP2 #ff JMP2r\n"
+			"&two ADD JMP2r\n"
+		)
+	);
+	BTEST_EXPECT(basm->num_errors == 1);
+
+	basm->suppress_report = false;
+}
