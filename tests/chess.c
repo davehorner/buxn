@@ -152,3 +152,40 @@ BTEST(chess, jump) {
 
 	basm->suppress_report = false;
 }
+
+BTEST(chess, merge_value) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+
+	// Merge a broken short back and automatically restore type info
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"BRK\n" // End reset
+			"@Store ( [addr]* value -- )\n"
+			"ROT ROT STA JMP2r\n"
+		)
+	);
+	BTEST_EXPECT(basm->num_warnings == 0);
+
+	// DUP should no longer break type info
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"BRK\n" // End reset
+			"@Store ( value [addr]* -- )\n"
+			"DUP POP STA JMP2r\n"
+		)
+	);
+	BTEST_EXPECT(basm->num_warnings == 0);
+
+	// Halves join back
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"BRK\n" // End reset
+			"@Store ( [addr]* -- )\n"
+			"SWP OVR STA JMP2r\n"
+		)
+	);
+	BTEST_EXPECT(basm->num_warnings == 0);
+}

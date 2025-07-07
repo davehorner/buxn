@@ -35,6 +35,8 @@
 #define BUXN_CHESS_SEM_ROUTINE    (1 << 4)
 #define BUXN_CHESS_SEM_NOMINAL    (1 << 5)
 #define BUXN_CHESS_SEM_FORKED     (1 << 6)
+#define BUXN_CHESS_SEM_HALF_HI    (1 << 7)
+#define BUXN_CHESS_SEM_HALF_LO    (1 << 8)
 
 #define BUXN_CHESS_OP_K 0x80
 #define BUXN_CHESS_OP_R 0x40
@@ -76,14 +78,17 @@ typedef struct {
 
 typedef struct buxn_chess_signature_s buxn_chess_signature_t;
 
-typedef struct {
+typedef struct buxn_chess_value_s buxn_chess_value_t;
+
+struct buxn_chess_value_s {
 	buxn_chess_str_t name;
 	buxn_chess_str_t type;
 	buxn_chess_signature_t* signature;
+	buxn_chess_value_t* whole_value;
 	buxn_asm_source_region_t region;
 	uint16_t value;
-	uint8_t semantics;
-} buxn_chess_value_t;
+	uint16_t semantics;
+};
 
 typedef enum {
 	BUXN_CHESS_VECTOR,
@@ -364,11 +369,6 @@ buxn_chess_format_stack(
 }
 
 static buxn_chess_str_t
-buxn_chess_name_prime(buxn_chess_t* chess, buxn_chess_str_t name) {
-	return buxn_chess_printf(chess, "%.*s′", (int)name.len, name.chars);
-}
-
-static buxn_chess_str_t
 buxn_chess_name_binary(buxn_chess_t* chess, buxn_chess_str_t lhs, buxn_chess_str_t rhs) {
 	return buxn_chess_printf(
 		chess,
@@ -608,7 +608,16 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 		stack->size -= top_size;
 		return top;
 	} else if (top_size > size) {  // Break the top value into hi and lo
-		// TODO: handle breaking label address
+		// TODO: This value should be recycled
+		// The arena would take care of it anyway but peak memory usage
+		// might be a bit higher
+		buxn_chess_value_t* whole_value = buxn_chess_alloc(
+			ctx->chess->ctx,
+			sizeof(buxn_chess_value_t),
+			_Alignof(buxn_chess_value_t)
+		);
+		*whole_value = top;
+
 		buxn_chess_value_t lo = {
 			.name = buxn_chess_printf(
 				ctx->chess,
@@ -616,6 +625,8 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 				(int)top.name.len, top.name.chars
 			),
 			.region = buxn_chess_pc_region(ctx),
+			.semantics = BUXN_CHESS_SEM_HALF_LO,
+			.whole_value = whole_value,
 		};
 		buxn_chess_value_t hi = {
 			.name = buxn_chess_printf(
@@ -624,6 +635,8 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 				(int)top.name.len, top.name.chars
 			),
 			.region = buxn_chess_pc_region(ctx),
+			.semantics = BUXN_CHESS_SEM_HALF_HI,
+			.whole_value = whole_value,
 		};
 		if (top.semantics & BUXN_CHESS_SEM_CONST) {
 			lo.semantics |= BUXN_CHESS_SEM_CONST;
@@ -705,8 +718,26 @@ buxn_chess_push_ex(buxn_chess_exec_ctx_t* ctx, bool flag_r, buxn_chess_value_t v
 	if ((int)stack->size + (int)value_size > 256) {
 		buxn_chess_report_exec_error(ctx, "Stack overflow");
 	} else {
-		stack->size += value_size;
-		stack->content[stack->len++] = value;
+		// Try to merge split value
+		buxn_chess_value_t top = { 0 };
+		if (stack->len > 0) {
+			top = stack->content[stack->len - 1];
+		}
+
+		if (
+			(value.semantics & BUXN_CHESS_SEM_HALF_LO)
+			&&
+			(top.semantics & BUXN_CHESS_SEM_HALF_HI)
+			&&
+			(top.whole_value == value.whole_value)
+		) {
+			buxn_chess_value_t whole_value = *top.whole_value;
+			stack->content[stack->len - 1] = whole_value;
+			stack->size += 1;  // byte to short
+		} else {
+			stack->size += value_size;
+			stack->content[stack->len++] = value;
+		}
 	}
 }
 
@@ -890,7 +921,14 @@ buxn_chess_INC(buxn_chess_exec_ctx_t* ctx) {
 		value.value += 1;
 	}
 	value.semantics &= ~(BUXN_CHESS_SEM_NOMINAL);
-	value.name = buxn_chess_name_prime(ctx->chess, value.name);
+	value.semantics &= ~(BUXN_CHESS_SEM_HALF_HI);
+	value.semantics &= ~(BUXN_CHESS_SEM_HALF_LO);
+	value.whole_value = NULL;
+	value.name = buxn_chess_printf(
+		ctx->chess,
+		"%.*s′",
+		(int)value.name.len, value.name.chars
+	);
 	buxn_chess_push(ctx, value);
 }
 
