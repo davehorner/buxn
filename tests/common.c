@@ -94,7 +94,11 @@ buxn_asm_fgetc(buxn_asm_ctx_t* ctx, buxn_asm_file_t* file) {
 }
 
 void
-buxn_asm_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
+buxn_asm_report(
+	buxn_asm_ctx_t* ctx,
+	buxn_asm_report_type_t type,
+	const buxn_asm_report_t* report
+) {
 	switch (type) {
 		case BUXN_ASM_REPORT_ERROR: ++ctx->num_errors; break;
 		case BUXN_ASM_REPORT_WARNING: ++ctx->num_warnings; break;
@@ -143,18 +147,59 @@ buxn_chess_end_mem_region(buxn_asm_ctx_t* ctx, void* region) {
 }
 
 void
-buxn_chess_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
+buxn_chess_report(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	buxn_asm_report_type_t type,
+	const buxn_asm_report_t* report
+) {
+	(void)trace_id;
 	buxn_asm_report(ctx, type, report);
 }
 
 void
-buxn_chess_report_info(buxn_asm_ctx_t* ctx, const buxn_asm_report_t* report) {
+buxn_chess_report_info(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	const buxn_asm_report_t* report
+) {
 	(void)ctx;
+	(void)trace_id;
 	(void)report;
 }
 
 void
-buxn_chess_debug(const char* filename, int line, const char* fmt, ...) {
+buxn_chess_begin_trace(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	buxn_chess_id_t parent_id
+) {
+	(void)ctx;
+	(void)trace_id;
+	(void)parent_id;
+}
+
+extern void
+buxn_chess_end_trace(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	bool success
+) {
+	(void)ctx;
+	(void)trace_id;
+	(void)success;
+}
+
+void
+buxn_chess_trace(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	const char* filename,
+	int line,
+	const char* fmt, ...
+) {
+	(void)ctx;
+	(void)trace_id;
 	(void)filename;
 	(void)line;
 	(void)fmt;

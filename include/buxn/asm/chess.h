@@ -6,6 +6,9 @@
 #include "asm.h"
 
 typedef struct buxn_chess_s buxn_chess_t;
+typedef int buxn_chess_id_t;
+
+#define BUXN_CHESS_NO_TRACE ((buxn_chess_id_t)0)
 
 buxn_chess_t*
 buxn_chess_begin(buxn_asm_ctx_t* ctx);
@@ -35,8 +38,23 @@ extern void*
 buxn_chess_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment);
 
 extern void
+buxn_chess_begin_trace(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	buxn_chess_id_t parent_id
+);
+
+extern void
+buxn_chess_end_trace(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	bool success
+);
+
+extern void
 buxn_chess_report(
 	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
 	buxn_asm_report_type_t type,
 	const buxn_asm_report_t* report
 );
@@ -44,10 +62,18 @@ buxn_chess_report(
 extern void
 buxn_chess_report_info(
 	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
 	const buxn_asm_report_t* report
 );
 
 extern void
-buxn_chess_debug(const char* filename, int line, const char* fmt, ...);
+buxn_chess_trace(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	const char* filename,
+	int line,
+	const char* fmt,
+	...
+);
 
 #endif

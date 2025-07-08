@@ -39,6 +39,7 @@ struct buxn_asm_ctx_s {
 	barray(utf8proc_uint8_t) line_buf;
 
 	buxn_chess_t* chess;
+	int trace_id;
 };
 
 static void
@@ -252,12 +253,19 @@ print_file_region(buxn_asm_ctx_t* ctx, const buxn_asm_source_region_t* region) {
 	fprintf(stderr, "\n");
 }
 
-static void
-buxn_asm_log(
+void
+buxn_asm_report(
 	buxn_asm_ctx_t* ctx,
-	blog_level_t level,
+	buxn_asm_report_type_t type,
 	const buxn_asm_report_t* report
 ) {
+	(void)ctx;
+	blog_level_t level = BLOG_LEVEL_INFO;
+	switch (type) {
+		case BUXN_ASM_REPORT_ERROR: level = BLOG_LEVEL_ERROR; break;
+		case BUXN_ASM_REPORT_WARNING: level = BLOG_LEVEL_WARN; break;
+	}
+
 	if (report->token == NULL) {
 		blog_write(
 			level,
@@ -286,21 +294,6 @@ buxn_asm_log(
 	}
 }
 
-void
-buxn_asm_report(
-	buxn_asm_ctx_t* ctx,
-	buxn_asm_report_type_t type,
-	const buxn_asm_report_t* report
-) {
-	(void)ctx;
-	blog_level_t level = BLOG_LEVEL_INFO;
-	switch (type) {
-		case BUXN_ASM_REPORT_ERROR: level = BLOG_LEVEL_ERROR; break;
-		case BUXN_ASM_REPORT_WARNING: level = BLOG_LEVEL_WARN; break;
-	}
-	buxn_asm_log(ctx, level, report);
-}
-
 void*
 buxn_chess_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment) {
 	return buxn_asm_alloc(ctx, size, alignment);
@@ -321,21 +314,128 @@ buxn_chess_get_rom(buxn_asm_ctx_t* ctx, uint16_t address) {
 	return ctx->rom[address - 256];
 }
 
-void
-buxn_chess_report(buxn_asm_ctx_t* ctx, buxn_asm_report_type_t type, const buxn_asm_report_t* report) {
-	buxn_asm_report(ctx, type, report);
+static void
+buxn_chess_log(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	blog_level_t level,
+	const buxn_asm_report_t* report
+) {
+	if (trace_id != BUXN_CHESS_NO_TRACE) {
+		blog_write(
+			level,
+			report->region->filename, report->region->range.start.line,
+			"[%d] %s", trace_id, report->message
+		);
+	} else {
+		blog_write(
+			level,
+			report->region->filename, report->region->range.start.line,
+			"%s", report->message
+		);
+	}
+
+	if (report->region->range.start.line != 0 && level != BLOG_LEVEL_INFO) {
+		print_file_region(ctx, report->region);
+	}
+
+	if (report->related_message != NULL) {
+		blog_write(
+			BLOG_LEVEL_INFO,
+			report->related_region->filename, report->related_region->range.start.line,
+			"%s:", report->related_message
+		);
+		print_file_region(ctx, report->related_region);
+	}
 }
 
 void
-buxn_chess_report_info(buxn_asm_ctx_t* ctx, const buxn_asm_report_t* report) {
-	buxn_asm_log(ctx, BLOG_LEVEL_INFO, report);
+buxn_chess_report(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	buxn_asm_report_type_t type,
+	const buxn_asm_report_t* report
+) {
+	(void)ctx;
+	blog_level_t level = BLOG_LEVEL_INFO;
+	switch (type) {
+		case BUXN_ASM_REPORT_ERROR: level = BLOG_LEVEL_ERROR; break;
+		case BUXN_ASM_REPORT_WARNING: level = BLOG_LEVEL_WARN; break;
+	}
+
+	buxn_chess_log(ctx, trace_id, level, report);
 }
 
 void
-buxn_chess_debug(const char* filename, int line, const char* fmt, ...) {
+buxn_chess_report_info(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	const buxn_asm_report_t* report
+) {
+	buxn_chess_log(ctx, trace_id, BLOG_LEVEL_INFO, report);
+}
+
+void
+buxn_chess_begin_trace(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	buxn_chess_id_t parent_id
+) {
+	// TODO: This should include info about entrypoint
+	if (parent_id == BUXN_CHESS_NO_TRACE) {
+		buxn_chess_trace(
+			ctx,
+			trace_id,
+			__FILE__, __LINE__,
+			"[%d] Trace begin", trace_id
+		);
+	} else {
+		buxn_chess_trace(
+			ctx,
+			trace_id,
+			__FILE__, __LINE__,
+			"[%d] Trace begin (parent: %d)", trace_id, parent_id
+		);
+	}
+}
+
+extern void
+buxn_chess_end_trace(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	bool success
+) {
+	(void)success;
+	buxn_chess_trace(
+		ctx,
+		trace_id,
+		__FILE__, __LINE__,
+		"[%d] Trace end", trace_id
+	);
+}
+
+void
+buxn_chess_trace(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	const char* filename,
+	int line,
+	const char* fmt, ...
+) {
+	blog_level_t level;
+	if (
+		ctx->trace_id != BUXN_CHESS_NO_TRACE
+		&&
+		ctx->trace_id == trace_id
+	) {
+		level = BLOG_LEVEL_INFO;
+	} else {
+		level = BLOG_LEVEL_TRACE;
+	}
+
 	va_list args;
 	va_start(args, fmt);
-	blog_vwrite(BLOG_LEVEL_TRACE, filename, line, fmt, args);
+	blog_vwrite(level, filename, line, fmt, args);
 	va_end(args);
 }
 
@@ -404,6 +504,7 @@ main(int argc, const char* argv[]) {
 
 	bool type_check = false;
 	bool verbose = false;
+	int trace_id = BUXN_CHESS_NO_TRACE;
 	barg_opt_t opts[] = {
 		{
 			.name = "chess",
@@ -412,6 +513,14 @@ main(int argc, const char* argv[]) {
 			.description = "Because chess is better than checker",
 			.boolean = true,
 			.parser = barg_boolean(&type_check),
+		},
+		{
+			.name = "trace",
+			.short_name = 't',
+			.summary =
+				"Trace a specific static analysis path\n"
+				"This has no effect if --chess is not used",
+			.parser = barg_int(&trace_id),
 		},
 		{
 			.name = "verbose",
@@ -475,6 +584,7 @@ main(int argc, const char* argv[]) {
 
 	if (type_check) {
 		ctx.chess = buxn_chess_begin(&ctx);
+		ctx.trace_id = trace_id;
 	}
 	bool success = buxn_asm(&ctx, src_filename);
 	if (ctx.chess != NULL && success) {
