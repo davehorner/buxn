@@ -140,7 +140,6 @@ struct buxn_chess_addr_info_s {
 	buxn_chess_addr_info_t* children[BHAMT_NUM_CHILDREN];
 
 	buxn_chess_value_t value;
-	bool queued;
 };
 
 typedef struct {
@@ -537,8 +536,6 @@ buxn_chess_raw_push(
 
 static void
 buxn_chess_queue_routine(buxn_chess_t* chess, buxn_chess_addr_info_t* routine) {
-	if (routine->queued) { return; }
-
 	buxn_chess_entry_t* entry = buxn_chess_alloc_entry(chess);
 	*entry = (buxn_chess_entry_t){
 		.address = routine->key,
@@ -565,12 +562,6 @@ buxn_chess_queue_routine(buxn_chess_t* chess, buxn_chess_addr_info_t* routine) {
 	}
 
 	buxn_chess_add_entry(&chess->verification_list, entry);
-	BUXN_CHESS_DEBUG(
-		"Queued %.*s at %s",
-		(int)entry->info->value.name.len, entry->info->value.name.chars,
-		buxn_chess_format_address(chess, entry->address)
-	);
-	routine->queued = true;
 }
 
 static inline bool
@@ -1105,6 +1096,68 @@ buxn_chess_abs_jmp(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 }
 
 static void
+buxn_chess_short_circuit(
+	buxn_chess_exec_ctx_t* ctx,
+	const buxn_chess_signature_t* sig
+) {
+	if (
+		ctx->entry->info->value.signature->type == BUXN_CHESS_SUBROUTINE
+		&& sig->type == BUXN_CHESS_VECTOR
+	) {
+		buxn_chess_report_exec_error(ctx, "Subroutine jumps into a vector");
+		return;
+	}
+
+	// Gather inputs directly from the real stack
+	buxn_chess_check_stack(
+		ctx,
+		BUXN_CHESS_CHECK_STACK_AT_LEAST,
+		"Input working",
+		&ctx->entry->state.wst,
+		&sig->wst_in
+	);
+	buxn_chess_check_stack(
+		ctx,
+		BUXN_CHESS_CHECK_STACK_AT_LEAST,
+		"Input return",
+		&ctx->entry->state.rst,
+		&sig->rst_in
+	);
+	// Push outputs with overidden origin region
+	for (uint8_t i = 0; i < sig->wst_out.len; ++i) {
+		buxn_chess_value_t output = sig->wst_out.content[i];
+		output.region = buxn_chess_pc_region(ctx);
+		buxn_chess_push_ex(ctx, false, output);
+	}
+	for (uint8_t i = 0; i < sig->rst_out.len; ++i) {
+		buxn_chess_value_t output = sig->rst_out.content[i];
+		output.region = buxn_chess_pc_region(ctx);
+		buxn_chess_push_ex(ctx, true, output);
+	}
+
+	if (sig->type == BUXN_CHESS_SUBROUTINE) {
+		if (ctx->entry->state.rst.size >= 2) {
+			// Simulate a JMP2r
+			buxn_chess_value_t return_addr = buxn_chess_pop_from(
+				ctx,
+				&ctx->entry->state.rst,
+				2
+			);
+			buxn_chess_abs_jmp(ctx, return_addr);
+		} else {
+			buxn_chess_report_exec_error(
+				ctx,
+				"RST is too small to contain a return address"
+			);
+		}
+	} else {
+		BUXN_CHESS_DEBUG("Terminated by jumping into a vector");
+		buxn_chess_check_return(ctx);
+		buxn_chess_terminate(ctx);
+	}
+}
+
+static void
 buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 	if (ctx->terminated) { return; }
 
@@ -1130,70 +1183,11 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 	if (addr_info != NULL && (addr_info->value.semantics & BUXN_CHESS_SEM_ROUTINE)) {
 		// The target jump can be short-circuited into just applying the signature effect
 		// without jumping
-		const buxn_chess_signature_t* sig = addr_info->value.signature;
-
-		if (
-			ctx->entry->info->value.signature->type == BUXN_CHESS_SUBROUTINE
-			&& sig->type == BUXN_CHESS_VECTOR
-		) {
-			buxn_chess_report_exec_error(ctx, "Subroutine jumps into a vector");
-			return;
-		}
-
-		// Gather inputs directly from the real stack
-		buxn_chess_check_stack(
-			ctx,
-			BUXN_CHESS_CHECK_STACK_AT_LEAST,
-			"Input working",
-			&ctx->entry->state.wst,
-			&sig->wst_in
+		BUXN_CHESS_DEBUG(
+			"Short-circuited jump into %.*s",
+			(int)addr_info->value.name.len, addr_info->value.name.chars
 		);
-		buxn_chess_check_stack(
-			ctx,
-			BUXN_CHESS_CHECK_STACK_AT_LEAST,
-			"Input return",
-			&ctx->entry->state.rst,
-			&sig->rst_in
-		);
-		// Push outputs with overidden origin region
-		for (uint8_t i = 0; i < sig->wst_out.len; ++i) {
-			buxn_chess_value_t output = sig->wst_out.content[i];
-			output.region = buxn_chess_pc_region(ctx);
-			buxn_chess_push_ex(ctx, false, output);
-		}
-		for (uint8_t i = 0; i < sig->rst_out.len; ++i) {
-			buxn_chess_value_t output = sig->rst_out.content[i];
-			output.region = buxn_chess_pc_region(ctx);
-			buxn_chess_push_ex(ctx, true, output);
-		}
-
-		if (sig->type == BUXN_CHESS_SUBROUTINE) {
-			if (ctx->entry->state.rst.size >= 2) {
-				// Simulate a JMP2r
-				buxn_chess_value_t return_addr = buxn_chess_pop_from(
-					ctx,
-					&ctx->entry->state.rst,
-					2
-				);
-				// TODO: In theory, we could continue to short-circuit
-				// This would require a trampoline (while loop) outside of this
-				// function
-				// The trace printing would be a bit more involved
-				buxn_chess_abs_jmp(ctx, return_addr);
-			} else {
-				buxn_chess_report_exec_error(
-					ctx,
-					"RST is too small to contain a return address"
-				);
-			}
-		} else {
-			BUXN_CHESS_DEBUG("Terminated by jumping into a vector");
-			buxn_chess_check_return(ctx);
-			buxn_chess_terminate(ctx);
-		}
-
-		// Check the subroutine
-		buxn_chess_queue_routine(ctx->chess, addr_info);
+		buxn_chess_short_circuit(ctx, addr_info->value.signature);
 	} else {
 		// Only make the jump if it was not made before
 		// The first time a backward jump is applied, the effect of the loop
@@ -1805,7 +1799,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 	if (ctx.start_sym == NULL) { return; }
 
 	BUXN_CHESS_DEBUG(
-		"Analyzing %.*s from %s (%p)",
+		"Analyzing %.*s starting from %s (%p)",
 		(int)entry->info->value.name.len, entry->info->value.name.chars,
 		buxn_chess_format_address(chess, entry->address),
 		(void*)entry
@@ -1838,6 +1832,28 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 			buxn_chess_report_exec_error(&ctx, "Execution will reach zero page");
 			break;
 		}
+
+		// If the code fall-through into a label with signature, short-circuit
+		// it instead of executing
+		// The trace would be analyzed anyway so analyzing it now is redundant
+		buxn_chess_addr_info_t* addr_info = buxn_chess_addr_info(chess, ctx.pc);
+		while (
+			!ctx.terminated
+			&&
+			addr_info != NULL
+			&&
+			addr_info != entry->info
+			&&
+			(addr_info->value.semantics & BUXN_CHESS_SEM_ROUTINE)
+		) {
+			BUXN_CHESS_DEBUG(
+				"Short-circuited fallthrough into %.*s",
+				(int)addr_info->value.name.len, addr_info->value.name.chars
+			);
+			buxn_chess_short_circuit(&ctx, addr_info->value.signature);
+			addr_info = buxn_chess_addr_info(chess, ctx.pc);
+		}
+		if (ctx.terminated) { break; }
 
 		uint16_t pc = ctx.pc++;
 		const buxn_asm_sym_t* current_sym = chess->symbols[pc];
@@ -2122,7 +2138,7 @@ bool
 buxn_chess_end(buxn_chess_t* chess) {
 	// Automatically enqueue 0x0100 as "RESET" if not already enqueued
 	buxn_chess_addr_info_t* reset = buxn_chess_ensure_addr_info(chess, 0x0100);
-	if (!reset->queued) {
+	if (reset->value.signature == NULL) {
 		reset->value.semantics |= BUXN_CHESS_SEM_ROUTINE;
 		reset->value.signature = buxn_chess_alloc(
 			chess->ctx, sizeof(buxn_chess_signature_t), _Alignof(buxn_chess_signature_t)
@@ -2180,7 +2196,7 @@ buxn_chess_handle_symbol(
 				chess->anno_handler = NULL;
 			}
 		}
-	} else if (sym->type == BUXN_ASM_SYM_LABEL) {
+	} else if (sym->type == BUXN_ASM_SYM_LABEL && !sym->name_is_generated) {
 		chess->current_label = *sym;
 		chess->current_label_addr = addr;
 
