@@ -192,3 +192,28 @@ BTEST(chess, merge_value) {
 	);
 	BTEST_EXPECT(basm->num_warnings == 0);
 }
+
+BTEST(chess, termination) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+
+	basm->suppress_report = true;
+	BTEST_EXPECT(
+		!buxn_asm_str(
+			basm,
+			"BRK\n" // End reset
+			"@loop ( cond -- )\n"
+			"!loop JMP2r\n"
+		)
+	);
+	BTEST_EXPECT(basm->num_errors == 1);
+	basm->suppress_report = false;
+
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"BRK\n" // End reset
+			"@loop ( cond -- )\n"
+			"DUP #01 SUB ?loop POP JMP2r\n"
+		)
+	);
+}
