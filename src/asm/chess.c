@@ -815,14 +815,14 @@ buxn_chess_push(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t value) {
 }
 
 typedef enum {
-	BUXN_CHESS_CHECK_STACK_EXACT,
-	BUXN_CHESS_CHECK_STACK_AT_LEAST,
-} buxn_chess_stack_check_type_t;
+	BUXN_CHESS_CHECK_STACK_IN,
+	BUXN_CHESS_CHECK_STACK_OUT,
+} buxn_chess_stack_check_direction_t;
 
 static void
 buxn_chess_check_stack(
 	buxn_chess_exec_ctx_t* ctx,
-	buxn_chess_stack_check_type_t check_type,
+	buxn_chess_stack_check_direction_t direction,
 	const char* stack_name,
 	buxn_chess_stack_t* stack,
 	const buxn_chess_sig_stack_t* signature
@@ -833,14 +833,17 @@ buxn_chess_check_stack(
 	}
 
 	bool match = false;
-	const char* prefix = "";
-	switch (check_type) {
-		case BUXN_CHESS_CHECK_STACK_EXACT:
+	const char* size_prefix = "";
+	const char* name_prefix = "";
+	switch (direction) {
+		case BUXN_CHESS_CHECK_STACK_OUT:
 			match = stack->size == sig_size;
+			name_prefix = "Output";
 			break;
-		case BUXN_CHESS_CHECK_STACK_AT_LEAST:
+		case BUXN_CHESS_CHECK_STACK_IN:
 			match = stack->size >= sig_size;
-			prefix = "at least ";
+			size_prefix = "at least ";
+			name_prefix = "Input";
 			break;
 	}
 
@@ -853,9 +856,9 @@ buxn_chess_check_stack(
 		);
 		buxn_chess_report_exec_error(
 			ctx,
-			"%s stack size mismatch: Expecting %s%d (%.*s ), got %d (%.*s )",
-			stack_name,
-			prefix,
+			"%s %s stack size mismatch: Expecting %s%d (%.*s ), got %d (%.*s )",
+			name_prefix, stack_name,
+			size_prefix,
 			sig_size, (int)sig_str.len, sig_str.chars,
 			stack->size, (int)stack_str.len, stack_str.chars
 		);
@@ -885,10 +888,9 @@ buxn_chess_check_stack(
 		) {
 			buxn_chess_report_exec_warning(
 				ctx,
-				"%s stack #%d: An address value (" BUXN_CHESS_VALUE_FMT ") "
+				"%s %s stack #%d: An address value (" BUXN_CHESS_VALUE_FMT ") "
 				"is constructed from a non-address (" BUXN_CHESS_VALUE_FMT ")",
-				stack_name,
-				value_index,
+				name_prefix, stack_name, value_index,
 				BUXN_CHESS_VALUE_FMT_ARGS(sig_value),
 				BUXN_CHESS_VALUE_FMT_ARGS(actual_value)
 			);
@@ -901,34 +903,41 @@ buxn_chess_check_stack(
 		) {
 			buxn_chess_report_exec_error(
 				ctx,
-				"%s stack #%d: A routine value (%.*s) cannot be constructed from a non-routine value (%.*s)",
-				stack_name,
-				value_index,
+				"%s %s stack #%d: A routine value (%.*s) cannot be constructed from a non-routine value (%.*s)",
+				name_prefix, stack_name, value_index,
 				(int)sig_value.name.len, sig_value.name.chars,
 				(int)actual_value.name.len, actual_value.name.chars
 			);
 		}
 
 		if (sig_value.semantics & BUXN_CHESS_SEM_NOMINAL) {
-			if (!(
-				// Nominally-typed value can be constructed from raw value
-				(actual_value.semantics & BUXN_CHESS_SEM_NOMINAL) == 0
-				||
-				// Nominal subtyping by prefix
-				// A value of type "Suits/Heart" is assignable to "Suits/"
-				(sig_value.type.len <= actual_value.type.len
-				 &&
-				 memcmp(sig_value.type.chars, actual_value.type.chars, sig_value.type.len) == 0)
-			)) {
+			// Nominal subtyping by prefix
+			// A value of type "Suits/Heart" is assignable to "Suits/"
+			bool assignable =
+				(actual_value.semantics & BUXN_CHESS_SEM_NOMINAL)
+				&&
+				(actual_value.type.len >= sig_value.type.len)
+				&&
+				(memcmp(actual_value.type.chars, sig_value.type.chars, sig_value.type.len) == 0);
+
+			// In the output direction, a non-nominal value is also implicitly
+			// converted
+			// This allows creating "constructor" without casting
+			assignable |=
+				(direction == BUXN_CHESS_CHECK_STACK_OUT)
+				&&
+				((actual_value.semantics & BUXN_CHESS_SEM_NOMINAL) == 0);
+
+			if (!assignable) {
 				buxn_chess_report_exec_error(
 					ctx,
-					"%s stack #%d: A value of type \"%.*s\" (%.*s) cannot be constructed from a value of type \"%.*s\" (%.*s)",
-					stack_name,
-					value_index,
+					"%s %s stack #%d: A value of type \"%.*s\" (" BUXN_CHESS_VALUE_FMT ") "
+					"cannot be constructed from a value of type \"%.*s\" (" BUXN_CHESS_VALUE_FMT")",
+					name_prefix, stack_name, value_index,
 					(int)sig_value.type.len, sig_value.type.chars,
-					(int)sig_value.name.len, sig_value.name.chars,
+					BUXN_CHESS_VALUE_FMT_ARGS(sig_value),
 					(int)actual_value.type.len, actual_value.type.chars,
-					(int)actual_value.name.len, actual_value.name.chars
+					BUXN_CHESS_VALUE_FMT_ARGS(actual_value)
 				);
 			}
 		}
@@ -939,15 +948,15 @@ static void
 buxn_chess_check_return(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_check_stack(
 		ctx,
-		BUXN_CHESS_CHECK_STACK_EXACT,
-		"Output working",
+		BUXN_CHESS_CHECK_STACK_OUT,
+		"working",
 		&ctx->entry->state.wst,
 		&ctx->entry->info->value.signature->wst_out
 	);
 	buxn_chess_check_stack(
 		ctx,
-		BUXN_CHESS_CHECK_STACK_EXACT,
-		"Output return",
+		BUXN_CHESS_CHECK_STACK_OUT,
+		"return",
 		&ctx->entry->state.rst,
 		&ctx->entry->info->value.signature->rst_out
 	);
@@ -993,6 +1002,7 @@ buxn_chess_INC(buxn_chess_exec_ctx_t* ctx) {
 		value.value += 1;
 	}
 	value.semantics &= ~(BUXN_CHESS_SEM_NOMINAL);
+	value.type.len = 0;
 	value.semantics &= ~(BUXN_CHESS_SEM_HALF_HI);
 	value.semantics &= ~(BUXN_CHESS_SEM_HALF_LO);
 	value.whole_value = NULL;
@@ -1176,15 +1186,15 @@ buxn_chess_short_circuit(
 	// Gather inputs directly from the real stack
 	buxn_chess_check_stack(
 		ctx,
-		BUXN_CHESS_CHECK_STACK_AT_LEAST,
-		"Input working",
+		BUXN_CHESS_CHECK_STACK_IN,
+		"working",
 		&ctx->entry->state.wst,
 		&sig->wst_in
 	);
 	buxn_chess_check_stack(
 		ctx,
-		BUXN_CHESS_CHECK_STACK_AT_LEAST,
-		"Input return",
+		BUXN_CHESS_CHECK_STACK_IN,
+		"return",
 		&ctx->entry->state.rst,
 		&sig->rst_in
 	);
