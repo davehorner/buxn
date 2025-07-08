@@ -1240,6 +1240,14 @@ buxn_asm_create_macro(
 	buxn_asm_unit_t* unit,
 	buxn_asm_symtab_node_t* symbol
 ) {
+	uint16_t id = ++basm->num_macros;
+	buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
+		.type = BUXN_ASM_SYM_MACRO,
+		.name = symbol->key->key.chars,
+		.region = start->region,
+		.id = id,
+	});
+
 	buxn_asm_token_t token;
 	bool found_open_brace = false;
 	while (!found_open_brace && buxn_asm_next_token(basm, unit, &token)) {
@@ -1325,14 +1333,7 @@ buxn_asm_create_macro(
 		);
 	}
 
-	uint16_t id = ++basm->num_macros;
 	macro->id = id;
-	buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
-		.type = BUXN_ASM_SYM_MACRO,
-		.name = symbol->key->key.chars,
-		.region = start->region,
-		.id = id,
-	});
 
 	return true;
 }

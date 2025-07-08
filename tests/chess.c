@@ -265,3 +265,18 @@ BTEST(chess, cast) {
 	);
 	BTEST_EXPECT(basm->num_warnings == 0);
 }
+
+BTEST(chess, macro) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+
+	// Macro with annotation must not attach to the preceding label
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"|00 @Device\n"
+			"%Macro ( -- ) {  }\n"
+			"|0100 @on-reset ( -> ) BRK \n"
+		)
+	);
+	BTEST_EXPECT(basm->num_warnings == 0);
+}
