@@ -144,6 +144,7 @@ struct buxn_chess_addr_info_s {
 	buxn_chess_addr_info_t* next;
 	bool marked_for_verification;
 	bool terminated;
+	bool has_error;
 };
 
 typedef struct {
@@ -512,6 +513,8 @@ buxn_chess_report_exec_error(
 		? ctx->current_sym->region
 		: ctx->entry->info->value.region;
 	buxn_chess_terminate(ctx);
+
+	ctx->entry->info->has_error = true;
 }
 
 BFORMAT_ATTRIBUTE(2, 3)
@@ -2238,7 +2241,16 @@ buxn_chess_end(buxn_chess_t* chess) {
 		itr != NULL;
 		itr = itr->next
 	) {
-		if (itr->marked_for_verification && !itr->terminated) {
+		if (
+			itr->marked_for_verification
+			&&
+			// Error might have stopped analysis from reaching a termination
+			// point
+			// There is no need to add more noise
+			!itr->has_error
+			&&
+			!itr->terminated
+		) {
 			void* region = buxn_chess_begin_mem_region(chess->ctx);
 			buxn_chess_report_error(
 				chess,

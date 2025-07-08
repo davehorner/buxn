@@ -91,8 +91,10 @@ BTEST(chess, jump) {
 	BTEST_EXPECT(basm->num_warnings == 0);
 
 	// Do not get stuck in loop
-	BTEST_EXPECT(buxn_asm_str(basm, "&>l !/>l"));
-	BTEST_EXPECT(basm->num_warnings == 0);
+	basm->suppress_report = true;
+	BTEST_EXPECT(!buxn_asm_str(basm, "&>l !/>l"));
+	BTEST_EXPECT(basm->num_errors == 1);
+	basm->suppress_report = false;
 
 	// Recursion
 	BTEST_EXPECT(
