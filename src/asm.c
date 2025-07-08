@@ -40,6 +40,7 @@ struct buxn_asm_ctx_s {
 
 	buxn_chess_t* chess;
 	int trace_id;
+	bool focus;
 };
 
 static void
@@ -321,6 +322,8 @@ buxn_chess_log(
 	blog_level_t level,
 	const buxn_asm_report_t* report
 ) {
+	if (ctx->focus && ctx->trace_id != trace_id) { return; }
+
 	if (trace_id != BUXN_CHESS_NO_TRACE) {
 		blog_write(
 			level,
@@ -356,7 +359,8 @@ buxn_chess_report(
 	buxn_asm_report_type_t type,
 	const buxn_asm_report_t* report
 ) {
-	(void)ctx;
+	if (ctx->focus && ctx->trace_id != trace_id) { return; }
+
 	blog_level_t level = BLOG_LEVEL_INFO;
 	switch (type) {
 		case BUXN_ASM_REPORT_ERROR: level = BLOG_LEVEL_ERROR; break;
@@ -372,6 +376,8 @@ buxn_chess_report_info(
 	buxn_chess_id_t trace_id,
 	const buxn_asm_report_t* report
 ) {
+	if (ctx->focus && ctx->trace_id != trace_id) { return; }
+
 	buxn_chess_log(ctx, trace_id, BLOG_LEVEL_INFO, report);
 }
 
@@ -381,7 +387,8 @@ buxn_chess_begin_trace(
 	buxn_chess_id_t trace_id,
 	buxn_chess_id_t parent_id
 ) {
-	// TODO: This should include info about entrypoint
+	if (ctx->focus && ctx->trace_id != trace_id) { return; }
+
 	if (parent_id == BUXN_CHESS_NO_TRACE) {
 		buxn_chess_trace(
 			ctx,
@@ -504,6 +511,7 @@ main(int argc, const char* argv[]) {
 
 	bool type_check = false;
 	bool verbose = false;
+	bool focus = false;
 	int trace_id = BUXN_CHESS_NO_TRACE;
 	barg_opt_t opts[] = {
 		{
@@ -517,10 +525,19 @@ main(int argc, const char* argv[]) {
 		{
 			.name = "trace",
 			.short_name = 't',
-			.summary =
-				"Trace a specific static analysis path\n"
-				"This has no effect if --chess is not used",
+			.value_name = "trace-id",
+			.summary = "Trace a specific static analysis path",
+			.description = "This has no effect if --chess is not provided",
 			.parser = barg_int(&trace_id),
+		},
+		{
+			.name = "focus",
+			.short_name = 'f',
+			.summary = "Focus only on the chosen trace and display nothing else",
+			.description =
+				"This has no effect either --chess or --trace are not provided",
+			.boolean = true,
+			.parser = barg_boolean(&focus),
 		},
 		{
 			.name = "verbose",
@@ -585,6 +602,7 @@ main(int argc, const char* argv[]) {
 	if (type_check) {
 		ctx.chess = buxn_chess_begin(&ctx);
 		ctx.trace_id = trace_id;
+		ctx.focus = focus;
 	}
 	bool success = buxn_asm(&ctx, src_filename);
 	if (ctx.chess != NULL && success) {
