@@ -115,12 +115,14 @@ struct buxn_chess_signature_s {
 	buxn_chess_sig_stack_t rst_in;
 	buxn_chess_sig_stack_t wst_out;
 	buxn_chess_sig_stack_t rst_out;
+	buxn_asm_source_region_t region;
 	buxn_chess_routine_type_t type;
 };
 
 typedef struct {
 	buxn_chess_sig_stack_t wst;
 	buxn_chess_sig_stack_t rst;
+	buxn_asm_source_region_t region;
 } buxn_chess_cast_t;
 
 typedef struct {
@@ -159,7 +161,7 @@ struct buxn_chess_cast_info_s {
 	uint16_t key;
 	buxn_chess_cast_info_t* children[BHAMT_NUM_CHILDREN];
 
-	buxn_chess_cast_t cast;
+	buxn_chess_cast_t* cast;
 };
 
 typedef struct {
@@ -217,6 +219,7 @@ struct buxn_chess_s {
 
 	buxn_asm_sym_t current_symbol;
 	uint16_t current_symbol_addr;
+	bool has_current_symbol;
 
 	buxn_chess_signature_t* current_signature;
 	buxn_chess_cast_t* current_cast;
@@ -228,6 +231,7 @@ struct buxn_chess_s {
 	bool parse_sealed;
 	buxn_chess_addr_map_t addr_map;
 	buxn_chess_jump_map_t jump_map;
+	buxn_chess_cast_map_t cast_map;
 
 	buxn_chess_entry_t* entry_pool;
 	buxn_chess_entry_t* verification_list;
@@ -1891,6 +1895,44 @@ buxn_chess_dump_stack(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_end_mem_region(ctx->chess->ctx, region);
 }
 
+static void
+buxn_chess_apply_cast(
+	buxn_chess_exec_ctx_t* ctx,
+	const char* stack_name,
+	buxn_chess_stack_t* stack,
+	const buxn_chess_sig_stack_t* cast
+) {
+	uint8_t cast_size = 0;
+	for (uint8_t i = 0; i < cast->len; ++i) {
+		cast_size += buxn_chess_value_size(cast->content[i]);
+	}
+
+	if (cast_size <= stack->size) {
+		for (uint8_t i = 0; i < cast->len; ++i) {
+			buxn_chess_pop_from(
+				ctx,
+				stack,
+				buxn_chess_value_size(cast->content[cast->len - 1 - i])
+			);
+		}
+		for (uint8_t i = 0; i < cast->len; ++i) {
+			buxn_chess_raw_push(stack, cast->content[i]);
+		}
+	} else {
+		void* region = buxn_chess_begin_mem_region(ctx->chess->ctx);
+		buxn_chess_report_exec_error(
+			ctx,
+			"%s stack size mismatch: Expecting at least %d (%s ), got %d (%s )",
+			stack_name,
+			cast_size,
+			buxn_chess_format_stack(ctx->chess, cast->content, cast->len).chars,
+			stack->size,
+			buxn_chess_format_stack(ctx->chess, stack->content, stack->len).chars
+		);
+		buxn_chess_end_mem_region(ctx->chess->ctx, region);
+	}
+}
+
 #undef BUXN_OPCODE_NAME
 #define BUXN_OPCODE_NAME(NAME, K, R, S) NAME
 #define BUXN_CHESS_DISPATCH(NAME, VALUE) \
@@ -1973,6 +2015,14 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		}
 		if (ctx.terminated) { break; }
 
+		// Find cast
+		buxn_chess_cast_info_t* cast;
+		{
+			uint32_t hash = buxn_chess_prospector32(ctx.pc);
+			BHAMT_GET(ctx.chess->cast_map.root, cast, hash, ctx.pc, BUXN_CHESS_ADDR_EQ);
+		}
+
+		// Regular execution
 		uint16_t pc = ctx.pc++;
 		const buxn_asm_sym_t* current_sym = chess->symbols[pc];
 		ctx.current_opcode = buxn_chess_get_rom(chess->ctx, pc);
@@ -2007,8 +2057,29 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		switch (ctx.current_opcode) {
 			BUXN_OPCODE_DISPATCH(BUXN_CHESS_DISPATCH)
 		}
-
 		buxn_chess_dump_stack(&ctx);
+
+		if (cast != NULL) {
+			BUXN_CHESS_TRACE(
+				&ctx,
+				"Applying cast at %s:%d:%d:%d",
+				cast->cast->region.filename,
+				cast->cast->region.range.start.line,
+				cast->cast->region.range.start.col,
+				cast->cast->region.range.start.byte
+			);
+			buxn_chess_apply_cast(
+				&ctx, "Working",
+				&entry->state.wst,
+				&cast->cast->wst
+			);
+			buxn_chess_apply_cast(
+				&ctx, "Return",
+				&entry->state.rst,
+				&cast->cast->rst
+			);
+			buxn_chess_dump_stack(&ctx);
+		}
 	}
 
 	// Dump stack before error
@@ -2142,6 +2213,12 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			chess->anno_handler = NULL;
 		}
 
+		if (chess->current_signature->region.filename == NULL) {
+			chess->current_signature->region.filename = sym->region.filename;
+			chess->current_signature->region.range.start = sym->region.range.start;
+		}
+		chess->current_signature->region.range.end = sym->region.range.end;
+
 		size_t len = strlen(sym->name);
 		if ((len == 1 && sym->name[0] == '.')) {
 			if (chess->parse_state == BUXN_CHESS_PARSE_WST_IN) {
@@ -2249,9 +2326,10 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 				BUXN_CHESS_NO_TRACE,
 				BUXN_ASM_REPORT_WARNING,
 				&(buxn_asm_report_t){
-					.message = "Routine already has a signature",
-					// TODO: report in redundant annotation region
-					.region = &chess->current_symbol.region,
+					.message = "Redundant signature",
+					.region = &chess->current_signature->region,
+					.related_message = "Previous signature",
+					.related_region = &addr_info->value.signature->region,
 				}
 			);
 		}
@@ -2260,6 +2338,11 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 
 static void
 buxn_chess_parse_signature(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
+	if (sym == NULL) {
+		chess->anno_handler = NULL;
+		return;
+	}
+
 	size_t len = strlen(sym->name);
 	bool is_signature =
 		(len == 2 && sym->name[0] == '-' && sym->name[1] == '-')
@@ -2293,6 +2376,12 @@ buxn_chess_parse_cast2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			);
 			chess->anno_handler = NULL;
 		}
+
+		if (chess->current_cast->region.filename == NULL) {
+			chess->current_cast->region.filename = sym->region.filename;
+			chess->current_cast->region.range.start = sym->region.range.start;
+		}
+		chess->current_cast->region.range.end = sym->region.range.end;
 
 		size_t len = strlen(sym->name);
 		if (len == 1 && sym->name[0] == '.') {
@@ -2357,11 +2446,50 @@ buxn_chess_parse_cast2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			}
 		}
 	} else {
+		uint16_t cast_addr = chess->current_symbol_addr;
+		uint32_t hash = buxn_chess_prospector32(cast_addr);
+		buxn_chess_cast_info_t** itr;
+		buxn_chess_cast_info_t* result;
+		BHAMT_SEARCH(
+			chess->cast_map.root,
+			itr, result,
+			hash, cast_addr,
+			BUXN_CHESS_ADDR_EQ
+		);
+		if (result == NULL) {
+			result = *itr = buxn_chess_alloc(
+				chess->ctx,
+				sizeof(buxn_chess_cast_info_t),
+				_Alignof(buxn_chess_cast_info_t)
+			);
+			*result = (buxn_chess_cast_info_t){
+				.key = cast_addr,
+				.cast = chess->current_cast,
+			};
+			chess->current_cast = NULL;
+		} else {
+			buxn_chess_report(
+				chess->ctx,
+				BUXN_CHESS_NO_TRACE,
+				BUXN_ASM_REPORT_WARNING,
+				&(buxn_asm_report_t){
+					.message = "Redundant cast",
+					.region = &chess->current_cast->region,
+					.related_message = "Previous cast",
+					.related_region = &result->cast->region,
+				}
+			);
+		}
 	}
 }
 
 static void
 buxn_chess_parse_cast(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
+	if (sym == NULL) {
+		chess->anno_handler = NULL;
+		return;
+	}
+
 	size_t len = strlen(sym->name);
 	bool is_cast = len == 1 && sym->name[0] == '!';
 	if (is_cast) {
@@ -2471,7 +2599,7 @@ buxn_chess_handle_symbol(
 	(void)addr;
 	if (sym->type == BUXN_ASM_SYM_COMMENT) {
 		if (sym->id == 0) {  // Start
-			if (sym->name[1] == '\0' && chess->current_symbol.name != NULL) {  // Lone '('
+			if (sym->name[1] == '\0' && chess->has_current_symbol) {  // Lone '('
 				chess->tmp_buff_ptr = chess->tmp_buf;
 				chess->num_sig_tokens = 0;
 				if (
@@ -2482,9 +2610,9 @@ buxn_chess_handle_symbol(
 					chess->anno_handler = buxn_chess_parse_signature;
 				} else if (
 					chess->current_symbol.type == BUXN_ASM_SYM_OPCODE
-					|| sym->type == BUXN_ASM_SYM_LABEL_REF
-					|| sym->type == BUXN_ASM_SYM_NUMBER
-					|| sym->type == BUXN_ASM_SYM_TEXT
+					|| chess->current_symbol.type == BUXN_ASM_SYM_LABEL_REF
+					|| chess->current_symbol.type == BUXN_ASM_SYM_NUMBER
+					|| chess->current_symbol.type == BUXN_ASM_SYM_TEXT
 				) {
 					chess->anno_handler = buxn_chess_parse_cast;
 				}
@@ -2492,7 +2620,6 @@ buxn_chess_handle_symbol(
 		} else if (sym->id == 1 && sym->name[0] == ')' && sym->name[1] == '\0') {  // End
 			if (chess->anno_handler != NULL) {
 				chess->anno_handler(chess, NULL);
-				chess->current_symbol.name = NULL;
 				chess->anno_handler = NULL;
 			}
 		} else {  // Intermediate
@@ -2507,6 +2634,7 @@ buxn_chess_handle_symbol(
 	} else if (sym->type == BUXN_ASM_SYM_LABEL && !sym->name_is_generated) {
 		chess->current_symbol = *sym;
 		chess->current_symbol_addr = addr;
+		chess->has_current_symbol = true;
 		chess->anno_handler = NULL;
 
 		buxn_chess_addr_info_t* addr_info = buxn_chess_ensure_addr_info(chess, addr);
@@ -2541,10 +2669,11 @@ buxn_chess_handle_symbol(
 			chess->current_symbol = *sym;
 			chess->current_symbol_addr = addr;
 			chess->anno_handler = NULL;
+			chess->has_current_symbol = true;
 		}
 
 		chess->symbols[addr] = in_sym;
 	} else {
-		chess->current_symbol.name = NULL;
+		chess->has_current_symbol = false;
 	}
 }

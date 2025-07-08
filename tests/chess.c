@@ -230,3 +230,27 @@ BTEST(chess, trusted_signature) {
 	);
 	BTEST_EXPECT(basm->num_warnings == 0);
 }
+
+BTEST(chess, cast) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"BRK\n"
+			"@Store ( a [addr]* -- ) INC ( [addr]* ! ) STA JMP2r\n"
+		)
+	);
+	BTEST_EXPECT(basm->num_warnings == 0);
+
+	// Cast declares more elements than available
+	basm->suppress_report = true;
+	BTEST_EXPECT(
+		!buxn_asm_str(
+			basm,
+			"BRK\n"
+			"@Store ( a [addr]* -- ) INC ( [addr]* [addr]* ! ) STA JMP2r\n"
+		)
+	);
+	basm->suppress_report = false;
+}
