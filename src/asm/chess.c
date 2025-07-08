@@ -1539,9 +1539,6 @@ buxn_chess_DEI(buxn_chess_exec_ctx_t* ctx) {
 }
 
 static void
-buxn_chess_dump_stack(buxn_chess_exec_ctx_t* ctx);
-
-static void
 buxn_chess_DEO(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_value_t addr = buxn_chess_pop_ex(ctx, false, buxn_chess_op_flag_r(ctx));
 	buxn_chess_value_t value = buxn_chess_pop(ctx);
@@ -1553,38 +1550,6 @@ buxn_chess_DEO(buxn_chess_exec_ctx_t* ctx) {
 			"DEO from non-address value (" BUXN_CHESS_VALUE_FMT ")",
 			BUXN_CHESS_VALUE_FMT_ARGS(addr)
 		);
-	} else {
-		if (
-			(addr.semantics & BUXN_CHESS_SEM_CONST)
-			&&
-			(addr.value == 0x0e)  // System/debug
-			&&
-			(value.semantics & BUXN_CHESS_SEM_CONST)
-			&&
-			((value.semantics & BUXN_CHESS_SEM_SIZE_MASK) == BUXN_CHESS_SEM_SIZE_BYTE)
-			&&
-			(value.semantics & BUXN_CHESS_SEM_CONST)
-			&&
-			(value.value == 0x2a)  // System/debug
-		) {
-			buxn_chess_str_t wst = buxn_chess_format_stack(
-				ctx->chess,
-				ctx->entry->state.wst.content,
-				ctx->entry->state.wst.len
-			);
-			buxn_chess_str_t rst = buxn_chess_format_stack(
-				ctx->chess,
-				ctx->entry->state.rst.content,
-				ctx->entry->state.rst.len
-			);
-			// TODO: handle info in buxn-ls
-			buxn_chess_report_exec_warning(
-				ctx,
-				"Stack:\nWST(%d):%.*s\nRST(%d):%.*s\n",
-				ctx->entry->state.wst.size, (int)wst.len, wst.chars,
-				ctx->entry->state.rst.size, (int)rst.len, rst.chars
-			);
-		}
 	}
 }
 
