@@ -550,7 +550,7 @@ main(int argc, const char* argv[]) {
 	};
 
 	barg_t barg = {
-		.usage = "buxn-asm [options] [--] <in.tal> <out.rom>",
+		.usage = "buxn-asm [options] [--] <in.tal> [out.rom]",
 		.summary = "uxntal assembler",
 		.opts = opts,
 		.num_opts = BCOUNT_OF(opts),
@@ -562,13 +562,16 @@ main(int argc, const char* argv[]) {
 		barg_print_result(&barg, result, stderr);
 		return result.status == BARG_PARSE_ERROR;
 	}
-	if (argc - result.arg_index != 2) {
+	int num_args = argc - result.arg_index;
+	if (num_args < 1 || num_args > 2) {
 		result.status = BARG_SHOW_HELP;
 		barg_print_result(&barg, result, stderr);
 		return 1;
 	}
 	const char* src_filename = argv[result.arg_index];
-	const char* rom_filename = argv[result.arg_index + 1];
+	const char* rom_filename = num_args == 2
+		? argv[result.arg_index + 1]
+		: NULL;
 
 	if (verbose) {
 		blog_set_min_log_level(logger, BLOG_LEVEL_TRACE);
@@ -586,12 +589,21 @@ main(int argc, const char* argv[]) {
 	bhash_init(&ctx.file_table, config);
 
 	// temp buf for extra filenames
-	size_t rom_filename_len = strlen(rom_filename);
-	size_t namebuf_len = rom_filename_len + 5;
-	char* namebuf = barena_memalign(&ctx.arena, rom_filename_len + 5, _Alignof(char));
+	size_t rom_filename_len = 0;
+	size_t namebuf_len = 0;
+	char* namebuf = NULL;
+	if (rom_filename != NULL) {
+		rom_filename_len = strlen(rom_filename);
+		namebuf_len = rom_filename_len + 5;
+		namebuf = barena_memalign(
+			&ctx.arena,
+			namebuf_len,
+			_Alignof(char)
+		);
+	}
 
 	// .sym file
-	{
+	if (rom_filename != NULL) {
 		snprintf(namebuf, namebuf_len, "%s.sym", rom_filename);
 		ctx.sym_file = fopen(namebuf, "wb");
 		if (ctx.sym_file == NULL) {
@@ -610,7 +622,7 @@ main(int argc, const char* argv[]) {
 	}
 
 	// Write .dbg file
-	if (success) {
+	if (success && rom_filename != NULL) {
 		snprintf(namebuf, namebuf_len, "%s.dbg", rom_filename);
 		FILE* dbg_file = fopen(namebuf, "wb");
 		if (dbg_file != NULL) {
@@ -662,14 +674,14 @@ main(int argc, const char* argv[]) {
 	barena_reset(&ctx.arena);
 	barena_pool_cleanup(&arena_pool);
 
-	if (success) {
+	if (success && rom_filename != NULL) {
 		success &= write_rom(&ctx, rom_filename);
 	}
 
-	if (success) {
+	if (success && rom_filename) {
 		BLOG_INFO(
 			"Assembled %s in %d byte(s), %d label(s), %d macro(s)",
-			argv[2],
+			rom_filename,
 			ctx.rom_size,
 			ctx.num_labels,
 			ctx.num_macros
