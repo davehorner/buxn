@@ -2651,6 +2651,13 @@ buxn_chess_handle_symbol(
 	) {
 		assert(addr >= 256 && "Code is put in zero-page");
 
+		if (sym->type == BUXN_ASM_SYM_OPCODE) {
+			chess->current_symbol = *sym;
+			chess->current_symbol_addr = addr;
+			chess->anno_handler = NULL;
+			chess->has_current_symbol = true;
+		}
+
 		buxn_asm_sym_t* in_sym;
 		if (
 			chess->last_sym != NULL
@@ -2665,11 +2672,6 @@ buxn_chess_handle_symbol(
 				chess->ctx, sizeof(buxn_asm_sym_t), _Alignof(buxn_asm_sym_t)
 			);
 			*in_sym = *sym;
-
-			chess->current_symbol = *sym;
-			chess->current_symbol_addr = addr;
-			chess->anno_handler = NULL;
-			chess->has_current_symbol = true;
 		}
 
 		chess->symbols[addr] = in_sym;
