@@ -253,4 +253,15 @@ BTEST(chess, cast) {
 		)
 	);
 	basm->suppress_report = false;
+
+	// Cast using macro
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"BRK\n"
+			"%>ADDR { ( [addr]* ! ) }\n"
+			"@Store ( a [addr]* -- ) INC >ADDR STA JMP2r\n"
+		)
+	);
+	BTEST_EXPECT(basm->num_warnings == 0);
 }

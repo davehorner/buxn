@@ -2673,7 +2673,7 @@ buxn_chess_handle_symbol(
 		}
 
 		chess->symbols[addr] = in_sym;
-	} else {
+	} else if (sym->type == BUXN_ASM_SYM_MACRO) {
 		chess->has_current_symbol = false;
 	}
 }
