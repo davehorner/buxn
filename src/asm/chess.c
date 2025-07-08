@@ -1311,6 +1311,7 @@ buxn_chess_load(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 		buxn_chess_addr_info_t* addr_info = buxn_chess_addr_info(ctx->chess, addr.value);
 		if (addr_info != NULL) {  // Load from label
 			value = addr_info->value;
+			value.region = buxn_chess_pc_region(ctx);
 			value.name = buxn_chess_printf(
 				ctx->chess,
 				"load@%.*s",
@@ -1689,6 +1690,7 @@ buxn_chess_LIT(buxn_chess_exec_ctx_t* ctx) {
 
 		if (addr_info != NULL) {  // Door
 			value = addr_info->value;
+			value.region = buxn_chess_pc_region(ctx);
 			value.semantics &= ~BUXN_CHESS_SEM_SIZE_SHORT;
 		} else if (symbol != NULL) {
 			value = buxn_chess_make_lit_byte(ctx, lit_addr, symbol);
@@ -1706,18 +1708,22 @@ buxn_chess_LIT(buxn_chess_exec_ctx_t* ctx) {
 		if (addr_info_hi != NULL) {  // Door
 			if (addr_info_lo == NULL && symbol_lo == NULL) {
 				buxn_chess_value_t value = addr_info_hi->value;
+				value.region = buxn_chess_pc_region(ctx);
 				value.semantics |= BUXN_CHESS_SEM_SIZE_SHORT;
 				buxn_chess_push(ctx, value);
 			} else if (addr_info_lo != NULL) {
 				buxn_chess_value_t value_hi = addr_info_hi->value;
+				value_hi.region = buxn_chess_pc_region(ctx);
 				value_hi.semantics &= ~BUXN_CHESS_SEM_SIZE_SHORT;
 				buxn_chess_push(ctx, value_hi);
 
 				buxn_chess_value_t value_lo = addr_info_lo->value;
+				value_lo.region = buxn_chess_pc_region(ctx);
 				value_lo.semantics &= ~BUXN_CHESS_SEM_SIZE_SHORT;
 				buxn_chess_push(ctx, value_lo);
 			} else /* if (symbol_lo != NULL) */ {
 				buxn_chess_value_t value_hi = addr_info_hi->value;
+				value_hi.region = buxn_chess_pc_region(ctx);
 				value_hi.semantics &= ~BUXN_CHESS_SEM_SIZE_SHORT;
 				buxn_chess_push(ctx, value_hi);
 
@@ -2205,6 +2211,7 @@ buxn_chess_handle_symbol(
 			.chars = chess->current_label.name,
 			.len = strlen(chess->current_label.name),
 		};
+		addr_info->value.region = sym->region;
 	} else {
 		chess->current_label.name = NULL;
 	}
