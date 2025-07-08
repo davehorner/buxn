@@ -346,8 +346,10 @@ static buxn_chess_str_t
 buxn_chess_format_value(buxn_chess_t* chess, buxn_chess_value_t value) {
 	return buxn_chess_printf(
 		chess,
-		" %.*s%s",
+		" %s%.*s%s%s",
+		(value.semantics & BUXN_CHESS_SEM_ADDRESS) ? "[" : "",
 		(int)value.name.len, value.name.chars,
+		(value.semantics & BUXN_CHESS_SEM_ADDRESS) ? "]" : "",
 		(value.semantics & BUXN_CHESS_SEM_SIZE_MASK) == BUXN_CHESS_SEM_SIZE_SHORT
 			? "*"
 			: ""
@@ -2027,22 +2029,28 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 static buxn_chess_value_t
 buxn_chess_parse_value(buxn_chess_t* chess, const buxn_asm_sym_t* sym, size_t len) {
 	buxn_chess_value_t value = { .region = sym->region };
-	if (sym->name[len - 1] == '*') {
-		value.name = buxn_chess_strcpy(chess, sym->name, len - 1);
+	buxn_chess_str_t name = {
+		.chars = sym->name,
+		.len = len,
+	};
+	if (name.chars[name.len - 1] == '*') {
 		value.semantics |= BUXN_CHESS_SEM_SIZE_SHORT;
-	} else {
-		value.name = buxn_chess_strcpy(chess, sym->name, len);
+		name.len -= 1;
 	}
 
 	if (
-		value.name.len > 0
+		name.len > 0
 		&&
-		value.name.chars[0] == '['
+		name.chars[0] == '['
 		&&
-		value.name.chars[value.name.len - 1] == ']'
+		name.chars[name.len - 1] == ']'
 	) {
 		value.semantics |= BUXN_CHESS_SEM_ADDRESS;
+		name.chars += 1;
+		name.len -= 2;
 	}
+
+	value.name = buxn_chess_strcpy(chess, name.chars, name.len);
 
 	char first_char = sym->name[0];
 	if ('A' <= first_char && first_char <= 'Z') {
