@@ -140,10 +140,15 @@ struct buxn_chess_addr_info_s {
 	buxn_chess_addr_info_t* children[BHAMT_NUM_CHILDREN];
 
 	buxn_chess_value_t value;
+
+	buxn_chess_addr_info_t* next;
+	bool marked_for_verification;
+	bool terminated;
 };
 
 typedef struct {
 	buxn_chess_addr_info_t* root;
+	buxn_chess_addr_info_t* first;
 } buxn_chess_addr_map_t;
 
 typedef struct buxn_chess_jump_arc_s buxn_chess_jump_arc_t;
@@ -161,7 +166,7 @@ typedef struct buxn_chess_entry_s buxn_chess_entry_t;
 
 struct buxn_chess_entry_s {
 	buxn_chess_entry_t* next;
-	const buxn_chess_addr_info_t* info;
+	buxn_chess_addr_info_t* info;
 	buxn_chess_state_t state;
 	uint16_t address;
 };
@@ -252,6 +257,8 @@ buxn_chess_ensure_addr_info(buxn_chess_t* chess, uint16_t addr) {
 		*result = (buxn_chess_addr_info_t){
 			.key = addr,
 		};
+		result->next = chess->addr_map.first;
+		chess->addr_map.first = result;
 	}
 
 	return result;
@@ -541,7 +548,10 @@ buxn_chess_raw_push(
 }
 
 static void
-buxn_chess_queue_routine(buxn_chess_t* chess, buxn_chess_addr_info_t* routine) {
+buxn_chess_mark_routine_for_verification(
+	buxn_chess_t* chess,
+	buxn_chess_addr_info_t* routine
+) {
 	buxn_chess_entry_t* entry = buxn_chess_alloc_entry(chess);
 	*entry = (buxn_chess_entry_t){
 		.address = routine->key,
@@ -567,6 +577,7 @@ buxn_chess_queue_routine(buxn_chess_t* chess, buxn_chess_addr_info_t* routine) {
 		buxn_chess_raw_push(&entry->state.rst, signature->rst_in.content[i]);
 	}
 
+	routine->marked_for_verification = true;
 	buxn_chess_add_entry(&chess->verification_list, entry);
 }
 
@@ -930,9 +941,10 @@ buxn_chess_BRK(buxn_chess_exec_ctx_t* ctx) {
 		buxn_chess_report_exec_error(ctx, "Subroutine called BRK");
 	}
 
+	BUXN_CHESS_DEBUG("Terminated by BRK");
+	ctx->entry->info->terminated = true;
 	buxn_chess_check_return(ctx);
 	buxn_chess_terminate(ctx);
-	BUXN_CHESS_DEBUG("Terminated by BRK");
 }
 
 static void
@@ -1077,8 +1089,11 @@ buxn_chess_LTH(buxn_chess_exec_ctx_t* ctx) {
 	buxn_chess_boolean_op(ctx, buxn_chess_bool_lth);
 }
 
-static void
-buxn_chess_abs_jmp(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
+static enum {
+	BUXN_CHESS_JUMP_ERROR,
+	BUXN_CHESS_JUMP_RETURNED,
+	BUXN_CHESS_JUMP_CONTINUE,
+} buxn_chess_abs_jmp(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 	if (
 		(addr.semantics & BUXN_CHESS_SEM_ADDRESS)
 		&&
@@ -1087,25 +1102,30 @@ buxn_chess_abs_jmp(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 		if (ctx->entry->info->value.signature->type == BUXN_CHESS_VECTOR) {
 			buxn_chess_report_exec_error(ctx, "Vector routine makes a normal return");
 		}
+		BUXN_CHESS_DEBUG("Terminated by jumping to return address");
+		ctx->entry->info->terminated = true;
 		buxn_chess_check_return(ctx);
 		buxn_chess_terminate(ctx);
-		BUXN_CHESS_DEBUG("Terminated by jumping to return address");
+		return BUXN_CHESS_JUMP_RETURNED;
 	} else if (addr.semantics & BUXN_CHESS_SEM_CONST) {
 		ctx->pc = addr.value;
+		return BUXN_CHESS_JUMP_CONTINUE;
 	} else {
 		buxn_chess_report_exec_error(
 			ctx,
 			"Jumping to an unknown address: " BUXN_CHESS_VALUE_FMT,
 			BUXN_CHESS_VALUE_FMT_ARGS(addr)
 		);
+		return BUXN_CHESS_JUMP_CONTINUE;
 	}
 }
 
 static void
 buxn_chess_short_circuit(
 	buxn_chess_exec_ctx_t* ctx,
-	const buxn_chess_signature_t* sig
+	const buxn_chess_addr_info_t* addr_info
 ) {
+	const buxn_chess_signature_t* sig = addr_info->value.signature;
 	if (
 		ctx->entry->info->value.signature->type == BUXN_CHESS_SUBROUTINE
 		&& sig->type == BUXN_CHESS_VECTOR
@@ -1149,7 +1169,14 @@ buxn_chess_short_circuit(
 				&ctx->entry->state.rst,
 				2
 			);
-			buxn_chess_abs_jmp(ctx, return_addr);
+			// If this termination is caused by recursion, do not consider it a
+			// termination.
+			// Strictly speaking, this would not be able to detect mutual recursion
+			// but we can't detect that while still supporting short-circuiting
+			// without more a complex algorithm (e.g: call graph).
+			if (buxn_chess_abs_jmp(ctx, return_addr) == BUXN_CHESS_JUMP_RETURNED) {
+				ctx->entry->info->terminated = addr_info != ctx->entry->info;
+			}
 		} else {
 			buxn_chess_report_exec_error(
 				ctx,
@@ -1160,6 +1187,13 @@ buxn_chess_short_circuit(
 		BUXN_CHESS_DEBUG("Terminated by jumping into a vector");
 		buxn_chess_check_return(ctx);
 		buxn_chess_terminate(ctx);
+
+		// If this termination is caused by recursion, do not consider it a
+		// termination.
+		// Strictly speaking, this would not be able to detect mutual recursion
+		// but we can't detect that while still supporting short-circuiting
+		// without more a complex algorithm (e.g: call graph).
+		ctx->entry->info->terminated = addr_info != ctx->entry->info;
 	}
 }
 
@@ -1193,7 +1227,7 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 			"Short-circuited jump into " BUXN_CHESS_VALUE_FMT,
 			BUXN_CHESS_VALUE_FMT_ARGS(addr_info->value)
 		);
-		buxn_chess_short_circuit(ctx, addr_info->value.signature);
+		buxn_chess_short_circuit(ctx, addr_info);
 	} else {
 		// Only make the jump if it was not made before
 		// The first time a backward jump is applied, the effect of the loop
@@ -1890,7 +1924,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 			);
 			buxn_chess_copy_stack(&saved_wst, &ctx.entry->state.wst);
 			buxn_chess_copy_stack(&saved_rst, &ctx.entry->state.rst);
-			buxn_chess_short_circuit(&ctx, addr_info->value.signature);
+			buxn_chess_short_circuit(&ctx, addr_info);
 			buxn_chess_dump_stack(&ctx);
 			addr_info = buxn_chess_addr_info(chess, ctx.pc);
 		}
@@ -2085,7 +2119,7 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			addr_info->value.signature = chess->current_signature;
 			chess->current_signature = NULL;
 
-			buxn_chess_queue_routine(chess, addr_info);
+			buxn_chess_mark_routine_for_verification(chess, addr_info);
 		} else {
 			buxn_chess_report(
 				chess->ctx,
@@ -2176,7 +2210,7 @@ buxn_chess_end(buxn_chess_t* chess) {
 		*reset->value.signature = (buxn_chess_signature_t){
 			.type = BUXN_CHESS_VECTOR,
 		};
-		buxn_chess_queue_routine(chess, reset);
+		buxn_chess_mark_routine_for_verification(chess, reset);
 	}
 	if (reset->value.name.len == 0) {
 		reset->value.name = (buxn_chess_str_t){
@@ -2196,6 +2230,29 @@ buxn_chess_end(buxn_chess_t* chess) {
 		buxn_chess_execute(chess, entry);
 
 		buxn_chess_add_entry(&chess->entry_pool, entry);
+	}
+
+	// Check if a marked routine does not contain a termination path
+	for (
+		buxn_chess_addr_info_t* itr = chess->addr_map.first;
+		itr != NULL;
+		itr = itr->next
+	) {
+		if (itr->marked_for_verification && !itr->terminated) {
+			void* region = buxn_chess_begin_mem_region(chess->ctx);
+			buxn_chess_report_error(
+				chess,
+				&(buxn_asm_report_t){
+					.message = buxn_chess_printf(
+						chess,
+						BUXN_CHESS_VALUE_FMT " does not terminate",
+						BUXN_CHESS_VALUE_FMT_ARGS(itr->value)
+					).chars,
+					.region = &itr->value.region,
+				}
+			);
+			buxn_chess_end_mem_region(chess->ctx, region);
+		}
 	}
 
 	return chess->success;
