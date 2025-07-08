@@ -50,8 +50,9 @@ static btest_suite_t chess = {
 BTEST(chess, empty) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
 
-	BTEST_EXPECT(buxn_asm_str(basm, ""));
-	BTEST_EXPECT(basm->num_warnings == 0);
+	basm->suppress_report = true;
+	BTEST_EXPECT(!buxn_asm_str(basm, ""));
+	BTEST_EXPECT(!buxn_asm_str(basm, "BRK @Routine ( -- )"));
 }
 
 BTEST(chess, lit) {

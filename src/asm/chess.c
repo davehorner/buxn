@@ -473,7 +473,9 @@ buxn_chess_maybe_report_exec_begin(
 				(int)init_wst_str.len, init_wst_str.chars,
 				(int)init_rst_str.len, init_rst_str.chars
 			).chars,
-			.region = &ctx->start_sym->region,
+			.region = ctx->start_sym != NULL
+				? &ctx->start_sym->region
+				: &ctx->entry->info->value.region
 		}
 	);
 	buxn_chess_end_mem_region(ctx->chess->ctx, region);
@@ -493,11 +495,15 @@ buxn_chess_report_exec_error(
 	va_start(args, fmt);
 	buxn_chess_report_error(ctx->chess, &(buxn_asm_report_t){
 		.message = buxn_chess_vprintf(ctx->chess, fmt, args).chars,
-		.region = &ctx->current_sym->region,
+		.region = ctx->current_sym != NULL
+			? &ctx->current_sym->region
+			: &ctx->entry->info->value.region
 	});
 	va_end(args);
 	buxn_chess_end_mem_region(ctx->chess->ctx, region);
-	ctx->error_region = ctx->current_sym->region;
+	ctx->error_region = ctx->current_sym != NULL
+		? ctx->current_sym->region
+		: ctx->entry->info->value.region;
 	buxn_chess_terminate(ctx);
 }
 
@@ -1825,8 +1831,8 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		.pc = entry->address,
 		.start_sym = chess->symbols[entry->address],
 	};
-	// TODO: Report error
-	if (ctx.start_sym == NULL) { return; }
+	buxn_chess_copy_stack(&ctx.init_wst, &ctx.entry->state.wst);
+	buxn_chess_copy_stack(&ctx.init_rst, &ctx.entry->state.rst);
 
 	BUXN_CHESS_DEBUG(
 		"Analyzing %.*s starting from %s (%p)",
@@ -1834,7 +1840,6 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		buxn_chess_format_address(chess, entry->address),
 		(void*)entry
 	);
-
 	void* region = buxn_chess_begin_mem_region(chess->ctx);
 	BUXN_CHESS_DEBUG(
 		"WST(%d):%s",
@@ -1848,13 +1853,15 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 	);
 	buxn_chess_end_mem_region(chess->ctx, region);
 
+	if (ctx.start_sym == NULL) {
+		buxn_chess_report_exec_error(&ctx, "Execution will reach non-opcode");
+		return;
+	}
+
 	buxn_chess_stack_t shadow_wst;
 	buxn_chess_stack_t shadow_rst;
 	buxn_chess_stack_t saved_wst = { .len = 0, .size = 0 };
 	buxn_chess_stack_t saved_rst = { .len = 0, .size = 0 };
-	buxn_chess_copy_stack(&ctx.init_wst, &ctx.entry->state.wst);
-	buxn_chess_copy_stack(&ctx.init_rst, &ctx.entry->state.rst);
-
 	ctx.current_sym = ctx.start_sym;
 
 	while (!ctx.terminated) {
@@ -1881,6 +1888,8 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 				BUXN_CHESS_VALUE_FMT_ARGS(addr_info->value),
 				buxn_chess_format_address(chess, ctx.pc)
 			);
+			buxn_chess_copy_stack(&saved_wst, &ctx.entry->state.wst);
+			buxn_chess_copy_stack(&saved_rst, &ctx.entry->state.rst);
 			buxn_chess_short_circuit(&ctx, addr_info->value.signature);
 			buxn_chess_dump_stack(&ctx);
 			addr_info = buxn_chess_addr_info(chess, ctx.pc);
@@ -1898,7 +1907,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 			buxn_chess_format_address(chess, pc)
 		);
 		if (current_sym == NULL || current_sym->type != BUXN_ASM_SYM_OPCODE) {
-			buxn_chess_report_exec_error(&ctx, "Execution will reach non opcode");
+			buxn_chess_report_exec_error(&ctx, "Execution will reach non-opcode");
 			break;
 		}
 		ctx.current_sym = current_sym;
@@ -2174,6 +2183,9 @@ buxn_chess_end(buxn_chess_t* chess) {
 			.chars = "RESET",
 			.len = BLIT_STRLEN("RESET"),
 		};
+	}
+	if (reset->value.region.filename == NULL) {
+		reset->value.region = (buxn_asm_source_region_t){ .filename = "RESET" };
 	}
 
 	// Run everything on the verification list
