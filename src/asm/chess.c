@@ -119,6 +119,11 @@ struct buxn_chess_signature_s {
 };
 
 typedef struct {
+	buxn_chess_sig_stack_t wst;
+	buxn_chess_sig_stack_t rst;
+} buxn_chess_cast_t;
+
+typedef struct {
 	uint8_t len;
 	uint8_t size;
 	buxn_chess_value_t content[256];
@@ -147,6 +152,19 @@ typedef struct {
 	buxn_chess_addr_info_t* root;
 	buxn_chess_addr_info_t* first;
 } buxn_chess_addr_map_t;
+
+typedef struct buxn_chess_cast_info_s buxn_chess_cast_info_t;
+
+struct buxn_chess_cast_info_s {
+	uint16_t key;
+	buxn_chess_cast_info_t* children[BHAMT_NUM_CHILDREN];
+
+	buxn_chess_cast_t cast;
+};
+
+typedef struct {
+	buxn_chess_cast_info_t* root;
+} buxn_chess_cast_map_t;
 
 typedef struct buxn_chess_jump_arc_s buxn_chess_jump_arc_t;
 
@@ -197,15 +215,17 @@ struct buxn_chess_s {
 
 	uint32_t next_trace_id;
 
-	buxn_asm_sym_t current_label;
-	uint16_t current_label_addr;
+	buxn_asm_sym_t current_symbol;
+	uint16_t current_symbol_addr;
 
 	buxn_chess_signature_t* current_signature;
+	buxn_chess_cast_t* current_cast;
 	buxn_asm_sym_t signature_tokens[BUXN_CHESS_MAX_SIG_TOKENS];
 	uint8_t num_sig_tokens;
 	char* tmp_buff_ptr;
 	char tmp_buf[BUXN_CHESS_MAX_ARG_LEN * BUXN_CHESS_MAX_SIG_TOKENS];
-	buxn_chess_sig_parse_state_t sig_parse_state;
+	buxn_chess_sig_parse_state_t parse_state;
+	bool parse_sealed;
 	buxn_chess_addr_map_t addr_map;
 	buxn_chess_jump_map_t jump_map;
 
@@ -2062,14 +2082,72 @@ buxn_chess_parse_value(buxn_chess_t* chess, const buxn_asm_sym_t* sym, size_t le
 }
 
 static void
+buxn_chess_parse(
+	buxn_chess_t* chess,
+	const buxn_asm_sym_t* sym,
+	bool trigger_cond,
+	void (*stage2_parse_fn)(buxn_chess_t* chess, const buxn_asm_sym_t* sym)
+) {
+	if (sym != NULL) {
+		if (trigger_cond) {
+			chess->parse_state = BUXN_CHESS_PARSE_WST_IN;
+			chess->parse_sealed = false;
+
+			// Replay all buffered tokens including the lastest to the stage 2
+			// parser
+			chess->anno_handler = stage2_parse_fn;
+			for (uint8_t i = 0; i < chess->num_sig_tokens; ++i) {
+				if (chess->anno_handler != NULL) {
+					chess->anno_handler(chess, &chess->signature_tokens[i]);
+				} else {
+					break;
+				}
+			}
+
+			if (chess->anno_handler != NULL) {
+				chess->anno_handler(chess, sym);
+			}
+		} else if (chess->num_sig_tokens < BUXN_CHESS_MAX_SIG_TOKENS) {
+			// Buffer the token
+			const char* name_copy = buxn_chess_tmp_strcpy(chess, sym->name);
+			if (name_copy == NULL) {
+				chess->anno_handler = NULL;
+				return;
+			}
+
+			chess->signature_tokens[chess->num_sig_tokens++] = (buxn_asm_sym_t){
+				.name = name_copy,
+				.region = sym->region,
+			};
+		} else {
+			// Stop parsing
+			chess->anno_handler = NULL;
+		}
+	}
+}
+
+static void
 buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 	if (sym != NULL) {
+		if (chess->parse_sealed) {
+			buxn_chess_report(
+				chess->ctx,
+				BUXN_CHESS_NO_TRACE,
+				BUXN_ASM_REPORT_WARNING,
+				&(buxn_asm_report_t){
+					.message = "Unexpected token in sealed signature",
+					.region = &sym->region,
+				}
+			);
+			chess->anno_handler = NULL;
+		}
+
 		size_t len = strlen(sym->name);
 		if ((len == 1 && sym->name[0] == '.')) {
-			if (chess->sig_parse_state == BUXN_CHESS_PARSE_WST_IN) {
-				chess->sig_parse_state = BUXN_CHESS_PARSE_RST_IN;
-			} else if (chess->sig_parse_state == BUXN_CHESS_PARSE_WST_OUT) {
-				chess->sig_parse_state = BUXN_CHESS_PARSE_RST_OUT;
+			if (chess->parse_state == BUXN_CHESS_PARSE_WST_IN) {
+				chess->parse_state = BUXN_CHESS_PARSE_RST_IN;
+			} else if (chess->parse_state == BUXN_CHESS_PARSE_WST_OUT) {
+				chess->parse_state = BUXN_CHESS_PARSE_RST_OUT;
 			} else {
 				buxn_chess_report(
 					chess->ctx,
@@ -2082,12 +2160,14 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 				);
 				chess->anno_handler = NULL;
 			}
+		} else if (len == 1 && sym->name[0] == '!') {
+			chess->parse_sealed = true;
 		} else if (len == 2 && sym->name[0] == '-' && sym->name[1] == '-') {
 			if (
-				chess->sig_parse_state == BUXN_CHESS_PARSE_WST_IN
-				|| chess->sig_parse_state == BUXN_CHESS_PARSE_RST_IN
+				chess->parse_state == BUXN_CHESS_PARSE_WST_IN
+				|| chess->parse_state == BUXN_CHESS_PARSE_RST_IN
 			) {
-				chess->sig_parse_state = BUXN_CHESS_PARSE_WST_OUT;
+				chess->parse_state = BUXN_CHESS_PARSE_WST_OUT;
 				chess->current_signature->type = BUXN_CHESS_SUBROUTINE;
 			} else {
 				buxn_chess_report(
@@ -2103,10 +2183,10 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			}
 		} else if (len == 2 && sym->name[0] == '-' && sym->name[1] == '>') {
 			if (
-				chess->sig_parse_state == BUXN_CHESS_PARSE_WST_IN
-				|| chess->sig_parse_state == BUXN_CHESS_PARSE_RST_IN
+				chess->parse_state == BUXN_CHESS_PARSE_WST_IN
+				|| chess->parse_state == BUXN_CHESS_PARSE_RST_IN
 			) {
-				chess->sig_parse_state = BUXN_CHESS_PARSE_WST_OUT;
+				chess->parse_state = BUXN_CHESS_PARSE_WST_OUT;
 				chess->current_signature->type = BUXN_CHESS_VECTOR;
 			} else {
 				buxn_chess_report(
@@ -2122,7 +2202,7 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			}
 		} else {
 			buxn_chess_sig_stack_t* stack = &chess->current_signature->wst_in;
-			switch (chess->sig_parse_state) {
+			switch (chess->parse_state) {
 				case BUXN_CHESS_PARSE_WST_IN:
 					stack = &chess->current_signature->wst_in;
 					break;
@@ -2153,13 +2233,16 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			}
 		}
 	} else {
-		buxn_chess_addr_info_t* addr_info = buxn_chess_addr_info(chess, chess->current_label_addr);
+		buxn_chess_addr_info_t* addr_info = buxn_chess_addr_info(chess, chess->current_symbol_addr);
 		if ((addr_info->value.semantics & BUXN_CHESS_SEM_ROUTINE) == 0) {
 			addr_info->value.semantics |= BUXN_CHESS_SEM_ROUTINE;
 			addr_info->value.signature = chess->current_signature;
 			chess->current_signature = NULL;
 
-			buxn_chess_mark_routine_for_verification(chess, addr_info);
+			// Trust a sealed signature and don't verify it
+			if (!chess->parse_sealed) {
+				buxn_chess_mark_routine_for_verification(chess, addr_info);
+			}
 		} else {
 			buxn_chess_report(
 				chess->ctx,
@@ -2168,63 +2251,130 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 				&(buxn_asm_report_t){
 					.message = "Routine already has a signature",
 					// TODO: report in redundant annotation region
-					.region = &chess->current_label.region,
+					.region = &chess->current_symbol.region,
 				}
 			);
 		}
-
-		chess->current_label.name = NULL;
 	}
 }
 
 static void
 buxn_chess_parse_signature(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
+	size_t len = strlen(sym->name);
+	bool is_signature =
+		(len == 2 && sym->name[0] == '-' && sym->name[1] == '-')
+		||
+		(len == 2 && sym->name[0] == '-' && sym->name[1] == '>');
+	if (is_signature) {
+		if (chess->current_signature == NULL) {
+			chess->current_signature = buxn_chess_alloc(
+				chess->ctx,
+				sizeof(buxn_chess_signature_t),
+				_Alignof(buxn_chess_signature_t)
+			);
+		}
+		memset(chess->current_signature, 0, sizeof(*chess->current_signature));
+	}
+	buxn_chess_parse(chess, sym, is_signature, buxn_chess_parse_signature2);
+}
+
+static void
+buxn_chess_parse_cast2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 	if (sym != NULL) {
-		size_t len = strlen(sym->name);
-		if (
-			(len == 2 && sym->name[0] == '-' && sym->name[1] == '-')
-			|| (len == 2 && sym->name[0] == '-' && sym->name[1] == '>')
-		) {
-			// Use the actual parser now that we have confirmed that this is
-			// a signature
-			if (chess->current_signature == NULL) {
-				chess->current_signature = buxn_chess_alloc(
-					chess->ctx,
-					sizeof(buxn_chess_signature_t),
-					_Alignof(buxn_chess_signature_t)
-				);
-			}
-			memset(chess->current_signature, 0, sizeof(*chess->current_signature));
-			chess->sig_parse_state = BUXN_CHESS_PARSE_WST_IN;
-
-			chess->anno_handler = buxn_chess_parse_signature2;
-			for (uint8_t i = 0; i < chess->num_sig_tokens; ++i) {
-				if (chess->anno_handler != NULL) {
-					chess->anno_handler(chess, &chess->signature_tokens[i]);
-				} else {
-					break;
+		if (chess->parse_sealed) {
+			buxn_chess_report(
+				chess->ctx,
+				BUXN_CHESS_NO_TRACE,
+				BUXN_ASM_REPORT_WARNING,
+				&(buxn_asm_report_t){
+					.message = "Unexpected token in sealed cast",
+					.region = &sym->region,
 				}
-			}
-
-			if (chess->anno_handler != NULL) {
-				chess->anno_handler(chess, sym);
-			}
-		} else if (chess->num_sig_tokens < BUXN_CHESS_MAX_SIG_TOKENS) {
-			// Buffer the token
-			const char* name_copy = buxn_chess_tmp_strcpy(chess, sym->name);
-			if (name_copy == NULL) {
-				chess->anno_handler = NULL;
-				return;
-			}
-
-			chess->signature_tokens[chess->num_sig_tokens++] = (buxn_asm_sym_t){
-				.name = name_copy,
-				.region = sym->region,
-			};
-		} else {
+			);
 			chess->anno_handler = NULL;
 		}
+
+		size_t len = strlen(sym->name);
+		if (len == 1 && sym->name[0] == '.') {
+			if (chess->parse_state == BUXN_CHESS_PARSE_WST_IN) {
+				chess->parse_state = BUXN_CHESS_PARSE_RST_IN;
+			} else {
+				buxn_chess_report(
+					chess->ctx,
+					BUXN_CHESS_NO_TRACE,
+					BUXN_ASM_REPORT_WARNING,
+					&(buxn_asm_report_t){
+						.message = "Unexpected token in cast",
+						.region = &sym->region,
+					}
+				);
+				chess->anno_handler = NULL;
+			}
+		} else if (len == 1 && sym->name[0] == '!') {
+			chess->parse_sealed = true;
+		} else if (
+			(len == 2 && sym->name[0] == '-' && sym->name[1] == '-')
+			||
+			(len == 2 && sym->name[0] == '-' && sym->name[1] == '>')
+		) {
+			buxn_chess_report(
+				chess->ctx,
+				BUXN_CHESS_NO_TRACE,
+				BUXN_ASM_REPORT_WARNING,
+				&(buxn_asm_report_t){
+					.message = "Unexpected token in cast",
+					.region = &sym->region,
+				}
+			);
+			chess->anno_handler = NULL;
+		} else {
+			buxn_chess_sig_stack_t* stack = &chess->current_cast->wst;
+			switch (chess->parse_state) {
+				case BUXN_CHESS_PARSE_WST_IN:
+					stack = &chess->current_cast->wst;
+					break;
+				case BUXN_CHESS_PARSE_RST_IN:
+					stack = &chess->current_cast->rst;
+					break;
+				default:
+					chess->anno_handler = NULL;
+					break;
+			}
+
+			if (stack->len < BUXN_CHESS_MAX_ARGS) {
+				stack->content[stack->len++] = buxn_chess_parse_value(chess, sym, len);
+			} else {
+				buxn_chess_report(
+					chess->ctx,
+					BUXN_CHESS_NO_TRACE,
+					BUXN_ASM_REPORT_WARNING,
+					&(buxn_asm_report_t){
+						.message = "Too many arguments",
+						.region = &sym->region,
+					}
+				);
+				chess->anno_handler = NULL;
+			}
+		}
+	} else {
 	}
+}
+
+static void
+buxn_chess_parse_cast(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
+	size_t len = strlen(sym->name);
+	bool is_cast = len == 1 && sym->name[0] == '!';
+	if (is_cast) {
+		if (chess->current_cast == NULL) {
+			chess->current_cast = buxn_chess_alloc(
+				chess->ctx,
+				sizeof(buxn_chess_cast_t),
+				_Alignof(buxn_chess_cast_t)
+			);
+		}
+		memset(chess->current_cast, 0, sizeof(*chess->current_cast));
+	}
+	buxn_chess_parse(chess, sym, is_cast, buxn_chess_parse_cast2);
 }
 
 // }}}
@@ -2321,14 +2471,28 @@ buxn_chess_handle_symbol(
 	(void)addr;
 	if (sym->type == BUXN_ASM_SYM_COMMENT) {
 		if (sym->id == 0) {  // Start
-			if (sym->name[1] == '\0' && chess->current_label.name != NULL) {  // Lone '('
+			if (sym->name[1] == '\0' && chess->current_symbol.name != NULL) {  // Lone '('
 				chess->tmp_buff_ptr = chess->tmp_buf;
 				chess->num_sig_tokens = 0;
-				chess->anno_handler = buxn_chess_parse_signature;
+				if (
+					chess->current_symbol.type == BUXN_ASM_SYM_LABEL
+					&&
+					!chess->current_symbol.name_is_generated
+				) {
+					chess->anno_handler = buxn_chess_parse_signature;
+				} else if (
+					chess->current_symbol.type == BUXN_ASM_SYM_OPCODE
+					|| sym->type == BUXN_ASM_SYM_LABEL_REF
+					|| sym->type == BUXN_ASM_SYM_NUMBER
+					|| sym->type == BUXN_ASM_SYM_TEXT
+				) {
+					chess->anno_handler = buxn_chess_parse_cast;
+				}
 			}
 		} else if (sym->id == 1 && sym->name[0] == ')' && sym->name[1] == '\0') {  // End
 			if (chess->anno_handler != NULL) {
 				chess->anno_handler(chess, NULL);
+				chess->current_symbol.name = NULL;
 				chess->anno_handler = NULL;
 			}
 		} else {  // Intermediate
@@ -2341,20 +2505,17 @@ buxn_chess_handle_symbol(
 			}
 		}
 	} else if (sym->type == BUXN_ASM_SYM_LABEL && !sym->name_is_generated) {
-		chess->current_label = *sym;
-		chess->current_label_addr = addr;
+		chess->current_symbol = *sym;
+		chess->current_symbol_addr = addr;
+		chess->anno_handler = NULL;
 
 		buxn_chess_addr_info_t* addr_info = buxn_chess_ensure_addr_info(chess, addr);
 		addr_info->value.name = (buxn_chess_str_t){
-			.chars = chess->current_label.name,
-			.len = strlen(chess->current_label.name),
+			.chars = chess->current_symbol.name,
+			.len = strlen(chess->current_symbol.name),
 		};
 		addr_info->value.region = sym->region;
-	} else {
-		chess->current_label.name = NULL;
-	}
-
-	if (
+	} else if (
 		sym->type == BUXN_ASM_SYM_OPCODE
 		|| sym->type == BUXN_ASM_SYM_LABEL_REF
 		|| sym->type == BUXN_ASM_SYM_NUMBER
@@ -2376,8 +2537,14 @@ buxn_chess_handle_symbol(
 				chess->ctx, sizeof(buxn_asm_sym_t), _Alignof(buxn_asm_sym_t)
 			);
 			*in_sym = *sym;
+
+			chess->current_symbol = *sym;
+			chess->current_symbol_addr = addr;
+			chess->anno_handler = NULL;
 		}
 
 		chess->symbols[addr] = in_sym;
+	} else {
+		chess->current_symbol.name = NULL;
 	}
 }

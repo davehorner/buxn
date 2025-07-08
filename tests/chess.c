@@ -217,3 +217,16 @@ BTEST(chess, termination) {
 		)
 	);
 }
+
+BTEST(chess, trusted_signature) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"BRK\n"
+			"@Trusted ( a b -- ! )\n"
+		)
+	);
+	BTEST_EXPECT(basm->num_warnings == 0);
+}
