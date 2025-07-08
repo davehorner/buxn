@@ -1184,8 +1184,8 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 		// The target jump can be short-circuited into just applying the signature effect
 		// without jumping
 		BUXN_CHESS_DEBUG(
-			"Short-circuited jump into %.*s",
-			(int)addr_info->value.name.len, addr_info->value.name.chars
+			"Short-circuited jump into " BUXN_CHESS_VALUE_FMT,
+			BUXN_CHESS_VALUE_FMT_ARGS(addr_info->value)
 		);
 		buxn_chess_short_circuit(ctx, addr_info->value.signature);
 	} else {
@@ -1788,6 +1788,30 @@ buxn_chess_copy_stack(buxn_chess_stack_t* dst, const buxn_chess_stack_t* src) {
 	dst->size = src->size;
 }
 
+static void
+buxn_chess_dump_stack(buxn_chess_exec_ctx_t* ctx) {
+	void* region = buxn_chess_begin_mem_region(ctx->chess->ctx);
+	BUXN_CHESS_DEBUG(
+		"WST(%d):%s",
+		ctx->entry->state.wst.len,
+		buxn_chess_format_stack(
+			ctx->chess,
+			ctx->entry->state.wst.content,
+			ctx->entry->state.wst.len
+		).chars
+	);
+	BUXN_CHESS_DEBUG(
+		"RST(%d):%s",
+		ctx->entry->state.rst.len,
+		buxn_chess_format_stack(
+			ctx->chess,
+			ctx->entry->state.rst.content,
+			ctx->entry->state.rst.len
+		).chars
+	);
+	buxn_chess_end_mem_region(ctx->chess->ctx, region);
+}
+
 #undef BUXN_OPCODE_NAME
 #define BUXN_OPCODE_NAME(NAME, K, R, S) NAME
 #define BUXN_CHESS_DISPATCH(NAME, VALUE) \
@@ -1853,10 +1877,12 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 			(addr_info->value.semantics & BUXN_CHESS_SEM_ROUTINE)
 		) {
 			BUXN_CHESS_DEBUG(
-				"Short-circuited fallthrough into %.*s",
-				(int)addr_info->value.name.len, addr_info->value.name.chars
+				"Executing (" BUXN_CHESS_VALUE_FMT ") at %s",
+				BUXN_CHESS_VALUE_FMT_ARGS(addr_info->value),
+				buxn_chess_format_address(chess, ctx.pc)
 			);
 			buxn_chess_short_circuit(&ctx, addr_info->value.signature);
+			buxn_chess_dump_stack(&ctx);
 			addr_info = buxn_chess_addr_info(chess, ctx.pc);
 		}
 		if (ctx.terminated) { break; }
@@ -1895,18 +1921,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 			BUXN_OPCODE_DISPATCH(BUXN_CHESS_DISPATCH)
 		}
 
-		void* region = buxn_chess_begin_mem_region(chess->ctx);
-		BUXN_CHESS_DEBUG(
-			"WST(%d):%s",
-			ctx.entry->state.wst.len,
-			buxn_chess_format_stack(chess, ctx.entry->state.wst.content, ctx.entry->state.wst.len).chars
-		);
-		BUXN_CHESS_DEBUG(
-			"RST(%d):%s",
-			ctx.entry->state.rst.len,
-			buxn_chess_format_stack(chess, ctx.entry->state.rst.content, ctx.entry->state.rst.len).chars
-		);
-		buxn_chess_end_mem_region(chess->ctx, region);
+		buxn_chess_dump_stack(&ctx);
 	}
 
 	// Dump stack before error
