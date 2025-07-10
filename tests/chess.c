@@ -280,3 +280,59 @@ BTEST(chess, macro) {
 	);
 	BTEST_EXPECT(basm->num_warnings == 0);
 }
+
+BTEST(chess, nominal) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+
+	// Nominal argument can't be a number
+	basm->suppress_report = true;
+	BTEST_EXPECT(
+		!buxn_asm_str(
+			basm,
+			"#01 consume-nominal BRK\n"
+			"@consume-nominal ( Nominal -- ) POP JMP2r\n"
+		)
+	);
+	basm->suppress_report = false;
+
+	// Nominal value can be created by casting
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"#01 ( Nominal ! ) consume-nominal BRK\n"
+			"@consume-nominal ( Nominal -- ) POP JMP2r\n"
+		)
+	);
+
+	// Nominal value can be converted when returned
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"produce-nominal consume-nominal BRK\n"
+			"@consume-nominal ( Nominal -- ) POP JMP2r\n"
+			"@produce-nominal ( -- Nominal ) #01 JMP2r\n"
+		)
+	);
+
+	// Nominal subtyping
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"produce-nominal consume-nominal BRK\n"
+			"@consume-nominal ( Nominal/ -- ) POP JMP2r\n"
+			"@produce-nominal ( -- Nominal/sub ) #01 JMP2r\n"
+		)
+	);
+
+	// Nominal mismatch
+	basm->suppress_report = true;
+	BTEST_EXPECT(
+		!buxn_asm_str(
+			basm,
+			"produce-nominal consume-nominal BRK\n"
+			"@consume-nominal ( Nominal/b -- ) POP JMP2r\n"
+			"@produce-nominal ( -- Nominal/a ) #01 JMP2r\n"
+		)
+	);
+	basm->suppress_report = false;
+}
