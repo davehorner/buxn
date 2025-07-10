@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include "common.h"
 #include <buxn/vm/vm.h>
-#include <buxn//devices/system.h>
+#include <buxn/devices/system.h>
 #include "resources.h"
 
 static struct {

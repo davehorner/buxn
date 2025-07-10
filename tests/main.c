@@ -1,10 +1,17 @@
 #include <blog.h>
 #include <btest.h>
+#include <string.h>
 
 int
 main(int argc, const char* argv[]) {
-	(void)argc;
-	(void)argv;
+	const char* suite_filter = NULL;
+	const char* test_filter = NULL;
+	if (argc > 1) {
+		suite_filter = argv[1];
+		if (argc > 2) {
+			test_filter = argv[2];
+		}
+	}
 
 	blog_init(&(blog_options_t){
 		.current_filename = __FILE__,
@@ -19,6 +26,14 @@ main(int argc, const char* argv[]) {
 	int num_failed = 0;
 
 	BTEST_FOREACH(test) {
+		if (suite_filter && strcmp(suite_filter, test->suite->name) != 0) {
+			continue;
+		}
+
+		if (test_filter && strcmp(test_filter, test->name) != 0) {
+			continue;
+		}
+
 		++num_tests;
 
 		BLOG_INFO("---- %s/%s: Running ----", test->suite->name, test->name);

@@ -345,13 +345,28 @@ static bool
 buxn_asm_is_number(buxn_asm_str_t str) {
 	if (str.len == 0) { return false; }
 
-	for (int i = 0; i < str.len; ++i) {
-		char ch = str.chars[i];
-		if (!(
-			('0' <= ch && ch <= '9')
-			|| ('a' <= ch && ch <= 'f')
-		)) {
-			return false;
+	int start_index = 0;
+	if (start_index < str.len && str.chars[start_index] == '+') { ++start_index; }
+	if (start_index < str.len && str.chars[start_index] == '+') { ++start_index; }
+
+	if (start_index > 0) {
+		// Decimal
+		for (int i = start_index; i < str.len; ++i) {
+			char ch = str.chars[i];
+			if (!('0' <= ch && ch <= '9')) {
+				return false;
+			}
+		}
+	} else {
+		// Hex
+		for (int i = start_index; i < str.len; ++i) {
+			char ch = str.chars[i];
+			if (!(
+				('0' <= ch && ch <= '9')
+				|| ('a' <= ch && ch <= 'f')
+			)) {
+				return false;
+			}
 		}
 	}
 
@@ -804,7 +819,7 @@ buxn_asm_put_symbol2(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* s
 static bool
 buxn_asm_emit(buxn_asm_t* basm, const buxn_asm_token_t* token, uint8_t byte) {
 	uint16_t addr = basm->write_addr++;
-	if (addr < BUXN_ASM_RESET_VECTOR && byte != 0) {
+	if (addr < BUXN_ASM_RESET_VECTOR) {
 		return buxn_asm_error(basm, token, "Writing to zero page");
 	}
 
@@ -1399,25 +1414,59 @@ buxn_asm_parse_number(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
 	buxn_asm_str_t str,
-	uint16_t* number_out
+	uint16_t* number_out,
+	uint8_t* num_bytes_out
 ) {
-	uint16_t number = 0;
-	if (str.len == 0 || str.len > 4) {
-		return buxn_asm_error(basm, token, "Invalid number");
+	if (str.len == 0) {
+		return buxn_asm_error(basm, token, "Invalid number: Empty string");
 	}
 
-	for (int i = 0; i < str.len; ++i) {
-		char ch = str.chars[str.len - i - 1];
-		if ('0' <= ch && ch <= '9') {
-			number |= (ch - '0') << (i * 4);
-		} else if ('a' <= ch && ch <= 'f') {
-			number |= (ch - 'a' + 10) << (i * 4);
-		} else {
-			return buxn_asm_error(basm, token, "Invalid number");
+	int start_index = 0;
+	if (start_index < str.len && str.chars[start_index] == '+') { ++start_index; }
+	if (start_index < str.len && str.chars[start_index] == '+') { ++start_index; }
+
+	if (start_index == 0) {
+		// Hex
+		uint16_t number = 0;
+
+		if (str.len > 4) {
+			return buxn_asm_error(basm, token, "Invalid number: Too many characters");
 		}
+
+		for (int i = 0; i < str.len; ++i) {
+			char ch = str.chars[str.len - i - 1];
+			if ('0' <= ch && ch <= '9') {
+				number |= (ch - '0') << (i * 4);
+			} else if ('a' <= ch && ch <= 'f') {
+				number |= (ch - 'a' + 10) << (i * 4);
+			} else {
+				return buxn_asm_error(basm, token, "Invalid number: Unexpected character found");
+			}
+		}
+
+		*number_out = number;
+		*num_bytes_out = str.len <= 2 ? 1 : 2;
+	} else {
+		// Decimal
+		uint32_t number = 0;
+		uint32_t limit = start_index == 1 ? UINT8_MAX : UINT16_MAX;
+		for (int i = start_index; i < str.len; ++i) {
+			char ch = str.chars[i];
+			if ('0' <= ch && ch <= '9') {
+				number *= 10;
+				number += ch - '0';
+				if (number > limit) {
+					return buxn_asm_error(basm, token, "Invalid number: Too big");
+				}
+			} else {
+				return buxn_asm_error(basm, token, "Invalid number: Unexpected character found");
+			}
+		}
+
+		*number_out = (uint16_t)number;
+		*num_bytes_out = (uint8_t)start_index;
 	}
 
-	*number_out = number;
 	return true;
 }
 
@@ -1431,7 +1480,8 @@ buxn_asm_resolve_padding(
 	if (padding_str.len == 0) {
 		return buxn_asm_error(basm, token, "Invalid padding");
 	} else if (buxn_asm_is_number(padding_str)) {
-		return buxn_asm_parse_number(basm, token, padding_str, padding_out);
+		uint8_t num_bytes;
+		return buxn_asm_parse_number(basm, token, padding_str, padding_out, &num_bytes);
 	} else {
 		buxn_asm_str_t padding_label;
 		if (!buxn_asm_resolve_label_ref(basm, token, padding_str, &padding_label)) {
@@ -1489,15 +1539,20 @@ buxn_asm_process_lit_number(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 	uint16_t number;
 	buxn_asm_str_t str = buxn_asm_str_pop_front(start->lexeme);
 
-	if (str.len != 2 && str.len != 4) {
-		return buxn_asm_error(basm, start, "Invalid number");
+	if (str.len == 0) {
+		return buxn_asm_error(basm, start, "Invalid number: Empty string");
 	}
 
-	if (!buxn_asm_parse_number(basm, start, str, &number)) {
+	if (str.chars[0] != '+' && str.len != 2 && str.len != 4) {
+		return buxn_asm_error(basm, start, "Invalid number: Invalid number of hex digits");
+	}
+
+	uint8_t num_bytes;
+	if (!buxn_asm_parse_number(basm, start, str, &number, &num_bytes)) {
 		return false;
 	}
 
-	if (str.len <= 2) {
+	if (num_bytes == 1) {
 		if (!buxn_asm_emit_opcode(basm, start, 0x80, true)) { return false; }  // LIT
 		if (!buxn_asm_emit_byte(basm, start, number, true)) { return false; }
 	} else {
@@ -1512,15 +1567,21 @@ static bool
 buxn_asm_process_raw_number(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	uint16_t number;
 
-	if (token->lexeme.len != 2 && token->lexeme.len != 4) {
-		return buxn_asm_error(basm, token, "Invalid number");
+	buxn_asm_str_t str = token->lexeme;
+	if (str.len == 0) {
+		return buxn_asm_error(basm, token, "Invalid number: Empty string");
 	}
 
-	if (!buxn_asm_parse_number(basm, token, token->lexeme, &number)) {
+	if (str.chars[0] != '+' && str.len != 2 && str.len != 4) {
+		return buxn_asm_error(basm, token, "Invalid number: Invalid number of hex digits");
+	}
+
+	uint8_t num_bytes;
+	if (!buxn_asm_parse_number(basm, token, token->lexeme, &number, &num_bytes)) {
 		return false;
 	}
 
-	if (token->lexeme.len <= 2) {
+	if (num_bytes == 1) {
 		if (!buxn_asm_emit_byte(basm, token, number, false)) { return false; }
 	} else {
 		if (!buxn_asm_emit_short(basm, token, number, false)) { return false; }
