@@ -8,6 +8,7 @@
 #include "hamt.h"
 
 #define BUXN_ASM_MAX_TOKEN_LEN 47
+#define BUXN_ASM_MAX_LONG_STRING_LEN 1024
 #define BUXN_ASM_DEFAULT_LABEL_SCOPE "RESET"
 #define BUXN_ASM_RESET_VECTOR 0x0100
 #define BUXN_ASM_MAX_PREPROCESSOR_DEPTH 32
@@ -183,7 +184,7 @@ typedef struct {
 
 	int preprocessor_depth;
 	buxn_asm_macro_unit_t* current_macro;
-	char token_buf[BUXN_ASM_MAX_TOKEN_LEN + 1];
+	char token_buf[BUXN_ASM_MAX_LONG_STRING_LEN + 1];
 	char name_buf[BUXN_ASM_MAX_TOKEN_LEN + 1];
 
 	int read_buf;
@@ -456,13 +457,62 @@ buxn_asm_parse_opcode(buxn_asm_str_t word, buxn_asm_opcode_result_t* result) {
 }
 
 static bool
-buxn_asm_next_token_in_file(
+buxn_asm_scan_regular_token(
 	buxn_asm_t* basm,
 	buxn_asm_file_unit_t* unit,
-	buxn_asm_token_t* token
+	buxn_asm_token_t* token,
+	int ch,
+	buxn_asm_file_pos_t start
 ) {
-	buxn_asm_file_pos_t start = unit->pos;
 	int token_len = 0;
+	buxn_asm_file_pos_t end = start;
+
+	while (true) {
+		if (token_len < BUXN_ASM_MAX_TOKEN_LEN) {
+			basm->token_buf[token_len++] = (char)ch;
+		} else {
+			return buxn_asm_error_ex(
+				basm,
+				&(buxn_asm_report_t) {
+					.message = "Token is too long",
+					.region = &(buxn_asm_source_region_t){
+						.filename = unit->path->key.chars,
+						.range = { .start = start, .end = end },
+					},
+				}
+			);
+		}
+
+		end = unit->pos;
+		ch = buxn_asm_get_char(basm, unit);
+
+		if (ch == BUXN_ASM_IO_ERROR) {
+			return false;
+		} else if (ch == BUXN_ASM_IO_EOF || buxn_asm_is_sep(ch)) {
+			basm->token_buf[token_len] = '\0';
+			*(token) = (buxn_asm_token_t){
+				.lexeme = { .chars = basm->token_buf, .len = token_len },
+				.region = {
+					.filename = unit->path->key.chars,
+					.range = { .start = start, .end = end },
+				},
+			};
+			return true;
+		}
+	}
+}
+
+static bool
+buxn_asm_scan_long_string(
+	buxn_asm_t* basm,
+	buxn_asm_file_unit_t* unit,
+	buxn_asm_token_t* token,
+	buxn_asm_file_pos_t start
+) {
+	int token_len = 0;
+	buxn_asm_consume_char(basm);  // Consume the space following '"'
+	basm->token_buf[token_len++] = '"';  // Incude the prefix
+
 	while (true) {
 		buxn_asm_file_pos_t end = unit->pos;
 		int ch = buxn_asm_get_char(basm, unit);
@@ -470,41 +520,35 @@ buxn_asm_next_token_in_file(
 		if (ch == BUXN_ASM_IO_ERROR) {
 			return false;
 		} else if (ch == BUXN_ASM_IO_EOF) {
-			if (token_len == 0) {
-				return false;
-			} else {
-				basm->token_buf[token_len] = '\0';
-				*(token) = (buxn_asm_token_t){
-					.lexeme = { .chars = basm->token_buf, .len = token_len },
-					.region = {
+			return buxn_asm_error_ex(
+				basm,
+				&(buxn_asm_report_t) {
+					.message = "Unterminated long string",
+					.region = &(buxn_asm_source_region_t){
 						.filename = unit->path->key.chars,
 						.range = { .start = start, .end = end },
 					},
-				};
-				return true;
-			}
-		} else if (buxn_asm_is_sep(ch)) {
-			if (token_len == 0) {
-				start = unit->pos;
-			} else {
-				basm->token_buf[token_len] = '\0';
-				*(token) = (buxn_asm_token_t){
-					.lexeme = { .chars = basm->token_buf, .len = token_len },
-					.region = {
-						.filename = unit->path->key.chars,
-						.range = { .start = start, .end = end },
-					},
-				};
-				return true;
-			}
+				}
+			);
+		} else if (ch == '"') {
+			// Exclude the final '"'
+			basm->token_buf[token_len] = '\0';
+			*(token) = (buxn_asm_token_t){
+				.lexeme = { .chars = basm->token_buf, .len = token_len },
+				.region = {
+					.filename = unit->path->key.chars,
+					.range = { .start = start, .end = end },
+				},
+			};
+			return true;
 		} else {
-			if (token_len < BUXN_ASM_MAX_TOKEN_LEN) {
+			if (token_len < BUXN_ASM_MAX_LONG_STRING_LEN) {
 				basm->token_buf[token_len++] = (char)ch;
 			} else {
 				return buxn_asm_error_ex(
 					basm,
 					&(buxn_asm_report_t) {
-						.message = "Token is too long",
+						.message = "String is too long",
 						.region = &(buxn_asm_source_region_t){
 							.filename = unit->path->key.chars,
 							.range = { .start = start, .end = end },
@@ -512,6 +556,31 @@ buxn_asm_next_token_in_file(
 					}
 				);
 			}
+		}
+	}
+}
+
+static bool
+buxn_asm_next_token_in_file(
+	buxn_asm_t* basm,
+	buxn_asm_file_unit_t* unit,
+	buxn_asm_token_t* token
+) {
+	// Scan until a non separator is seen then transfer to a token scan function
+	while (true) {
+		buxn_asm_file_pos_t pos = unit->pos;
+		int ch = buxn_asm_get_char(basm, unit);
+
+		if (ch == BUXN_ASM_IO_ERROR) {
+			return false;
+		} else if (ch == BUXN_ASM_IO_EOF) {
+			return false;
+		} else if (buxn_asm_is_sep(ch)) {
+			continue;
+		} else if (ch == '"' && buxn_asm_peek_char(basm, unit) == ' ') {
+			return buxn_asm_scan_long_string(basm, unit, token, pos);
+		} else {
+			return buxn_asm_scan_regular_token(basm, unit, token, ch, pos);
 		}
 	}
 }

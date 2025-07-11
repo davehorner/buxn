@@ -140,3 +140,13 @@ BTEST(basm_ext, at_label) {
 	BTEST_EXPECT(!buxn_asm_str(basm, "#00 @@ INCk #08 NEQ ?@ POP !@ BRK"));
 	basm->suppress_report = false;
 }
+
+BTEST(basm_ext, long_string) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+
+	BTEST_EXPECT(buxn_asm_str(basm, "\" long  string is long my dude can you imagine how long it is?\""));
+	BTEST_EXPECT_EQUAL("%d", basm->rom_size, sizeof("long  string is long my dude can you imagine how long it is?") - 1);
+
+	// Unterminated
+	BTEST_EXPECT(!buxn_asm_str(basm, "\" "));
+}
