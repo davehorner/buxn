@@ -122,6 +122,7 @@ typedef enum {
 } buxn_asm_symtab_entry_type_t;
 
 typedef struct buxn_asm_forward_ref_s buxn_asm_forward_ref_t;
+typedef buxn_asm_forward_ref_t buxn_asm_at_label_t;
 typedef struct buxn_asm_symtab_node_s buxn_asm_symtab_node_t;
 
 typedef struct {
@@ -132,7 +133,7 @@ typedef struct {
 typedef struct {
 	uint16_t id;
 	buxn_asm_forward_ref_t* refs;
-} buxn_forward_ref_info_t;
+} buxn_asm_forward_ref_info_t;
 
 struct buxn_asm_symtab_node_s {
 	const buxn_asm_pstr_t* key;
@@ -145,7 +146,7 @@ struct buxn_asm_symtab_node_s {
 	union {
 		buxn_asm_macro_unit_t macro;
 		buxn_asm_label_info_t label;
-		buxn_forward_ref_info_t forward_ref;
+		buxn_asm_forward_ref_info_t forward_ref;
 	};
 };
 
@@ -196,6 +197,7 @@ typedef struct {
 	buxn_asm_symtab_t symtab;
 	buxn_asm_str_t label_scope;
 	buxn_asm_forward_ref_t* lambdas;
+	buxn_asm_at_label_t* at_labels;
 	buxn_asm_forward_ref_t* ref_pool;
 } buxn_asm_t;
 
@@ -687,6 +689,28 @@ buxn_asm_find_symbol(buxn_asm_t* basm, const buxn_asm_pstr_t* name) {
 
 // Label {{{
 
+static buxn_asm_forward_ref_t*
+buxn_asm_alloc_forward_ref(buxn_asm_t* basm) {
+	buxn_asm_forward_ref_t* ref;
+	if (basm->ref_pool != NULL) {
+		ref = basm->ref_pool;
+		basm->ref_pool = ref->next;
+	} else {
+		ref = buxn_asm_alloc(
+			basm->ctx,
+			sizeof(buxn_asm_forward_ref_t), _Alignof(buxn_asm_forward_ref_t)
+		);
+	}
+
+	return ref;
+}
+
+static inline void
+buxn_asm_release_forward_ref(buxn_asm_t* basm, buxn_asm_forward_ref_t* ref) {
+	ref->next = basm->ref_pool;
+	basm->ref_pool = ref;
+}
+
 static bool
 buxn_asm_emit_backward_ref(
 	buxn_asm_t* basm,
@@ -739,8 +763,7 @@ buxn_asm_register_label(
 				false
 			);
 
-			itr->next = basm->ref_pool;
-			basm->ref_pool = itr;
+			buxn_asm_release_forward_ref(basm, itr);
 			itr = next;
 		}
 		symbol->referenced = forward_refs != NULL;
@@ -894,22 +917,6 @@ buxn_asm_emit_short(buxn_asm_t* basm, const buxn_asm_token_t* token, uint16_t sh
 	return true;
 }
 
-static buxn_asm_forward_ref_t*
-buxn_asm_alloc_forward_ref(buxn_asm_t* basm) {
-	buxn_asm_forward_ref_t* ref;
-	if (basm->ref_pool != NULL) {
-		ref = basm->ref_pool;
-		basm->ref_pool = ref->next;
-	} else {
-		ref = buxn_asm_alloc(
-			basm->ctx,
-			sizeof(buxn_asm_forward_ref_t), _Alignof(buxn_asm_forward_ref_t)
-		);
-	}
-
-	return ref;
-}
-
 static bool
 buxn_asm_emit_addr_placeholder(
 	buxn_asm_t* basm,
@@ -995,6 +1002,7 @@ buxn_asm_emit_lambda_ref(
 	buxn_asm_forward_ref_t* ref = buxn_asm_alloc_forward_ref(basm);
 	*ref = (buxn_asm_forward_ref_t){
 		.next = basm->lambdas,
+		// basm->num_labels is already incremented by buxn_asm_emit_addr_placeholder
 		.label_id = basm->num_labels,
 		.lambda_id = basm->num_lambdas++,
 		.token = *token,
@@ -1095,7 +1103,8 @@ buxn_asm_emit_backward_ref(
 	}
 	buxn_asm_sym_t sym = {
 		.type = BUXN_ASM_SYM_LABEL_REF,
-		.name = symbol->key->key.chars,
+		// For anonymous backward ref, there is no name
+		.name = symbol->key != NULL ? symbol->key->key.chars : NULL,
 		.region = region,
 		.id = symbol->label.id,
 	};
@@ -1107,6 +1116,16 @@ buxn_asm_emit_backward_ref(
 		&symbol->defining_token,
 		with_symbol ? &sym : NULL
 	);
+}
+
+static buxn_asm_at_label_t*
+buxn_asm_pop_at_label(buxn_asm_t* basm) {
+	buxn_asm_at_label_t* label = basm->at_labels;
+	if (label == NULL) { return NULL; }
+
+	basm->at_labels = label->next;
+	buxn_asm_release_forward_ref(basm, label);
+	return label;
 }
 
 static bool
@@ -1127,23 +1146,43 @@ buxn_asm_emit_label_ref(
 		return false;
 	}
 
-	if (full_name.len == 0 || buxn_asm_is_runic(full_name.chars[0])) {
-		return buxn_asm_error(basm, token, "Invalid reference");
-	}
+	if (full_name.len == 1 && full_name.chars[0] == '@') {
+		// Anonymous backward ref
+		buxn_asm_at_label_t* label = buxn_asm_pop_at_label(basm);
 
-	buxn_asm_symtab_node_t* symbol = buxn_asm_find_or_create_symbol(basm, token, full_name);
-	if (symbol == NULL) {
-		return false;
-	} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) {
-		symbol->referenced = true;
-		return buxn_asm_emit_backward_ref(basm, token, type, size, symbol, true, is_runic);
-	} else if (
-		symbol->type == BUXN_ASM_SYMTAB_ENTRY_UNKNOWN
-		|| symbol->type == BUXN_ASM_SYMTAB_ENTRY_FORWARD_REF
-	) {
-		return buxn_asm_emit_forward_ref(basm, token, type, size, symbol, is_runic);
+		if (label != NULL) {
+			buxn_asm_symtab_node_t symbol = {
+				.type = BUXN_ASM_SYMTAB_ENTRY_LABEL,
+				.defining_token = label->token,
+				.label = {
+					.id = label->label_id,
+					.address = label->addr,
+				},
+			};
+			return buxn_asm_emit_backward_ref(basm, token, type, size, &symbol, true, is_runic);
+		} else {
+			return buxn_asm_error(basm, token, "No previously declared @-label");
+		}
 	} else {
-		return buxn_asm_error(basm, token, "Invalid reference");
+		// Regular label ref
+		if (full_name.len == 0 || buxn_asm_is_runic(full_name.chars[0])) {
+			return buxn_asm_error(basm, token, "Invalid reference");
+		}
+
+		buxn_asm_symtab_node_t* symbol = buxn_asm_find_or_create_symbol(basm, token, full_name);
+		if (symbol == NULL) {
+			return false;
+		} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) {
+			symbol->referenced = true;
+			return buxn_asm_emit_backward_ref(basm, token, type, size, symbol, true, is_runic);
+		} else if (
+			symbol->type == BUXN_ASM_SYMTAB_ENTRY_UNKNOWN
+			|| symbol->type == BUXN_ASM_SYMTAB_ENTRY_FORWARD_REF
+		) {
+			return buxn_asm_emit_forward_ref(basm, token, type, size, symbol, is_runic);
+		} else {
+			return buxn_asm_error(basm, token, "Invalid reference");
+		}
 	}
 }
 
@@ -1160,12 +1199,23 @@ buxn_asm_emit_jsi(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 
 static bool
 buxn_asm_resolve(buxn_asm_t* basm) {
-	if (basm->lambdas != NULL) {
+	for (buxn_asm_forward_ref_t* itr = basm->lambdas; itr != NULL; itr = itr->next) {
 		buxn_asm_error_ex(
 			basm,
 			&(buxn_asm_report_t){
 				.message = "Unbalanced lambda",
-				.region = &basm->lambdas->token.region,
+				.region = &itr->token.region,
+			}
+		);
+	}
+
+	for (buxn_asm_forward_ref_t* itr = basm->at_labels; itr != NULL; itr = itr->next) {
+		buxn_asm_report(
+			basm->ctx,
+			BUXN_ASM_REPORT_WARNING,
+			&(buxn_asm_report_t){
+				.message = "Unreferenced @-label",
+				.region = &itr->token.region,
 			}
 		);
 	}
@@ -1377,25 +1427,78 @@ buxn_asm_process_macro(
 	}
 }
 
+static const buxn_asm_pstr_t*
+buxn_asm_make_lambda_name(buxn_asm_t* basm, uint16_t lambda_id) {
+	// A label can't start with @ so we use that
+	char lambda_name[sizeof("@ffff") - 1];
+	lambda_name[0] = '@';
+	char* name_ptr = lambda_name + 1;
+	// Write the digits
+	{
+		bool start_write = false;
+		for (int i = 0; i < 4; ++i) {
+			uint8_t digit = (lambda_id >> ((3 - i) * 4)) & 0x0f;
+			if (start_write || digit != 0 || i >= 2) {
+				start_write = true;
+				if (digit < 10) {
+					*name_ptr++ = '0' + digit;
+				} else {
+					*name_ptr++ = 'a' + (digit - 10);
+				}
+			}
+		}
+	}
+	*name_ptr = '\0';
+	return buxn_asm_strintern( basm, (buxn_asm_str_t){
+		.chars = lambda_name,
+		.len = name_ptr - lambda_name,
+	});
+}
+
 static bool
 buxn_asm_process_global_label(buxn_asm_t* basm, const buxn_asm_token_t* start) {
 	buxn_asm_str_t label_name = buxn_asm_str_pop_front(start->lexeme);
 
-	buxn_asm_symtab_node_t* label = buxn_asm_register_label(basm, start, label_name);
-	if (label == NULL) { return false; }
+	if (label_name.len == 1 && label_name.chars[0] == '@') {
+		// Anonymous backward label
+		// This is not really a forward reference but the structure is similar
+		// enough and we can reuse the same alloc pool
+		buxn_asm_at_label_t* label = buxn_asm_alloc_forward_ref(basm);
+		*label = (buxn_asm_forward_ref_t){
+			.next = basm->at_labels,
+			.label_id = ++basm->num_labels,
+			.lambda_id = basm->num_lambdas++,
+			.token = *start,
+			.addr = basm->write_addr,
+		};
+		basm->at_labels = label;
 
-	buxn_asm_str_t interned_name = label->key->key;
-	int slash_pos;
-	for (slash_pos = 0; slash_pos < interned_name.len; ++slash_pos) {
-		if (interned_name.chars[slash_pos] == '/') { break; }
+		buxn_asm_put_symbol(basm->ctx, label->addr, &(buxn_asm_sym_t){
+			.type = BUXN_ASM_SYM_LABEL,
+			.name = buxn_asm_make_lambda_name(basm, label->label_id)->key.chars,
+			.name_is_generated = true,
+			.region = start->region,
+			.id = label->label_id,
+		});
+		return true;
+	} else {
+		// Normal global label
+		buxn_asm_symtab_node_t* label = buxn_asm_register_label(basm, start, label_name);
+		if (label == NULL) { return false; }
+
+		buxn_asm_str_t interned_name = label->key->key;
+		int slash_pos;
+		for (slash_pos = 0; slash_pos < interned_name.len; ++slash_pos) {
+			if (interned_name.chars[slash_pos] == '/') { break; }
+		}
+
+		// Name of the scope must exclude the slash ('/') if any
+		basm->label_scope = (buxn_asm_str_t){
+			.chars = interned_name.chars,
+			.len = slash_pos,
+		};
+		return true;
 	}
-
-	// Name of the scope must exclude the slash ('/') if any
-	basm->label_scope = (buxn_asm_str_t){
-		.chars = interned_name.chars,
-		.len = slash_pos,
-	};
-	return true;
 }
 
 static bool
@@ -1488,21 +1591,34 @@ buxn_asm_resolve_padding(
 			return false;
 		}
 
-		const buxn_asm_pstr_t* interned_name = buxn_asm_strfind(basm, padding_label);
-		if (interned_name == NULL) {
-			return buxn_asm_error(basm, token, "Undeclared label is used for padding");
+		if (padding_label.len == 1 && padding_label.chars[0] == '@') {
+			// Anonymous backward reference
+			buxn_asm_at_label_t* label = buxn_asm_pop_at_label(basm);
+
+			if (label == NULL) {
+				return buxn_asm_error(basm, token, "No previously declared @-label");
+			}
+
+			*padding_out = label->addr;
+		} else {
+			// Regular label
+			const buxn_asm_pstr_t* interned_name = buxn_asm_strfind(basm, padding_label);
+			if (interned_name == NULL) {
+				return buxn_asm_error(basm, token, "Undeclared label is used for padding");
+			}
+
+			buxn_asm_symtab_node_t* symbol = buxn_asm_find_symbol(basm, interned_name);
+			if (symbol == NULL) {
+				return buxn_asm_error(basm, token, "Undeclared label is used for padding");
+			}
+			if (symbol->type != BUXN_ASM_SYMTAB_ENTRY_LABEL) {
+				return buxn_asm_error(basm, token, "Invalid symbol is being used for padding");
+			}
+
+			symbol->referenced = true;
+			*padding_out = symbol->label.address;
 		}
 
-		buxn_asm_symtab_node_t* symbol = buxn_asm_find_symbol(basm, interned_name);
-		if (symbol == NULL) {
-			return buxn_asm_error(basm, token, "Undeclared label is used for padding");
-		}
-		if (symbol->type != BUXN_ASM_SYMTAB_ENTRY_LABEL) {
-			return buxn_asm_error(basm, token, "Invalid symbol is being used for padding");
-		}
-
-		symbol->referenced = true;
-		*padding_out = symbol->label.address;
 		return true;
 	}
 }
@@ -1657,45 +1773,16 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 	}
 	basm->write_addr = current_addr;
 
-	// Generate a name for the lambda to make debugging easier
-	// A label can't start with @ so we use that
-	char lambda_name[sizeof("@ffff")];
-	memcpy(lambda_name, "@", sizeof("@") - 1);
-	char* name_ptr = lambda_name + sizeof("@") - 1;
-	// Write the digits
-	{
-		uint16_t lambda_id = ref->lambda_id;
-		bool start_write = false;
-		for (int i = 0; i < 4; ++i) {
-			uint8_t digit = (lambda_id >> ((3 - i) * 4)) & 0x0f;
-			if (start_write || digit != 0 || i >= 2) {
-				start_write = true;
-				if (digit < 10) {
-					*name_ptr++ = '0' + digit;
-				} else {
-					*name_ptr++ = 'a' + (digit - 10);
-				}
-			}
-		}
-	}
-	*name_ptr = '\0';
-
 	buxn_asm_put_symbol(basm->ctx, current_addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_LABEL,
-		.name = buxn_asm_strintern(
-			basm, (buxn_asm_str_t){
-				.chars = lambda_name,
-				.len = name_ptr - lambda_name,
-			}
-		)->key.chars,
+		.name = buxn_asm_make_lambda_name(basm, ref->lambda_id)->key.chars,
 		.name_is_generated = true,
 		.region = token->region,
 		.id = ref->label_id,
 	});
 
 	basm->lambdas = ref->next;
-	ref->next = basm->ref_pool;
-	basm->ref_pool = ref;
+	buxn_asm_release_forward_ref(basm, ref);
 
 	return true;
 }

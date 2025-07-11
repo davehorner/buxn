@@ -120,3 +120,23 @@ BTEST(basm_ext, decimal) {
 	BTEST_EXPECT(!buxn_asm_str(basm, "#++2b"));  // Invalid char
 	basm->suppress_report = false;
 }
+
+BTEST(basm_ext, at_label) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+
+	// Save/load padding
+	BTEST_EXPECT(buxn_asm_str(basm, "@@ |00 |@ POP BRK"));
+	BTEST_EXPECT_EQUAL("%d", basm->rom_size, 2);
+
+	// Loop
+	BTEST_EXPECT(buxn_asm_str(basm, "#00 @@ INCk #08 NEQ ?@ POP BRK"));
+
+	// Unreferenced
+	basm->suppress_report = true;
+	BTEST_EXPECT(buxn_asm_str(basm, "@@ @@"));
+	BTEST_EXPECT_EQUAL("%d", basm->num_warnings, 2);
+
+	// Single use
+	BTEST_EXPECT(!buxn_asm_str(basm, "#00 @@ INCk #08 NEQ ?@ POP !@ BRK"));
+	basm->suppress_report = false;
+}
