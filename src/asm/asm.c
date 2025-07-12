@@ -512,7 +512,7 @@ buxn_asm_scan_long_string(
 	buxn_asm_file_pos_t start
 ) {
 	int token_len = 0;
-	buxn_asm_consume_char(basm);  // Consume the space following '"'
+	buxn_asm_get_char(basm, unit);  // Consume the space following '"'
 	basm->token_buf[token_len++] = '"';  // Incude the prefix
 
 	while (true) {
