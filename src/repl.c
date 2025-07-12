@@ -5,6 +5,7 @@
 #include <bmacro.h>
 #include <blog.h>
 #include <bestline.h>
+#include <utf8proc.h>
 #include <physfs.h>
 #include <buxn/vm/vm.h>
 #include <buxn/asm/asm.h>
@@ -20,11 +21,17 @@ typedef struct {
 	buxn_file_t file[BUXN_NUM_FILE_DEVICES];
 } devices_t;
 
-struct buxn_asm_ctx_s {
-	barena_t arena;
+typedef struct {
 	buxn_vm_t* vm;
-	buxn_chess_t* chess;
+	buxn_chess_vm_state_t print_stack_state;
 	bool terminated;
+} buxn_repl_t;
+
+struct buxn_asm_ctx_s {
+	barena_t* arena;
+	buxn_repl_t* repl;
+	buxn_chess_t* chess;
+	int num_chess_errors;
 };
 
 struct buxn_asm_file_s {
@@ -55,19 +62,74 @@ typedef struct {
 	PHYSFS_file* handle;
 } buxn_repl_file_passthrough_t;
 
-static void
-buxn_repl_print_stack(buxn_vm_t* vm) {
-	fprintf(stderr, "WST:");
-	for (uint8_t i = 0; i < vm->wsp; ++i) {
-		fprintf(stderr, " %02hhX", vm->ws[i]);
+static int
+buxn_repl_str_width(
+	const char* str,
+	int len
+) {
+	int offset = 0;
+	int width = 0;
+	while (offset < len) {
+		utf8proc_int32_t codepoint;
+		utf8proc_ssize_t num_bytes = utf8proc_iterate(
+			(const utf8proc_uint8_t*)str + offset,
+			len - offset,
+			&codepoint
+		);
+		if (num_bytes < 0) { break; }
+		width += utf8proc_charwidth(codepoint);
+		offset += num_bytes;
 	}
-	fprintf(stderr, "\n");
+	return width;
+}
 
-	fprintf(stderr, "RST:");
-	for (uint8_t i = 0; i < vm->rsp; ++i) {
-		fprintf(stderr, " %02hhX", vm->rs[i]);
+static void
+buxn_repl_print_stack(
+	buxn_chess_t* chess,
+	const char* name,
+	const buxn_chess_stack_t* sym_stack,
+	const uint8_t* vm_stack, uint8_t vm_stack_size
+) {
+	if (vm_stack_size == sym_stack->size) {
+		// Do fancy printing
+		fprintf(stderr, "%s:", name);
+		int widths[256];
+		for (uint8_t i = 0; i < sym_stack->len; ++i) {
+			buxn_chess_value_t value = sym_stack->content[i];
+			int min_size = (value.semantics & BUXN_CHESS_SEM_SIZE_SHORT) == 0
+				? 2
+				: 4;
+			buxn_chess_str_t name = buxn_chess_format_value(chess, &value);
+			int name_width = (int)buxn_repl_str_width(name.chars, name.len);
+			fprintf(stderr, "|%*.*s", (int)min_size, name.len, name.chars);
+			widths[i] = name_width >= min_size ? name_width : min_size;
+		}
+		fprintf(stderr, "|\n");
+		fprintf(stderr, "%*s ", (int)strlen(name), "");
+
+		uint8_t offset = 0;
+		for (uint8_t i = 0; i < sym_stack->len; ++i) {
+			char str[5];
+			if ((sym_stack->content[i].semantics & BUXN_CHESS_SEM_SIZE_MASK) == BUXN_CHESS_SEM_SIZE_SHORT) {
+				uint8_t hi = vm_stack[offset];
+				uint8_t lo = vm_stack[offset + 1];
+				offset += 2;
+				snprintf(str, sizeof(str), "%04x", (hi << 8) | lo);
+			} else {
+				uint8_t value = vm_stack[offset++];
+				snprintf(str, sizeof(str), "%02x", value);
+			}
+			fprintf(stderr, "|%*s", widths[i], str);
+		}
+		fprintf(stderr, "|\n");
+	}else {
+		// Overflow or underflow happened, do simple printing
+		fprintf(stderr, "%s:", name);
+		for (uint8_t i = 0; i < vm_stack_size; ++i) {
+			fprintf(stderr, " %02hhX", vm_stack[i]);
+		}
+		fprintf(stderr, "\n");
 	}
-	fprintf(stderr, "\n");
 }
 
 int
@@ -96,33 +158,55 @@ main(int argc, const char* argv[]) {
 	barena_pool_init(&arena_pool, 1);
 
 	devices_t devices = { 0 };
-	buxn_vm_t* vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
-	vm->config = (buxn_vm_config_t){
+	buxn_repl_t repl = { 0 };
+	repl.vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
+	repl.vm->config = (buxn_vm_config_t){
 		.userdata = &devices,
 		.memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS,
 	};
-	buxn_vm_reset(vm, BUXN_VM_RESET_ALL);
+	buxn_vm_reset(repl.vm, BUXN_VM_RESET_ALL);
 
-	while (true) {
-		buxn_asm_ctx_t basm = { .vm = vm };
-		barena_init(&basm.arena, &arena_pool);
+	barena_t arena_a;
+	barena_t arena_b;
+	barena_init(&arena_a, &arena_pool);
+	barena_init(&arena_b, &arena_pool);
+	barena_t* current_arena = &arena_a;
+	while (!repl.terminated) {
+		current_arena = current_arena == &arena_a ? &arena_b : &arena_a;
+		buxn_asm_ctx_t basm = {
+			.arena = current_arena,
+			.repl = &repl,
+		};
+		barena_reset(basm.arena);
 
 		basm.chess = buxn_chess_begin(&basm);
 		bool success = buxn_asm(&basm, "/repl/main");
-		if (success) {
+		if (success && !repl.terminated) {
 			buxn_chess_end(basm.chess);
+			success &= basm.num_chess_errors == 0;
 		}
 
-		barena_reset(&basm.arena);
+		if (success && !repl.terminated) {
+			buxn_vm_execute(repl.vm, BUXN_RESET_VECTOR);
 
-		if (success) {
-			buxn_vm_execute(vm, BUXN_RESET_VECTOR);
+			buxn_repl_print_stack(
+				basm.chess,
+				"WST",
+				&repl.print_stack_state.wst,
+				repl.vm->ws, repl.vm->wsp
+			);
+			buxn_repl_print_stack(
+				basm.chess,
+				"RST",
+				&repl.print_stack_state.rst,
+				repl.vm->rs, repl.vm->rsp
+			);
 		}
-
-		if (basm.terminated) { break; }
 	}
+	barena_reset(&arena_a);
+	barena_reset(&arena_b);
 
-	free(vm);
+	free(repl.vm);
 	barena_pool_cleanup(&arena_pool);
 
 	PHYSFS_deinit();
@@ -180,9 +264,8 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 
 void
 buxn_system_debug(buxn_vm_t* vm, uint8_t value) {
-	if (value == 0) { return; }
-
-	buxn_repl_print_stack(vm);
+	(void)vm;
+	(void)value;
 }
 
 void
@@ -258,7 +341,7 @@ buxn_repl_readline_file_getc(buxn_asm_file_t* base) {
 		file->line = bestlineWithHistory("> ", "buxn-repl");
 		file->pos = 0;
 		if (file->line == NULL) {
-			file->basm->terminated = true;
+			file->basm->repl->terminated = true;
 			return BUXN_ASM_IO_EOF;
 		}
 	}
@@ -338,12 +421,12 @@ buxn_repl_open_passthrough_file(const char* filename) {
 
 void*
 buxn_asm_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment) {
-	return barena_memalign(&ctx->arena, size, alignment);
+	return barena_memalign(ctx->arena, size, alignment);
 }
 
 void
 buxn_asm_put_rom(buxn_asm_ctx_t* ctx, uint16_t address, uint8_t value) {
-	ctx->vm->memory[address] = value;
+	ctx->repl->vm->memory[address] = value;
 }
 
 void
@@ -399,7 +482,31 @@ buxn_asm_fopen(buxn_asm_ctx_t* ctx, const char* filename) {
 	if (strcmp(filename, "/repl/main") == 0) {
 		xincbin_data_t repl_main = XINCBIN_GET(repl_main);
 		return buxn_repl_open_mem_file(repl_main.data, repl_main.size);
-	/*} else if (strcmp(filename, "/repl/signature") == 0) {*/
+	} else if (strcmp(filename, "/repl/signature") == 0) {
+		buxn_chess_str_t wst_str = buxn_chess_format_stack(
+			ctx->chess,
+			ctx->repl->print_stack_state.wst.content,
+			ctx->repl->print_stack_state.wst.len
+		);
+		buxn_chess_str_t rst_str = buxn_chess_format_stack(
+			ctx->chess,
+			ctx->repl->print_stack_state.rst.content,
+			ctx->repl->print_stack_state.rst.len
+		);
+		int len = snprintf(
+			NULL, 0,
+			"(%.*s .%.*s -> )",
+			wst_str.len, wst_str.chars,
+			rst_str.len, rst_str.chars
+		);
+		char* signature = buxn_chess_alloc(ctx, len + 1, _Alignof(char));
+		snprintf(
+			signature, len + 1,
+			"(%.*s .%.*s -> )",
+			wst_str.len, wst_str.chars,
+			rst_str.len, rst_str.chars
+		);
+		return buxn_repl_open_mem_file(signature, len);
 	} else if (strcmp(filename, "/repl/line") == 0) {
 		return buxn_repl_open_readline_file(ctx);
 	} else {
@@ -453,32 +560,17 @@ buxn_chess_deo(
 	uint8_t value,
 	uint8_t port
 ) {
-	if (port == 0x0e && value == 0x2b) {
-		void* mem_region = buxn_chess_begin_mem_region(ctx);
-
-		buxn_chess_str_t wst_str = buxn_chess_format_stack(
-			ctx->chess, state->wst.content, state->wst.len
-		);
-		buxn_chess_str_t rst_str = buxn_chess_format_stack(
-			ctx->chess, state->rst.content, state->rst.len
-		);
-		blog_write(
-			BLOG_LEVEL_INFO,
-			state->src_region.filename,
-			state->src_region.range.start.line,
-			"[%d] Stack: (%.*s .%.*s )",
-			trace_id,
-			(int)wst_str.len, wst_str.chars,
-			(int)rst_str.len, rst_str.chars
-		);
-
-		buxn_chess_end_mem_region(ctx, mem_region);
+	(void)trace_id;
+	if (port == 0x0e) {
+		if (value == 0x2b) {
+			ctx->repl->print_stack_state = *state;
+		}
 	}
 }
 
 uint8_t
 buxn_chess_get_rom(buxn_asm_ctx_t* ctx, uint16_t address) {
-	return ctx->vm->memory[address];
+	return ctx->repl->vm->memory[address];
 }
 
 static void
@@ -532,7 +624,11 @@ buxn_chess_report(
 			buxn_chess_log(ctx, trace_id, BLOG_LEVEL_WARN, report);
 			break;
 		case BUXN_CHESS_REPORT_ERROR:
-			buxn_chess_log(ctx, trace_id, BLOG_LEVEL_ERROR, report);
+			// Suppress stack error in reset
+			if (strcmp(report->region->filename, "/repl/main") != 0) {
+				buxn_chess_log(ctx, trace_id, BLOG_LEVEL_ERROR, report);
+				++ctx->num_chess_errors;
+			}
 			break;
 	}
 }
@@ -544,12 +640,12 @@ buxn_chess_alloc(buxn_asm_ctx_t* ctx, size_t size, size_t alignment) {
 
 void*
 buxn_chess_begin_mem_region(buxn_asm_ctx_t* ctx) {
-	return (void*)barena_snapshot(&ctx->arena);
+	return (void*)barena_snapshot(ctx->arena);
 }
 
 void
 buxn_chess_end_mem_region(buxn_asm_ctx_t* ctx, void* region) {
-	barena_restore(&ctx->arena, (barena_snapshot_t)region);
+	barena_restore(ctx->arena, (barena_snapshot_t)region);
 }
 
 // }}}
