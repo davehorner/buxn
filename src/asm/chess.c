@@ -13,22 +13,6 @@
 #define BUXN_CHESS_MAX_ARG_LEN 16
 #define BUXN_CHESS_MAX_SIG_TOKENS (BUXN_CHESS_MAX_ARGS * 4 + 1)
 
-#define BUXN_CHESS_MEM_NONE        (0)
-#define BUXN_CHESS_MEM_INSTRUCTION (1 << 0)
-#define BUXN_CHESS_MEM_DATA        (1 << 1)
-
-#define BUXN_CHESS_SEM_SIZE_MASK  0x01
-#define BUXN_CHESS_SEM_SIZE_BYTE  (0 << 0)
-#define BUXN_CHESS_SEM_SIZE_SHORT (1 << 0)
-#define BUXN_CHESS_SEM_CONST      (1 << 1)
-#define BUXN_CHESS_SEM_ADDRESS    (1 << 2)
-#define BUXN_CHESS_SEM_RETURN     (1 << 3)
-#define BUXN_CHESS_SEM_ROUTINE    (1 << 4)
-#define BUXN_CHESS_SEM_NOMINAL    (1 << 5)
-#define BUXN_CHESS_SEM_FORKED     (1 << 6)
-#define BUXN_CHESS_SEM_HALF_HI    (1 << 7)
-#define BUXN_CHESS_SEM_HALF_LO    (1 << 8)
-
 #define BUXN_CHESS_OP_K 0x80
 #define BUXN_CHESS_OP_R 0x40
 #define BUXN_CHESS_OP_2 0x20
@@ -316,21 +300,24 @@ buxn_chess_printf(buxn_chess_t* chess, const char* fmt, ...) {
 	return result;
 }
 
-static buxn_chess_str_t
-buxn_chess_format_value(buxn_chess_t* chess, buxn_chess_value_t value) {
+buxn_chess_str_t
+buxn_chess_format_value(
+	buxn_chess_t* chess,
+	const buxn_chess_value_t* value
+) {
 	return buxn_chess_printf(
 		chess,
 		" %s%.*s%s%s",
-		(value.semantics & BUXN_CHESS_SEM_ADDRESS) ? "[" : "",
-		(int)value.name.len, value.name.chars,
-		(value.semantics & BUXN_CHESS_SEM_ADDRESS) ? "]" : "",
-		(value.semantics & BUXN_CHESS_SEM_SIZE_MASK) == BUXN_CHESS_SEM_SIZE_SHORT
+		(value->semantics & BUXN_CHESS_SEM_ADDRESS) ? "[" : "",
+		(int)value->name.len, value->name.chars,
+		(value->semantics & BUXN_CHESS_SEM_ADDRESS) ? "]" : "",
+		(value->semantics & BUXN_CHESS_SEM_SIZE_MASK) == BUXN_CHESS_SEM_SIZE_SHORT
 			? "*"
 			: ""
 	);
 }
 
-static buxn_chess_str_t
+buxn_chess_str_t
 buxn_chess_format_stack(
 	buxn_chess_t* chess,
 	const buxn_chess_value_t* value,
@@ -339,7 +326,7 @@ buxn_chess_format_stack(
 	buxn_chess_str_t parts[BUXN_CHESS_MAX_ARGS] = { 0 };
 	uint8_t print_len = len <= BUXN_CHESS_MAX_ARGS ? len : BUXN_CHESS_MAX_ARGS;
 	for (uint8_t i = 0; i < print_len; ++i) {
-		parts[i] = buxn_chess_format_value(chess, value[i]);
+		parts[i] = buxn_chess_format_value(chess, &value[i]);
 	}
 	buxn_chess_str_t str = buxn_chess_printf(
 		chess,
@@ -1463,6 +1450,46 @@ buxn_chess_DEO(buxn_chess_exec_ctx_t* ctx) {
 			"DEO from non-address value (" BUXN_CHESS_VALUE_FMT ")",
 			BUXN_CHESS_VALUE_FMT_ARGS(addr)
 		);
+	}
+
+	if (
+		(addr.semantics & BUXN_CHESS_SEM_CONST)
+		&&
+		(value.semantics & BUXN_CHESS_SEM_CONST)
+	) {
+		buxn_chess_vm_state_t state = {
+			.wst = ctx->entry->state.wst,
+			.rst = ctx->entry->state.rst,
+			.pc = ctx->pc,
+			.src_region = ctx->current_sym != NULL
+				? ctx->current_sym->region
+				: ctx->entry->info->value.region,
+		};
+
+		if ((value.semantics & BUXN_CHESS_SEM_SIZE_MASK) == BUXN_CHESS_SEM_SIZE_SHORT) {
+			buxn_chess_deo(
+				ctx->chess->ctx,
+				ctx->entry->trace_id,
+				&state,
+				(uint8_t)(value.value >> 8),
+				addr.value
+			);
+			buxn_chess_deo(
+				ctx->chess->ctx,
+				ctx->entry->trace_id,
+				&state,
+				(uint8_t)(value.value & 0xff),
+				(uint8_t)(addr.value + 1)
+			);
+		} else {
+			buxn_chess_deo(
+				ctx->chess->ctx,
+				ctx->entry->trace_id,
+				&state,
+				(uint8_t)(value.value & 0xff),
+				addr.value
+			);
+		}
 	}
 }
 

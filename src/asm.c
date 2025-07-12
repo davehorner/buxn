@@ -433,7 +433,7 @@ buxn_chess_begin_trace(
 	}
 }
 
-extern void
+void
 buxn_chess_end_trace(
 	buxn_asm_ctx_t* ctx,
 	buxn_chess_id_t trace_id,
@@ -446,6 +446,38 @@ buxn_chess_end_trace(
 		__FILE__, __LINE__,
 		"[%d] Trace end", trace_id
 	);
+}
+
+void
+buxn_chess_deo(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	const buxn_chess_vm_state_t* state,
+	uint8_t value,
+	uint8_t port
+) {
+	if (port == 0x0e && value == 0x2b) {
+		void* mem_region = buxn_chess_begin_mem_region(ctx);
+
+		buxn_chess_str_t wst_str = buxn_chess_format_stack(
+			ctx->chess, state->wst.content, state->wst.len
+		);
+		buxn_chess_str_t rst_str = buxn_chess_format_stack(
+			ctx->chess, state->rst.content, state->rst.len
+		);
+		blog_write(
+			BLOG_LEVEL_INFO,
+			state->src_region.filename,
+			state->src_region.range.start.line,
+			"[%d] Stack: (%.*s .%.*s )",
+			trace_id,
+			(int)wst_str.len, wst_str.chars,
+			(int)rst_str.len, rst_str.chars
+		);
+		print_file_region(ctx, &state->src_region);
+
+		buxn_chess_end_mem_region(ctx, mem_region);
+	}
 }
 
 static bool

@@ -8,6 +8,18 @@
 #define BUXN_CHESS_NO_TRACE ((buxn_chess_id_t)0)
 #define BUXN_CHESS_MAX_ARGS 8
 
+#define BUXN_CHESS_SEM_SIZE_MASK  0x01
+#define BUXN_CHESS_SEM_SIZE_BYTE  (0 << 0)
+#define BUXN_CHESS_SEM_SIZE_SHORT (1 << 0)
+#define BUXN_CHESS_SEM_CONST      (1 << 1)
+#define BUXN_CHESS_SEM_ADDRESS    (1 << 2)
+#define BUXN_CHESS_SEM_RETURN     (1 << 3)
+#define BUXN_CHESS_SEM_ROUTINE    (1 << 4)
+#define BUXN_CHESS_SEM_NOMINAL    (1 << 5)
+#define BUXN_CHESS_SEM_FORKED     (1 << 6)
+#define BUXN_CHESS_SEM_HALF_HI    (1 << 7)
+#define BUXN_CHESS_SEM_HALF_LO    (1 << 8)
+
 typedef struct buxn_chess_s buxn_chess_t;
 typedef int buxn_chess_id_t;
 typedef struct buxn_chess_value_s buxn_chess_value_t;
@@ -77,6 +89,19 @@ buxn_chess_handle_symbol(
 	buxn_chess_t* chess,
 	uint16_t addr,
 	const buxn_asm_sym_t* sym
+);
+
+buxn_chess_str_t
+buxn_chess_format_value(
+	buxn_chess_t* chess,
+	const buxn_chess_value_t* value
+);
+
+buxn_chess_str_t
+buxn_chess_format_stack(
+	buxn_chess_t* chess,
+	const buxn_chess_value_t* value,
+	uint8_t len
 );
 
 // Must be provided by the host program

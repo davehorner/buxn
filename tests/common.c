@@ -188,6 +188,21 @@ buxn_chess_end_trace(
 	(void)success;
 }
 
+void
+buxn_chess_deo(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	const buxn_chess_vm_state_t* state,
+	uint8_t value,
+	uint8_t port
+) {
+	(void)ctx;
+	(void)trace_id;
+	(void)state;
+	(void)value;
+	(void)port;
+}
+
 uint8_t
 buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 	buxn_test_devices_t* devices = vm->config.userdata;
