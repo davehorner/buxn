@@ -1,7 +1,13 @@
 ( Prelude file for every repl input )
 
+%\stack { POPk }
+
 |0100 @repl/main
 ~/repl/signature ( Input signature  )
 ~/repl/line ( Content of the line )
 #2b0e DEO ( Print the stack )
 BRK
+
+@\reset ( -- )
+	#ff0e DEO
+	JMP2r

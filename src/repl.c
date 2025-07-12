@@ -19,12 +19,11 @@
 typedef struct {
 	buxn_console_t console;
 	buxn_file_t file[BUXN_NUM_FILE_DEVICES];
-} devices_t;
 
-typedef struct {
 	buxn_vm_t* vm;
 	buxn_chess_vm_state_t print_stack_state;
 	bool terminated;
+	bool need_reset;
 } buxn_repl_t;
 
 struct buxn_asm_ctx_s {
@@ -157,11 +156,10 @@ main(int argc, const char* argv[]) {
 	barena_pool_t arena_pool;
 	barena_pool_init(&arena_pool, 1);
 
-	devices_t devices = { 0 };
 	buxn_repl_t repl = { 0 };
 	repl.vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
 	repl.vm->config = (buxn_vm_config_t){
-		.userdata = &devices,
+		.userdata = &repl,
 		.memory_size = BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS,
 	};
 	buxn_vm_reset(repl.vm, BUXN_VM_RESET_ALL);
@@ -189,18 +187,24 @@ main(int argc, const char* argv[]) {
 		if (success && !repl.terminated) {
 			buxn_vm_execute(repl.vm, BUXN_RESET_VECTOR);
 
-			buxn_repl_print_stack(
-				basm.chess,
-				"WST",
-				&repl.print_stack_state.wst,
-				repl.vm->ws, repl.vm->wsp
-			);
-			buxn_repl_print_stack(
-				basm.chess,
-				"RST",
-				&repl.print_stack_state.rst,
-				repl.vm->rs, repl.vm->rsp
-			);
+			if (repl.need_reset) {
+				buxn_vm_reset(repl.vm, BUXN_VM_RESET_SOFT);
+				memset(&repl.print_stack_state, 0, sizeof(repl.print_stack_state));
+				repl.need_reset = false;
+			} else {
+				buxn_repl_print_stack(
+					basm.chess,
+					"WST",
+					&repl.print_stack_state.wst,
+					repl.vm->ws, repl.vm->wsp
+				);
+				buxn_repl_print_stack(
+					basm.chess,
+					"RST",
+					&repl.print_stack_state.rst,
+					repl.vm->rs, repl.vm->rsp
+				);
+			}
 		}
 	}
 	barena_reset(&arena_a);
@@ -217,20 +221,20 @@ main(int argc, const char* argv[]) {
 
 uint8_t
 buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
-	devices_t* devices = vm->config.userdata;
+	buxn_repl_t* repl = vm->config.userdata;
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
 			return buxn_system_dei(vm, address);
 		case BUXN_DEVICE_CONSOLE:
-			return buxn_console_dei(vm, &devices->console, address);
+			return buxn_console_dei(vm, &repl->console, address);
 		case BUXN_DEVICE_DATETIME:
 			return buxn_datetime_dei(vm, address);
 		case BUXN_DEVICE_FILE_0:
 		case BUXN_DEVICE_FILE_1:
 			return buxn_file_dei(
 				vm,
-				devices->file + (device_id - BUXN_DEVICE_FILE_0) / (BUXN_DEVICE_FILE_1 - BUXN_DEVICE_FILE_0),
+				repl->file + (device_id - BUXN_DEVICE_FILE_0) / (BUXN_DEVICE_FILE_1 - BUXN_DEVICE_FILE_0),
 				vm->device + device_id,
 				buxn_device_port(address)
 			);
@@ -241,20 +245,20 @@ buxn_vm_dei(buxn_vm_t* vm, uint8_t address) {
 
 void
 buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
-	devices_t* devices = vm->config.userdata;
+	buxn_repl_t* repl = vm->config.userdata;
 	uint8_t device_id = buxn_device_id(address);
 	switch (device_id) {
 		case BUXN_DEVICE_SYSTEM:
 			buxn_system_deo(vm, address);
 			break;
 		case BUXN_DEVICE_CONSOLE:
-			buxn_console_deo(vm, &devices->console, address);
+			buxn_console_deo(vm, &repl->console, address);
 			break;
 		case BUXN_DEVICE_FILE_0:
 		case BUXN_DEVICE_FILE_1:
 			buxn_file_deo(
 				vm,
-				devices->file + (device_id - BUXN_DEVICE_FILE_0) / (BUXN_DEVICE_FILE_1 - BUXN_DEVICE_FILE_0),
+				repl->file + (device_id - BUXN_DEVICE_FILE_0) / (BUXN_DEVICE_FILE_1 - BUXN_DEVICE_FILE_0),
 				vm->device + device_id,
 				buxn_device_port(address)
 			);
@@ -264,8 +268,10 @@ buxn_vm_deo(buxn_vm_t* vm, uint8_t address) {
 
 void
 buxn_system_debug(buxn_vm_t* vm, uint8_t value) {
-	(void)vm;
-	(void)value;
+	buxn_repl_t* repl = vm->config.userdata;
+	if (value == 0xff) {
+		repl->need_reset = true;
+	}
 }
 
 void
@@ -445,6 +451,10 @@ buxn_asm_report(
 	switch (type) {
 		case BUXN_ASM_REPORT_ERROR: level = BLOG_LEVEL_ERROR; break;
 		case BUXN_ASM_REPORT_WARNING: level = BLOG_LEVEL_WARN; break;
+	}
+
+	if (strcmp(report->region->filename, "/repl/main") == 0) {
+		return;
 	}
 
 	if (report->token == NULL) {
