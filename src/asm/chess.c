@@ -10,12 +10,7 @@
 #define BHAMT_HASH_TYPE uint32_t
 #include "hamt.h"
 
-#define BUXN_CHESS_TRACE(CTX, ...) \
-	(BFORMAT_CHECK(__VA_ARGS__), \
-	 buxn_chess_trace((CTX)->chess->ctx, (CTX)->entry->trace_id, __FILE__, __LINE__, __VA_ARGS__))
-
 #define BUXN_CHESS_MAX_ARG_LEN 16
-#define BUXN_CHESS_MAX_ARGS 8
 #define BUXN_CHESS_MAX_SIG_TOKENS (BUXN_CHESS_MAX_ARGS * 4 + 1)
 
 #define BUXN_CHESS_MEM_NONE        (0)
@@ -67,36 +62,12 @@ static const char* buxn_chess_opcode_names[256] = {
 
 typedef void (*buxn_chess_anno_handler_t)(buxn_chess_t* chess, const buxn_asm_sym_t* sym);
 
-typedef struct {
-	const char* chars;
-	uint8_t len;
-} buxn_chess_str_t;
-
-typedef struct buxn_chess_signature_s buxn_chess_signature_t;
-
-typedef struct buxn_chess_value_s buxn_chess_value_t;
-
-struct buxn_chess_value_s {
-	buxn_chess_str_t name;
-	buxn_chess_str_t type;
-	buxn_chess_signature_t* signature;
-	buxn_chess_value_t* whole_value;
-	buxn_asm_source_region_t region;
-	uint16_t value;
-	uint16_t semantics;
-};
-
 typedef struct buxn_chess_value_node_s buxn_chess_value_node_t;
 
 struct buxn_chess_value_node_s {
 	buxn_chess_value_node_t* next;
 	buxn_chess_value_t value;
 };
-
-typedef enum {
-	BUXN_CHESS_VECTOR,
-	BUXN_CHESS_SUBROUTINE,
-} buxn_chess_routine_type_t;
 
 typedef enum {
 	BUXN_CHESS_PARSE_WST_IN,
@@ -106,30 +77,10 @@ typedef enum {
 } buxn_chess_sig_parse_state_t;
 
 typedef struct {
-	buxn_chess_value_t content[BUXN_CHESS_MAX_ARGS];
-	uint8_t len;
-} buxn_chess_sig_stack_t;
-
-struct buxn_chess_signature_s {
-	buxn_chess_sig_stack_t wst_in;
-	buxn_chess_sig_stack_t rst_in;
-	buxn_chess_sig_stack_t wst_out;
-	buxn_chess_sig_stack_t rst_out;
-	buxn_asm_source_region_t region;
-	buxn_chess_routine_type_t type;
-};
-
-typedef struct {
 	buxn_chess_sig_stack_t wst;
 	buxn_chess_sig_stack_t rst;
 	buxn_asm_source_region_t region;
 } buxn_chess_cast_t;
-
-typedef struct {
-	uint8_t len;
-	uint8_t size;
-	buxn_chess_value_t content[256];
-} buxn_chess_stack_t;
 
 typedef struct {
 	buxn_chess_stack_t wst;
@@ -206,8 +157,7 @@ typedef struct {
 	uint16_t pc;
 	uint8_t current_opcode;
 	bool terminated;
-	buxn_asm_source_region_t error_region;
-	bool entry_reported;
+	bool success;
 } buxn_chess_exec_ctx_t;
 
 struct buxn_chess_s {
@@ -466,55 +416,9 @@ buxn_chess_terminate(buxn_chess_exec_ctx_t* ctx) {
 }
 
 static void
-buxn_chess_maybe_report_exec_begin(
-	buxn_chess_exec_ctx_t* ctx
-) {
-	if (ctx->entry_reported) { return; }
-
-	void* region = buxn_chess_begin_mem_region(ctx->chess->ctx);
-	buxn_chess_str_t init_wst_str = buxn_chess_format_stack(
-		ctx->chess,
-		ctx->init_wst.content, ctx->init_wst.len
-	);
-	buxn_chess_str_t init_rst_str;
-	if (ctx->entry->info->value.signature->type == BUXN_CHESS_SUBROUTINE) {
-		// Exclude the implicit return address
-		init_rst_str = buxn_chess_format_stack(
-			ctx->chess,
-			ctx->init_rst.content + 1, ctx->init_rst.len - 1
-		);
-	} else {
-		init_rst_str = buxn_chess_format_stack(
-			ctx->chess,
-			ctx->init_rst.content, ctx->init_rst.len
-		);
-	}
-
-	buxn_chess_report(
-		ctx->chess->ctx,
-		ctx->entry->trace_id,
-		BUXN_ASM_REPORT_WARNING,
-		&(buxn_asm_report_t){
-			.message = buxn_chess_printf(
-				ctx->chess,
-				"Found issues with %.*s starting with (%.*s .%.*s ) from here",
-				(int)ctx->entry->info->value.name.len, ctx->entry->info->value.name.chars,
-				(int)init_wst_str.len, init_wst_str.chars,
-				(int)init_rst_str.len, init_rst_str.chars
-			).chars,
-			.region = ctx->start_sym != NULL
-				? &ctx->start_sym->region
-				: &ctx->entry->info->value.region
-		}
-	);
-	buxn_chess_end_mem_region(ctx->chess->ctx, region);
-	ctx->entry_reported = true;
-}
-
-static void
 buxn_chess_vreport(
 	buxn_chess_exec_ctx_t* ctx,
-	buxn_asm_report_type_t type,
+	buxn_chess_report_type_t type,
 	const char* fmt,
 	va_list args
 ) {
@@ -540,17 +444,13 @@ buxn_chess_report_exec_error(
 	const char* fmt,
 	...
 ) {
-	buxn_chess_maybe_report_exec_begin(ctx);
-
 	va_list args;
 	va_start(args, fmt);
-	buxn_chess_vreport(ctx, BUXN_ASM_REPORT_ERROR, fmt, args);
+	buxn_chess_vreport(ctx, BUXN_CHESS_REPORT_ERROR, fmt, args);
 	va_end(args);
 
-	ctx->error_region = ctx->current_sym != NULL
-		? ctx->current_sym->region
-		: ctx->entry->info->value.region;
 	buxn_chess_terminate(ctx);
+	ctx->success = false;
 	ctx->chess->success = false;
 	ctx->entry->info->has_error = true;
 }
@@ -562,11 +462,22 @@ buxn_chess_report_exec_warning(
 	const char* fmt,
 	...
 ) {
-	buxn_chess_maybe_report_exec_begin(ctx);
-
 	va_list args;
 	va_start(args, fmt);
-	buxn_chess_vreport(ctx, BUXN_ASM_REPORT_WARNING, fmt, args);
+	buxn_chess_vreport(ctx, BUXN_CHESS_REPORT_WARNING, fmt, args);
+	va_end(args);
+}
+
+BFORMAT_ATTRIBUTE(2, 3)
+static void
+buxn_chess_trace(
+	buxn_chess_exec_ctx_t* ctx,
+	const char* fmt,
+	...
+) {
+	va_list args;
+	va_start(args, fmt);
+	buxn_chess_vreport(ctx, BUXN_CHESS_REPORT_TRACE, fmt, args);
 	va_end(args);
 }
 
@@ -631,13 +542,15 @@ buxn_chess_op_flag_r(buxn_chess_exec_ctx_t* ctx) {
 }
 
 static inline buxn_chess_value_t
-buxn_chess_value_error(void) {
+buxn_chess_value_error(buxn_chess_exec_ctx_t* ctx) {
 	return (buxn_chess_value_t){
 		.name = {
 			.chars = "ERROR",
 			.len = BLIT_STRLEN("ERROR")
 		},
-		.region = BUXN_CHESS_INTERNAL_REGION(),
+		.region = ctx->current_sym != NULL
+			? ctx->current_sym->region
+			: ctx->entry->info->value.region
 	};
 }
 
@@ -652,7 +565,7 @@ static buxn_chess_value_t
 buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8_t size) {
 	if (size > stack->size) {
 		buxn_chess_report_exec_error(ctx, "Stack underflow");
-		return buxn_chess_value_error();
+		return buxn_chess_value_error(ctx);
 	}
 
 	buxn_chess_value_t top = stack->content[stack->len - 1];
@@ -753,7 +666,7 @@ buxn_chess_pop_from(buxn_chess_exec_ctx_t* ctx, buxn_chess_stack_t* stack, uint8
 
 static buxn_chess_value_t
 buxn_chess_pop_ex(buxn_chess_exec_ctx_t* ctx, bool flag_2, bool flag_r) {
-	if (ctx->terminated) { return buxn_chess_value_error(); }
+	if (ctx->terminated) { return buxn_chess_value_error(ctx); }
 
 	return buxn_chess_pop_from(
 		ctx,
@@ -973,12 +886,12 @@ buxn_chess_fork(buxn_chess_exec_ctx_t* ctx) {
 	new_entry->next = ctx->chess->verification_list;
 	ctx->chess->verification_list = new_entry;
 
-	BUXN_CHESS_TRACE(
+	buxn_chess_trace(
 		ctx,
-		"[%d] Forked %.*s at %s",
+		"[%d] Forked %.*s",
 		new_entry->trace_id,
-		(int)ctx->entry->info->value.name.len, ctx->entry->info->value.name.chars,
-		buxn_chess_format_address(ctx->chess, ctx->pc)
+		(int)ctx->entry->info->value.name.len,
+		ctx->entry->info->value.name.chars
 	);
 	return new_entry;
 }
@@ -989,7 +902,7 @@ buxn_chess_BRK(buxn_chess_exec_ctx_t* ctx) {
 		buxn_chess_report_exec_error(ctx, "Subroutine called BRK");
 	}
 
-	BUXN_CHESS_TRACE(ctx, "Terminated by BRK");
+	buxn_chess_trace(ctx, "Terminated by BRK");
 	ctx->entry->info->terminated = true;
 	buxn_chess_check_return(ctx);
 	buxn_chess_terminate(ctx);
@@ -1151,7 +1064,7 @@ static enum {
 		if (ctx->entry->info->value.signature->type == BUXN_CHESS_VECTOR) {
 			buxn_chess_report_exec_error(ctx, "Vector routine makes a normal return");
 		}
-		BUXN_CHESS_TRACE(ctx, "Terminated by jumping to return address");
+		buxn_chess_trace(ctx, "Terminated by jumping to return address");
 		ctx->entry->info->terminated = true;
 		buxn_chess_check_return(ctx);
 		buxn_chess_terminate(ctx);
@@ -1233,7 +1146,7 @@ buxn_chess_short_circuit(
 			);
 		}
 	} else {
-		BUXN_CHESS_TRACE(ctx, "Terminated by jumping into a vector");
+		buxn_chess_trace(ctx, "Terminated by jumping into a vector");
 		buxn_chess_check_return(ctx);
 		buxn_chess_terminate(ctx);
 
@@ -1272,7 +1185,7 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 	if (addr_info != NULL && (addr_info->value.semantics & BUXN_CHESS_SEM_ROUTINE)) {
 		// The target jump can be short-circuited into just applying the signature effect
 		// without jumping
-		BUXN_CHESS_TRACE(
+		buxn_chess_trace(
 			ctx,
 			"Short-circuited jump into " BUXN_CHESS_VALUE_FMT,
 			BUXN_CHESS_VALUE_FMT_ARGS(addr_info->value)
@@ -1303,7 +1216,7 @@ buxn_chess_jump(buxn_chess_exec_ctx_t* ctx, buxn_chess_value_t addr) {
 			);
 			*jump_node = (buxn_chess_jump_arc_t){ .key = jump_key };
 		} else {
-			BUXN_CHESS_TRACE(
+			buxn_chess_trace(
 				ctx,
 				"Terminated by repeated jump to %s",
 				buxn_chess_format_address(ctx->chess, ctx->pc)
@@ -1724,7 +1637,7 @@ buxn_chess_immediate_jump_target(buxn_chess_exec_ctx_t* ctx) {
 		};
 	} else {
 		buxn_chess_report_exec_error(ctx, "Invalid jump address");
-		return buxn_chess_value_error();
+		return buxn_chess_value_error(ctx);
 	}
 }
 
@@ -1882,7 +1795,7 @@ buxn_chess_copy_stack(buxn_chess_stack_t* dst, const buxn_chess_stack_t* src) {
 static void
 buxn_chess_dump_stack(buxn_chess_exec_ctx_t* ctx) {
 	void* region = buxn_chess_begin_mem_region(ctx->chess->ctx);
-	BUXN_CHESS_TRACE(
+	buxn_chess_trace(
 		ctx,
 		"WST(%d):%s",
 		ctx->entry->state.wst.len,
@@ -1892,7 +1805,7 @@ buxn_chess_dump_stack(buxn_chess_exec_ctx_t* ctx) {
 			ctx->entry->state.wst.len
 		).chars
 	);
-	BUXN_CHESS_TRACE(
+	buxn_chess_trace(
 		ctx,
 		"RST(%d):%s",
 		ctx->entry->state.rst.len,
@@ -1960,20 +1873,19 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 	buxn_chess_copy_stack(&ctx.init_rst, &ctx.entry->state.rst);
 
 	buxn_chess_begin_trace(chess->ctx, entry->trace_id, entry->parent_trace_id);
-	BUXN_CHESS_TRACE(
+	buxn_chess_trace(
 		&ctx,
-		"Analyzing %.*s starting from %s",
-		(int)entry->info->value.name.len, entry->info->value.name.chars,
-		buxn_chess_format_address(chess, entry->address)
+		"Analyzing %.*s",
+		(int)entry->info->value.name.len, entry->info->value.name.chars
 	);
 	void* region = buxn_chess_begin_mem_region(chess->ctx);
-	BUXN_CHESS_TRACE(
+	buxn_chess_trace(
 		&ctx,
 		"WST(%d):%s",
 		ctx.entry->state.wst.len,
 		buxn_chess_format_stack(chess, ctx.entry->state.wst.content, ctx.entry->state.wst.len).chars
 	);
-	BUXN_CHESS_TRACE(
+	buxn_chess_trace(
 		&ctx,
 		"RST(%d):%s",
 		ctx.entry->state.rst.len,
@@ -2011,11 +1923,10 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 			&&
 			(addr_info->value.semantics & BUXN_CHESS_SEM_ROUTINE)
 		) {
-			BUXN_CHESS_TRACE(
+			buxn_chess_trace(
 				&ctx,
-				"Executing (" BUXN_CHESS_VALUE_FMT ") at %s",
-				BUXN_CHESS_VALUE_FMT_ARGS(addr_info->value),
-				buxn_chess_format_address(chess, ctx.pc)
+				"Executing " BUXN_CHESS_VALUE_FMT,
+				BUXN_CHESS_VALUE_FMT_ARGS(addr_info->value)
 			);
 			buxn_chess_copy_stack(&saved_wst, &ctx.entry->state.wst);
 			buxn_chess_copy_stack(&saved_rst, &ctx.entry->state.rst);
@@ -2033,22 +1944,20 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		}
 
 		// Regular execution
-		uint16_t pc = ctx.pc++;
-		const buxn_asm_sym_t* current_sym = chess->symbols[pc];
-		ctx.current_opcode = buxn_chess_get_rom(chess->ctx, pc);
-		(void)buxn_chess_opcode_names;  // Suppress warning in release build
-		(void)buxn_chess_format_address;
-		BUXN_CHESS_TRACE(
-			&ctx,
-			"Executing %s at %s",
-			buxn_chess_opcode_names[ctx.current_opcode],
-			buxn_chess_format_address(chess, pc)
-		);
+		const buxn_asm_sym_t* current_sym = chess->symbols[ctx.pc];
+		ctx.current_opcode = buxn_chess_get_rom(chess->ctx, ctx.pc);
+
 		if (current_sym == NULL || current_sym->type != BUXN_ASM_SYM_OPCODE) {
 			buxn_chess_report_exec_error(&ctx, "Execution will reach non-opcode");
 			break;
 		}
 		ctx.current_sym = current_sym;
+		ctx.pc += 1;
+		buxn_chess_trace(
+			&ctx,
+			"Executing %s",
+			buxn_chess_opcode_names[ctx.current_opcode]
+		);
 
 		buxn_chess_copy_stack(&saved_wst, &ctx.entry->state.wst);
 		buxn_chess_copy_stack(&saved_rst, &ctx.entry->state.rst);
@@ -2070,7 +1979,7 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		buxn_chess_dump_stack(&ctx);
 
 		if (cast != NULL) {
-			BUXN_CHESS_TRACE(
+			buxn_chess_trace(
 				&ctx,
 				"Applying cast at %s:%d:%d:%d",
 				cast->cast->region.filename,
@@ -2092,26 +2001,10 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		}
 	}
 
-	// Dump stack before error
-	if (ctx.error_region.filename != NULL) {
-		void* region = buxn_chess_begin_mem_region(chess->ctx);
-		buxn_chess_str_t extra_msg = buxn_chess_printf(
-			chess,
-			"Stack before error:%s .%s",
-			buxn_chess_format_stack(chess, saved_wst.content, saved_wst.len).chars,
-			buxn_chess_format_stack(chess, saved_rst.content, saved_rst.len).chars
-		);
-		buxn_chess_report_info(chess->ctx, entry->trace_id, &(buxn_asm_report_t){
-			.region = &ctx.error_region,
-			.message = extra_msg.chars,
-		});
-		buxn_chess_end_mem_region(chess->ctx, region);
-	}
-
 	buxn_chess_end_trace(
 		chess->ctx,
 		entry->trace_id,
-		ctx.error_region.filename == NULL
+		ctx.success
 	);
 
 	// Recycle value nodes
@@ -2214,7 +2107,7 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			buxn_chess_report(
 				chess->ctx,
 				BUXN_CHESS_NO_TRACE,
-				BUXN_ASM_REPORT_WARNING,
+				BUXN_CHESS_REPORT_WARNING,
 				&(buxn_asm_report_t){
 					.message = "Unexpected token in sealed signature",
 					.region = &sym->region,
@@ -2239,7 +2132,7 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 				buxn_chess_report(
 					chess->ctx,
 					BUXN_CHESS_NO_TRACE,
-					BUXN_ASM_REPORT_WARNING,
+					BUXN_CHESS_REPORT_WARNING,
 					&(buxn_asm_report_t){
 						.message = "Unexpected token in signature",
 						.region = &sym->region,
@@ -2260,7 +2153,7 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 				buxn_chess_report(
 					chess->ctx,
 					BUXN_CHESS_NO_TRACE,
-					BUXN_ASM_REPORT_WARNING,
+					BUXN_CHESS_REPORT_WARNING,
 					&(buxn_asm_report_t){
 						.message = "Unexpected token in signature",
 						.region = &sym->region,
@@ -2279,7 +2172,7 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 				buxn_chess_report(
 					chess->ctx,
 					BUXN_CHESS_NO_TRACE,
-					BUXN_ASM_REPORT_WARNING,
+					BUXN_CHESS_REPORT_WARNING,
 					&(buxn_asm_report_t){
 						.message = "Unexpected token in signature",
 						.region = &sym->region,
@@ -2310,7 +2203,7 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 				buxn_chess_report(
 					chess->ctx,
 					BUXN_CHESS_NO_TRACE,
-					BUXN_ASM_REPORT_WARNING,
+					BUXN_CHESS_REPORT_WARNING,
 					&(buxn_asm_report_t){
 						.message = "Too many arguments",
 						.region = &sym->region,
@@ -2334,7 +2227,7 @@ buxn_chess_parse_signature2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			buxn_chess_report(
 				chess->ctx,
 				BUXN_CHESS_NO_TRACE,
-				BUXN_ASM_REPORT_WARNING,
+				BUXN_CHESS_REPORT_WARNING,
 				&(buxn_asm_report_t){
 					.message = "Redundant signature",
 					.region = &chess->current_signature->region,
@@ -2378,7 +2271,7 @@ buxn_chess_parse_cast2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			buxn_chess_report(
 				chess->ctx,
 				BUXN_CHESS_NO_TRACE,
-				BUXN_ASM_REPORT_WARNING,
+				BUXN_CHESS_REPORT_WARNING,
 				&(buxn_asm_report_t){
 					.message = "Unexpected token in sealed cast",
 					.region = &sym->region,
@@ -2401,7 +2294,7 @@ buxn_chess_parse_cast2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 				buxn_chess_report(
 					chess->ctx,
 					BUXN_CHESS_NO_TRACE,
-					BUXN_ASM_REPORT_WARNING,
+					BUXN_CHESS_REPORT_WARNING,
 					&(buxn_asm_report_t){
 						.message = "Unexpected token in cast",
 						.region = &sym->region,
@@ -2419,7 +2312,7 @@ buxn_chess_parse_cast2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			buxn_chess_report(
 				chess->ctx,
 				BUXN_CHESS_NO_TRACE,
-				BUXN_ASM_REPORT_WARNING,
+				BUXN_CHESS_REPORT_WARNING,
 				&(buxn_asm_report_t){
 					.message = "Unexpected token in cast",
 					.region = &sym->region,
@@ -2446,7 +2339,7 @@ buxn_chess_parse_cast2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 				buxn_chess_report(
 					chess->ctx,
 					BUXN_CHESS_NO_TRACE,
-					BUXN_ASM_REPORT_WARNING,
+					BUXN_CHESS_REPORT_WARNING,
 					&(buxn_asm_report_t){
 						.message = "Too many arguments",
 						.region = &sym->region,
@@ -2481,7 +2374,7 @@ buxn_chess_parse_cast2(buxn_chess_t* chess, const buxn_asm_sym_t* sym) {
 			buxn_chess_report(
 				chess->ctx,
 				BUXN_CHESS_NO_TRACE,
-				BUXN_ASM_REPORT_WARNING,
+				BUXN_CHESS_REPORT_WARNING,
 				&(buxn_asm_report_t){
 					.message = "Redundant cast",
 					.region = &chess->current_cast->region,
@@ -2582,7 +2475,7 @@ buxn_chess_end(buxn_chess_t* chess) {
 			buxn_chess_report(
 				chess->ctx,
 				BUXN_CHESS_NO_TRACE,
-				BUXN_ASM_REPORT_ERROR,
+				BUXN_CHESS_REPORT_ERROR,
 				&(buxn_asm_report_t){
 					.message = buxn_chess_printf(
 						chess,

@@ -352,33 +352,60 @@ buxn_chess_log(
 	}
 }
 
+BFORMAT_ATTRIBUTE(5, 6)
+static void
+buxn_chess_trace(
+	buxn_asm_ctx_t* ctx,
+	buxn_chess_id_t trace_id,
+	const char* file,
+	int line,
+	const char* fmt,
+	...
+) {
+	blog_level_t level;
+	if (
+		ctx->trace_id != BUXN_CHESS_NO_TRACE
+		&&
+		ctx->trace_id == trace_id
+	) {
+		level = BLOG_LEVEL_INFO;
+	} else {
+		level = BLOG_LEVEL_TRACE;
+	}
+
+	va_list args;
+	va_start(args, fmt);
+	blog_vwrite(level, file, line, fmt, args);
+	va_end(args);
+}
+
 void
 buxn_chess_report(
 	buxn_asm_ctx_t* ctx,
 	buxn_chess_id_t trace_id,
-	buxn_asm_report_type_t type,
+	buxn_chess_report_type_t type,
 	const buxn_asm_report_t* report
 ) {
 	if (ctx->focus && ctx->trace_id != trace_id) { return; }
 
-	blog_level_t level = BLOG_LEVEL_INFO;
 	switch (type) {
-		case BUXN_ASM_REPORT_ERROR: level = BLOG_LEVEL_ERROR; break;
-		case BUXN_ASM_REPORT_WARNING: level = BLOG_LEVEL_WARN; break;
+		case BUXN_CHESS_REPORT_TRACE:
+			buxn_chess_trace(
+				ctx,
+				trace_id,
+				report->region->filename, report->region->range.start.line,
+				"%s",
+				report->message
+			);
+			break;
+		case BUXN_CHESS_REPORT_WARNING:
+			buxn_chess_log(ctx, trace_id, BLOG_LEVEL_WARN, report);
+			break;
+		case BUXN_CHESS_REPORT_ERROR:
+			buxn_chess_log(ctx, trace_id, BLOG_LEVEL_ERROR, report);
+			break;
 	}
 
-	buxn_chess_log(ctx, trace_id, level, report);
-}
-
-void
-buxn_chess_report_info(
-	buxn_asm_ctx_t* ctx,
-	buxn_chess_id_t trace_id,
-	const buxn_asm_report_t* report
-) {
-	if (ctx->focus && ctx->trace_id != trace_id) { return; }
-
-	buxn_chess_log(ctx, trace_id, BLOG_LEVEL_INFO, report);
 }
 
 void
@@ -419,31 +446,6 @@ buxn_chess_end_trace(
 		__FILE__, __LINE__,
 		"[%d] Trace end", trace_id
 	);
-}
-
-void
-buxn_chess_trace(
-	buxn_asm_ctx_t* ctx,
-	buxn_chess_id_t trace_id,
-	const char* filename,
-	int line,
-	const char* fmt, ...
-) {
-	blog_level_t level;
-	if (
-		ctx->trace_id != BUXN_CHESS_NO_TRACE
-		&&
-		ctx->trace_id == trace_id
-	) {
-		level = BLOG_LEVEL_INFO;
-	} else {
-		level = BLOG_LEVEL_TRACE;
-	}
-
-	va_list args;
-	va_start(args, fmt);
-	blog_vwrite(level, filename, line, fmt, args);
-	va_end(args);
 }
 
 static bool

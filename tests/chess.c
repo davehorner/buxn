@@ -119,7 +119,7 @@ BTEST(chess, jump) {
 			" JMP2\n"
 		)
 	);
-	BTEST_EXPECT(basm->num_errors == 1);
+	BTEST_EXPECT_EQUAL("%d", basm->num_errors, 1);
 	basm->suppress_report = false;
 
 	// Branch fail
@@ -137,7 +137,7 @@ BTEST(chess, jump) {
 			"&two ADD JMP2r\n"
 		)
 	);
-	BTEST_EXPECT(basm->num_errors == 1);
+	BTEST_EXPECT_EQUAL("%d", basm->num_errors, 1);
 
 	BTEST_EXPECT(
 		!buxn_asm_str(
@@ -151,7 +151,7 @@ BTEST(chess, jump) {
 			"&two ADD JMP2r\n"
 		)
 	);
-	BTEST_EXPECT(basm->num_errors == 1);
+	BTEST_EXPECT_EQUAL("%d", basm->num_errors, 1);
 
 	basm->suppress_report = false;
 }

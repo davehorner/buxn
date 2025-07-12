@@ -150,22 +150,20 @@ void
 buxn_chess_report(
 	buxn_asm_ctx_t* ctx,
 	buxn_chess_id_t trace_id,
-	buxn_asm_report_type_t type,
+	buxn_chess_report_type_t type,
 	const buxn_asm_report_t* report
 ) {
 	(void)trace_id;
-	buxn_asm_report(ctx, type, report);
-}
-
-void
-buxn_chess_report_info(
-	buxn_asm_ctx_t* ctx,
-	buxn_chess_id_t trace_id,
-	const buxn_asm_report_t* report
-) {
-	(void)ctx;
-	(void)trace_id;
-	(void)report;
+	switch (type) {
+		case BUXN_CHESS_REPORT_TRACE:
+			break;
+		case BUXN_CHESS_REPORT_WARNING:
+			buxn_asm_report(ctx, BUXN_ASM_REPORT_WARNING, report);
+			break;
+		case BUXN_CHESS_REPORT_ERROR:
+			buxn_asm_report(ctx, BUXN_ASM_REPORT_ERROR, report);
+			break;
+	}
 }
 
 void
@@ -188,21 +186,6 @@ buxn_chess_end_trace(
 	(void)ctx;
 	(void)trace_id;
 	(void)success;
-}
-
-void
-buxn_chess_trace(
-	buxn_asm_ctx_t* ctx,
-	buxn_chess_id_t trace_id,
-	const char* filename,
-	int line,
-	const char* fmt, ...
-) {
-	(void)ctx;
-	(void)trace_id;
-	(void)filename;
-	(void)line;
-	(void)fmt;
 }
 
 uint8_t
