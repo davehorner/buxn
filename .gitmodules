@@ -16,3 +16,6 @@
 [submodule "deps/utf8proc"]
 	path = deps/utf8proc
 	url = https://github.com/JuliaStrings/utf8proc.git
+[submodule "deps/bestline"]
+	path = deps/bestline
+	url = https://github.com/jart/bestline.git

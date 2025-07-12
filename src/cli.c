@@ -112,7 +112,6 @@ boot(int argc, const char* argv[], FILE* rom_file, uint32_t rom_size) {
 	int exit_code = 0;
 	vm_data_t devices = { 0 };
 
-
 	buxn_vm_t* vm = malloc(sizeof(buxn_vm_t) + BUXN_MEMORY_BANK_SIZE * BUXN_MAX_NUM_MEMORY_BANKS);
 	vm->config = (buxn_vm_config_t){
 		.userdata = &devices,

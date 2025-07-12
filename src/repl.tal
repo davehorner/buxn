@@ -1,0 +1,9 @@
+( Prelude file for every repl input )
+
+|0100 @repl/main
+~/repl/line ( Actual content of the line is pasted here  )
+
+#2b0e DEO ( Print the stack in the static analyzer )
+BRK
+
+( Since port 0 is unused, push all builtin commands to that port )

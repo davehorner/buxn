@@ -1397,7 +1397,7 @@ buxn_asm_process_comment(
 	const buxn_asm_token_t* start,
 	buxn_asm_unit_t* unit
 ) {
-	buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
+	buxn_asm_put_symbol(basm->ctx, basm->write_addr, &(buxn_asm_sym_t){
 		.type = BUXN_ASM_SYM_COMMENT,
 		.name = start->lexeme.chars,
 		.region = start->region,
@@ -1408,7 +1408,7 @@ buxn_asm_process_comment(
 	while (depth > 0 && buxn_asm_next_token(basm, unit, &token)) {
 		assert((token.lexeme.len > 0) && "Invalid token");
 
-		buxn_asm_put_symbol(basm->ctx, 0, &(buxn_asm_sym_t){
+		buxn_asm_put_symbol(basm->ctx, basm->write_addr, &(buxn_asm_sym_t){
 			.type = BUXN_ASM_SYM_COMMENT,
 			.name = token.lexeme.chars,
 			.region = token.region,
@@ -1432,6 +1432,15 @@ buxn_asm_process_comment(
 	}
 
 	return true;
+}
+
+static void
+buxn_asm_process_mark(buxn_asm_t* basm, const buxn_asm_token_t* token) {
+	buxn_asm_put_symbol(basm->ctx, basm->write_addr, &(buxn_asm_sym_t){
+		.type = BUXN_ASM_SYM_MARK,
+		.name = token->lexeme.chars,
+		.region = token->region,
+	});
 }
 
 static bool
@@ -1460,12 +1469,14 @@ buxn_asm_create_macro(
 				break;
 			case '[':
 				// [word is ignored
+				buxn_asm_process_mark(basm, &token);
 				break;
 			case ']':
 				// ] is standalone
 				if (token.lexeme.len != 1) {
 					return buxn_asm_error(basm, &token, "Invalid runic token");
 				}
+				buxn_asm_process_mark(basm, &token);
 				break;
 			case '{':
 				if (token.lexeme.len != 1) {
@@ -2036,11 +2047,13 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 				return buxn_asm_error(basm, &token, "Unexpected rune");
 			case '[':
 				// [word is accepted and ignored
+				buxn_asm_process_mark(basm, &token);
 				break;
 			case ']':
 				if (token.lexeme.len != 1) {
 					return buxn_asm_error(basm, &token, "Invalid runic token");
 				}
+				buxn_asm_process_mark(basm, &token);
 				break;
 			case '~': {
 				if (basm->preprocessor_depth >= BUXN_ASM_MAX_PREPROCESSOR_DEPTH) {

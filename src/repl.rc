@@ -1,0 +1,3 @@
+#include <xincbin.h>
+
+XINCBIN(repl_main, "src/repl.tal")

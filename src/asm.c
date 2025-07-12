@@ -124,8 +124,8 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 			buxn_asm_put_dbg_sym(ctx, BUXN_DBG_SYM_NUMBER, addr, sym);
 			break;
 		case BUXN_ASM_SYM_COMMENT:
-			break;
 		case BUXN_ASM_SYM_MACRO_REF:
+		case BUXN_ASM_SYM_MARK:
 			break;
 	}
 
@@ -405,7 +405,6 @@ buxn_chess_report(
 			buxn_chess_log(ctx, trace_id, BLOG_LEVEL_ERROR, report);
 			break;
 	}
-
 }
 
 void

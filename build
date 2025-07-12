@@ -5,7 +5,7 @@ main() {
 	export PLATFORM=${2:-linux}
 	export OBJ_DIR=".build/$BUILD_TYPE/$PLATFORM"
 	export BIN_DIR="bin/$BUILD_TYPE/$PLATFORM"
-	export INCLUDE_FLAGS="-Iinclude -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/termbox2 -Ideps/utf8proc"
+	export INCLUDE_FLAGS="-Iinclude -Ideps/sokol -Ideps/sokol_gp -Ideps/blibs -Ideps/physfs/src -Ideps/termbox2 -Ideps/utf8proc -Ideps/bestline"
 
 	rm -f .build/commands
 	mkdir -p .build
@@ -73,11 +73,26 @@ build_linux() {
 		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
 		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/repl.c.o \
+		${OBJ_DIR}/src/physfs.c.o \
+		${OBJ_DIR}/src/asm/{asm.c.o,chess.c.o} \
+		${OBJ_DIR}/src/vm/vm.c.o \
+		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o} \
+		${OBJ_DIR}/deps/bestline/bestline.c.o \
+		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o} \
+		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
+		-o ${BIN_DIR}/buxn-repl
+
+	$CC \
+		-fuse-ld=mold \
+		-Wl,--separate-debug-file \
+		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/rom2exe.c.o \
 		-o ${BIN_DIR}/buxn-rom2exe
 
 	$CC \
 		-fuse-ld=mold \
+		-Wl,--separate-debug-file \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/romviz.c.o \
 		${OBJ_DIR}/src/dbg/symtab.c.o \
@@ -85,6 +100,7 @@ build_linux() {
 
 	$CC \
 		-fuse-ld=mold \
+		-Wl,--separate-debug-file \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/ctags.c.o \
 		${OBJ_DIR}/src/asm/asm.c.o \
@@ -92,6 +108,7 @@ build_linux() {
 
 	$CC \
 		-fuse-ld=mold \
+		-Wl,--separate-debug-file \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/dbg-wrapper.c.o \
 		${OBJ_DIR}/src/dbg/transports/{file,stream,from_str}.c.o \
@@ -113,6 +130,7 @@ build_linux() {
 
 	$CC \
 		-fuse-ld=mold \
+		-Wl,--separate-debug-file \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/tests/{main,common,asm,asm-extensions,vm,dbg,chess}.c.o \
 		${OBJ_DIR}/src/dbg/{core.c.o,wire.c.o,protocol.c.o} \
@@ -365,6 +383,12 @@ build_cosmo() {
 
 	$CC \
 		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/repl.c.o \
+		${OBJ_DIR}/src/asm/asm.c.o \
+		-o ${BIN_DIR}/buxn-repl
+
+	$CC \
+		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/rom2exe.c.o \
 		-o ${BIN_DIR}/buxn-rom2exe
 
@@ -446,6 +470,7 @@ compile_desktop() {
 	compile src/rom2exe.c $PROGRAM_FLAGS
 	compile src/romviz.c $PROGRAM_FLAGS
 	compile src/ctags.c $PROGRAM_FLAGS
+	compile src/repl.c $PROGRAM_FLAGS
 
 	# Test
 	compile tests/main.c $PROGRAM_FLAGS
@@ -458,6 +483,9 @@ compile_desktop() {
 
 	# utf8proc
 	compile deps/utf8proc/utf8proc.c $PROGRAM_FLAGS
+
+	# bestline
+	compile deps/bestline/bestline.c $BUILD_TYPE_FLAGS
 }
 
 begin_compile() {
