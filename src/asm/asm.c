@@ -103,6 +103,7 @@ typedef struct {
 	buxn_asm_token_link_t* first;
 	buxn_asm_token_link_t* last;
 	buxn_asm_token_link_t* current;
+	buxn_asm_token_t argument;
 	uint16_t id;
 	bool expanding;
 } buxn_asm_macro_unit_t;
@@ -186,6 +187,7 @@ typedef struct {
 	buxn_asm_macro_unit_t* current_macro;
 	char token_buf[BUXN_ASM_MAX_LONG_STRING_LEN + 1];
 	char name_buf[BUXN_ASM_MAX_TOKEN_LEN + 1];
+	char macro_expand_buf[BUXN_ASM_MAX_LONG_STRING_LEN + 1];
 
 	int read_buf;
 	bool has_read_buf;
@@ -591,9 +593,74 @@ buxn_asm_next_token_in_macro(
 	buxn_asm_macro_unit_t* unit,
 	buxn_asm_token_t* token
 ) {
-	(void)basm;
 	if (unit->current != NULL) {
-		*token = unit->current->token;
+		buxn_asm_token_t template_token = unit->current->token;
+		buxn_asm_token_t arg_token = unit->argument;
+		buxn_asm_token_t expanded_token = { .region = template_token.region };
+
+		int len = 0;
+		char* expand_buf = basm->macro_expand_buf;
+		bool expanded = false;
+		if (arg_token.lexeme.len > 0) {  // Token expansion
+			// Copy from template, replacing '*' with arg_token.lexeme
+			for (int i = 0; i < template_token.lexeme.len; ++i) {
+				char ch = template_token.lexeme.chars[i];
+				if (ch == '*') {
+					expanded = true;
+
+					if (len + arg_token.lexeme.len > BUXN_ASM_MAX_LONG_STRING_LEN) {
+						return buxn_asm_error(
+							basm,
+							&template_token,
+							"Expanded token is too long"
+						);
+					}
+
+					memcpy(
+						expand_buf + len,
+						arg_token.lexeme.chars,
+						arg_token.lexeme.len
+					);
+					len += arg_token.lexeme.len;
+				} else {
+					if (len + 1 > BUXN_ASM_MAX_LONG_STRING_LEN) {
+						return buxn_asm_error(
+							basm,
+							&template_token,
+							"Expanded token is too long"
+						);
+					}
+					expand_buf[len++] = ch;
+				}
+			}
+			expand_buf[len] = '\0';
+
+			bool is_long_string =
+				expand_buf[0] == '"'
+				&&
+				len > 1
+				&&
+				expand_buf[1] == ' ';
+			int limit = is_long_string
+				? BUXN_ASM_MAX_LONG_STRING_LEN
+				: BUXN_ASM_MAX_TOKEN_LEN;
+			if (len > limit) {
+				return buxn_asm_error(
+					basm,
+					&template_token,
+					"Expanded token is too long"
+				);
+			}
+		}
+
+		if (expanded) {
+			expanded_token.lexeme.chars = expand_buf;
+			expanded_token.lexeme.len = len;
+		} else {
+			expanded_token.lexeme = template_token.lexeme;
+		}
+
+		*token = expanded_token;
 		unit->current = unit->current->next;
 		return true;
 	} else {
@@ -1779,7 +1846,8 @@ static bool
 buxn_asm_expand_macro(
 	buxn_asm_t* basm,
 	const buxn_asm_token_t* token,
-	buxn_asm_symtab_node_t* symbol
+	buxn_asm_symtab_node_t* symbol,
+	buxn_asm_unit_t* unit
 ) {
 	buxn_asm_macro_unit_t* macro = &symbol->macro;
 	if (basm->preprocessor_depth >= BUXN_ASM_MAX_PREPROCESSOR_DEPTH) {
@@ -1797,6 +1865,30 @@ buxn_asm_expand_macro(
 		.id = macro->id,
 	});
 
+	buxn_asm_token_t trigger_token = {
+		.region = token->region,
+		.lexeme = symbol->key->key,
+	};
+
+	// A macro whose name ends with ':' expects an argument
+	if (symbol->key->key.chars[symbol->key->key.len - 1] == ':') {
+		buxn_asm_token_t arg;
+		bool got_arg = buxn_asm_next_token(basm, unit, &arg);
+		if (!got_arg && basm->success) {  // EOF
+			buxn_asm_error(basm, token, "Macro expects an argument");
+		}
+
+		if (!got_arg) {
+			return false;
+		}
+
+		// We want to reuse the expansion format buffer so the lexeme needs to
+		// have its own buffer
+		macro->argument = buxn_asm_persist_token(basm, &arg);
+	} else {
+		macro->argument.lexeme.len = 0;
+	}
+
 	macro->expanding = true;
 	macro->current = macro->first;
 	++basm->preprocessor_depth;
@@ -1810,7 +1902,7 @@ buxn_asm_expand_macro(
 
 	// Append an error to explain expansion chain
 	if (!success) {
-		buxn_asm_error(basm, token, "Error while expanding macro");
+		buxn_asm_error(basm, &trigger_token, "Error while expanding macro");
 	}
 
 	return success;
@@ -1857,7 +1949,11 @@ buxn_asm_process_lambda_close(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 }
 
 static bool
-buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
+buxn_asm_process_word(
+	buxn_asm_t* basm,
+	const buxn_asm_token_t* token,
+	buxn_asm_unit_t* unit
+) {
 	assert((!buxn_asm_is_runic(token->lexeme.chars[0])) && "Runic word encountered");
 
 	buxn_asm_opcode_result_t opcode_result;
@@ -1873,7 +1969,7 @@ buxn_asm_process_word(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 			return false;
 		} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_MACRO) {
 			symbol->referenced = true;
-			return buxn_asm_expand_macro(basm, token, symbol);
+			return buxn_asm_expand_macro(basm, token, symbol, unit);
 		} else if (symbol->type == BUXN_ASM_SYMTAB_ENTRY_LABEL) {
 			symbol->referenced = true;
 			if (!buxn_asm_emit_opcode(basm, token, 0x60, false)) { return false; }  // JSI
@@ -2105,7 +2201,7 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 						return false;
 					}
 				} else {
-					if (!buxn_asm_process_word(basm, &token)) {
+					if (!buxn_asm_process_word(basm, &token, unit)) {
 						return false;
 					}
 				}

@@ -148,5 +148,53 @@ BTEST(basm_ext, long_string) {
 	BTEST_EXPECT_EQUAL("%d", basm->rom_size, sizeof("long  string is long my dude can you imagine how long it is?") - 1);
 
 	// Unterminated
+	basm->suppress_report = true;
 	BTEST_EXPECT(!buxn_asm_str(basm, "\" "));
+	basm->suppress_report = false;
+}
+
+BTEST(basm_ext, macro_with_arg) {
+	buxn_asm_ctx_t* basm = &fixture.basm;
+	int exit_code;
+
+	// Simple expansion
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"%Macro-with-arg: { #* }\n"
+			"Macro-with-arg: 02 #0f DEO BRK"
+		)
+	);
+	exit_code = basm_ext_execute_rom();
+	BTEST_EXPECT_EQUAL("%d", exit_code, 2);
+
+	// Chained expansion
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"%Macro1: { Macro*: 02 }\n"
+			"%Macro2: { #* }\n"
+			"Macro1: 2 #0f DEO BRK"
+		)
+	);
+	exit_code = basm_ext_execute_rom();
+	BTEST_EXPECT_EQUAL("%d", exit_code, 2);
+
+	// Error
+	basm->suppress_report = true;
+	BTEST_EXPECT(
+		!buxn_asm_str(
+			basm,
+			"%Macro: { * }\n"
+			"Macro:"
+		)
+	);
+	BTEST_EXPECT(
+		!buxn_asm_str(
+			basm,
+			"%Macro: { a-* }\n"
+			"Macro: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		)
+	);
+	basm->suppress_report = false;
 }

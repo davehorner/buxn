@@ -5,7 +5,7 @@ export PLATFORM=${2:-linux}
 
 if ./build $@
 then
-	./test $@ || true
+	./test ${TEST:-} || true
 fi
 
 inotifywait -r -e CLOSE_WRITE -m build src tests | \
@@ -14,6 +14,6 @@ inotifywait -r -e CLOSE_WRITE -m build src tests | \
 		clear
 		if ./build $@
 		then
-			./test $@ || true
+			./test ${TEST:-} || true
 		fi
 	done
