@@ -188,8 +188,8 @@ BTEST(basm, number) {
 
 BTEST(basm, macro) {
 	buxn_asm_ctx_t* basm = &fixture.basm;
-	basm->suppress_report = true;
 
+	basm->suppress_report = true;
 	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %label { ADD } %label { SUB }"));
 	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %label #1234"));
 	BTEST_EXPECT(!buxn_asm_str(basm, "@scope %test { BRK @end"));
@@ -201,6 +201,9 @@ BTEST(basm, macro) {
 	BTEST_EXPECT(buxn_asm_str(basm, "@scope %macro (doc comment ) { ADD } #1234"));
 	BTEST_EXPECT(buxn_asm_str(basm, "@scope %macro ( comment ) { ADD } #1234"));
 	BTEST_EXPECT(buxn_asm_str(basm, "@scope %macro [ignore { ] ADD } #1234"));
+	basm->suppress_report = false;
+
+	BTEST_EXPECT(buxn_asm_str(basm, "%jmp { !{  } } jmp"));
 }
 
 BTEST(basm, references) {

@@ -1858,15 +1858,35 @@ buxn_chess_apply_cast(
 	}
 
 	if (cast_size <= stack->size) {
+		buxn_chess_sig_stack_t inputs;
 		for (uint8_t i = 0; i < cast->len; ++i) {
-			buxn_chess_pop_from(
+			inputs.content[cast->len - 1 - i] = buxn_chess_pop_from(
 				ctx,
 				stack,
 				buxn_chess_value_size(cast->content[cast->len - 1 - i])
 			);
 		}
 		for (uint8_t i = 0; i < cast->len; ++i) {
-			buxn_chess_raw_push(stack, cast->content[i]);
+			buxn_chess_value_t input = inputs.content[i];
+			buxn_chess_value_t output = cast->content[i];
+
+			if (input.semantics & BUXN_CHESS_SEM_CONST) {
+				output.semantics |= BUXN_CHESS_SEM_CONST;
+				output.value = input.value;
+			}
+			if (input.semantics & BUXN_CHESS_SEM_FORKED) {
+				output.semantics |= BUXN_CHESS_SEM_FORKED;
+			}
+			if (input.semantics & BUXN_CHESS_SEM_HALF_HI) {
+				output.semantics |= BUXN_CHESS_SEM_HALF_HI;
+				output.whole_value = input.whole_value;
+			}
+			if (input.semantics & BUXN_CHESS_SEM_HALF_LO) {
+				output.semantics |= BUXN_CHESS_SEM_HALF_LO;
+				output.whole_value = input.whole_value;
+			}
+
+			buxn_chess_raw_push(stack, output);
 		}
 	} else {
 		void* region = buxn_chess_begin_mem_region(ctx->chess->ctx);

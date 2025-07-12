@@ -602,10 +602,10 @@ buxn_asm_next_token_in_macro(
 		char* expand_buf = basm->macro_expand_buf;
 		bool expanded = false;
 		if (arg_token.lexeme.len > 0) {  // Token expansion
-			// Copy from template, replacing '*' with arg_token.lexeme
+			// Copy from template, replacing '^' with arg_token.lexeme
 			for (int i = 0; i < template_token.lexeme.len; ++i) {
 				char ch = template_token.lexeme.chars[i];
-				if (ch == '*') {
+				if (ch == '^') {
 					expanded = true;
 
 					if (len + arg_token.lexeme.len > BUXN_ASM_MAX_LONG_STRING_LEN) {
@@ -1500,38 +1500,53 @@ buxn_asm_create_macro(
 	while (depth > 0 && buxn_asm_next_token(basm, unit, &token)) {
 		assert((token.lexeme.len > 0) && "Invalid token");
 
-		switch (token.lexeme.chars[0]) {
-			case '%':
-				return buxn_asm_error2(
-					basm,
-					&token, "Nested macro definition detected",
-					start, "In this macro definition"
-				);
-			case '{':
-				if (token.lexeme.len == 1) { ++depth; }
-				break;
-			case '}':
-				if (token.lexeme.len == 1) { --depth; }
-				break;
-			default: {
-				buxn_asm_token_link_t* token_link = buxn_asm_alloc(
-					basm->ctx,
-					sizeof(buxn_asm_token_link_t),
-					_Alignof(buxn_asm_token_link_t)
-				);
-				*token_link = (buxn_asm_token_link_t){
-					.token = buxn_asm_persist_token(basm, &token),
-				};
+		char first_char = token.lexeme.chars[0];
+		if (first_char == '%') {
+			return buxn_asm_error2(
+				basm,
+				&token, "Nested macro definition detected",
+				start, "In this macro definition"
+			);
+		} else if (first_char == '}' && token.lexeme.len == 1) {
+			--depth;
+		} else {
+			if (
+				(
+					first_char == ',' || first_char == '_'
+					||
+					first_char == '.' || first_char == '-'
+					||
+					first_char == ';' || first_char == '='
+					||
+					first_char == '!' || first_char == '?'
+				)
+				&&
+				token.lexeme.len == 2
+				&&
+				token.lexeme.chars[1] == '{'
+			) {
+				++depth;
+			}
+		}
 
-				if (macro->first == NULL) {
-					macro->first = token_link;
-				}
+		if (depth > 0) {
+			buxn_asm_token_link_t* token_link = buxn_asm_alloc(
+				basm->ctx,
+				sizeof(buxn_asm_token_link_t),
+				_Alignof(buxn_asm_token_link_t)
+			);
+			*token_link = (buxn_asm_token_link_t){
+				.token = buxn_asm_persist_token(basm, &token),
+			};
 
-				if (macro->last != NULL) {
-					macro->last->next = token_link;
-				}
-				macro->last = token_link;
-			} break;
+			if (macro->first == NULL) {
+				macro->first = token_link;
+			}
+
+			if (macro->last != NULL) {
+				macro->last->next = token_link;
+			}
+			macro->last = token_link;
 		}
 	}
 

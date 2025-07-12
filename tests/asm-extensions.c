@@ -161,7 +161,7 @@ BTEST(basm_ext, macro_with_arg) {
 	BTEST_EXPECT(
 		buxn_asm_str(
 			basm,
-			"%Macro-with-arg: { #* }\n"
+			"%Macro-with-arg: { #^ }\n"
 			"Macro-with-arg: 02 #0f DEO BRK"
 		)
 	);
@@ -172,8 +172,8 @@ BTEST(basm_ext, macro_with_arg) {
 	BTEST_EXPECT(
 		buxn_asm_str(
 			basm,
-			"%Macro1: { Macro*: 02 }\n"
-			"%Macro2: { #* }\n"
+			"%Macro1: { Macro^: 02 }\n"
+			"%Macro2: { #^ }\n"
 			"Macro1: 2 #0f DEO BRK"
 		)
 	);
@@ -185,14 +185,14 @@ BTEST(basm_ext, macro_with_arg) {
 	BTEST_EXPECT(
 		!buxn_asm_str(
 			basm,
-			"%Macro: { * }\n"
+			"%Macro: { ^ }\n"
 			"Macro:"
 		)
 	);
 	BTEST_EXPECT(
 		!buxn_asm_str(
 			basm,
-			"%Macro: { a-* }\n"
+			"%Macro: { a-^ }\n"
 			"Macro: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		)
 	);
