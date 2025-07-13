@@ -385,7 +385,14 @@ build_cosmo() {
 	$CC \
 		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/repl.c.o \
-		${OBJ_DIR}/src/asm/asm.c.o \
+		${OBJ_DIR}/src/physfs.c.o \
+		${OBJ_DIR}/src/asm/{asm.c.o,chess.c.o} \
+		${OBJ_DIR}/src/vm/vm.c.o \
+		${OBJ_DIR}/src/devices/{console.c.o,system.c.o,datetime.c.o,file.c.o} \
+		${OBJ_DIR}/deps/bestline/bestline.c.o \
+		${OBJ_DIR}/deps/utf8proc/utf8proc.c.o \
+		${OBJ_DIR}/deps/physfs/src/{physfs_platform_unix.c.o,physfs_platform_posix.c.o} \
+		${OBJ_DIR}/deps/physfs/src/{physfs.c.o,physfs_unicode.c.o,physfs_byteorder.c.o,physfs_archiver_zip.c.o,physfs_archiver_dir.c.o} \
 		-o ${BIN_DIR}/buxn-repl
 
 	$CC \
@@ -497,9 +504,9 @@ begin_compile() {
 compile() {
 	mkdir -p $OBJ_DIR
 	src=$1
-	object=$OBJ_DIR/$1.o
+	object=$(readlink -f $OBJ_DIR)/$1.o
 	shift 1
-	echo ./compile $CC $CXX $src $object "$@" >> ${COMMAND_FILE:-$OBJ_DIR/commands}
+	echo ./compile $CC $CXX $(readlink -f $src) $object "$@" >> ${COMMAND_FILE:-$OBJ_DIR/commands}
 }
 
 end_compile() {

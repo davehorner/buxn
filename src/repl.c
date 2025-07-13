@@ -31,6 +31,8 @@ struct buxn_asm_ctx_s {
 	buxn_repl_t* repl;
 	buxn_chess_t* chess;
 	int num_chess_errors;
+	int mark_depth;
+	bool assembled_line;
 };
 
 struct buxn_asm_file_s {
@@ -46,13 +48,19 @@ typedef struct {
 	int pos;
 } buxn_repl_file_memory_t;
 
+typedef enum {
+	BUXN_REPL_READLINE_OPEN,
+	BUXN_REPL_READLINE_EOL,
+	BUXN_REPL_READLINE_EOF,
+} buxn_repl_readline_state_t;
+
 typedef struct {
 	buxn_asm_file_t base;
 
 	buxn_asm_ctx_t* basm;
+	buxn_repl_readline_state_t state;
 	char* line;
 	int pos;
-	bool ended;
 } buxn_repl_file_readline_t;
 
 typedef struct {
@@ -179,12 +187,12 @@ main(int argc, const char* argv[]) {
 
 		basm.chess = buxn_chess_begin(&basm);
 		bool success = buxn_asm(&basm, "/repl/main");
-		if (success && !repl.terminated) {
+		if (success && basm.assembled_line) {
 			buxn_chess_end(basm.chess);
 			success &= basm.num_chess_errors == 0;
 		}
 
-		if (success && !repl.terminated) {
+		if (success && basm.assembled_line) {
 			buxn_vm_execute(repl.vm, BUXN_RESET_VECTOR);
 
 			if (repl.need_reset) {
@@ -339,25 +347,45 @@ static int
 buxn_repl_readline_file_getc(buxn_asm_file_t* base) {
 	buxn_repl_file_readline_t* file = BCONTAINER_OF(base, buxn_repl_file_readline_t, base);
 
-	if (file->ended) {
-		return BUXN_ASM_IO_EOF;
-	}
-
-	if (file->line == NULL) {
-		file->line = bestlineWithHistory("> ", "buxn-repl");
-		file->pos = 0;
-		if (file->line == NULL) {
-			file->basm->repl->terminated = true;
+	switch (file->state) {
+		case BUXN_REPL_READLINE_EOF:
 			return BUXN_ASM_IO_EOF;
+		case BUXN_REPL_READLINE_EOL: {
+			if (file->basm->mark_depth > 0) {
+				file->state = BUXN_REPL_READLINE_OPEN;
+			} else {
+				return BUXN_ASM_IO_EOF;
+			}
 		}
+		// fallthrough
+		case BUXN_REPL_READLINE_OPEN: {
+			if (file->line == NULL) {
+				char fmt_buf[sizeof("[4294967295> ")];
+				const char* prompt;
+				if (file->basm->mark_depth > 0) {
+					snprintf(fmt_buf, sizeof(fmt_buf), "[%d> ", file->basm->mark_depth);
+					prompt = fmt_buf;
+				} else {
+					prompt = "> ";
+				}
+
+				file->pos = 0;
+				file->line = bestlineWithHistory(prompt, "buxn-repl");
+				if (file->line == NULL) {
+					file->basm->repl->terminated = true;
+					file->state = BUXN_REPL_READLINE_EOF;
+					return BUXN_ASM_IO_EOF;
+				}
+			}
+		} break;
 	}
 
 	char ch = file->line[file->pos++];
 	if (ch == 0) {
 		bestlineFree(file->line);
 		file->line = NULL;
-		file->ended = true;
-		return BUXN_ASM_IO_EOF;
+		file->state = BUXN_REPL_READLINE_EOL;
+		return '\n';
 	} else {
 		return ch;
 	}
@@ -374,6 +402,7 @@ static buxn_asm_file_t*
 buxn_repl_open_readline_file(buxn_asm_ctx_t* basm) {
 	buxn_repl_file_readline_t* file = malloc(sizeof(buxn_repl_file_readline_t));
 	*file = (buxn_repl_file_readline_t){
+		.state = BUXN_REPL_READLINE_OPEN,
 		.base = {
 			.getc = buxn_repl_readline_file_getc,
 			.close = buxn_repl_readline_file_close,
@@ -438,6 +467,14 @@ buxn_asm_put_rom(buxn_asm_ctx_t* ctx, uint16_t address, uint8_t value) {
 void
 buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sym) {
 	buxn_chess_handle_symbol(ctx->chess, addr, sym);
+
+	if (sym->type == BUXN_ASM_SYM_MARK) {
+		ctx->mark_depth += sym->name[0] == '[' ? 1 : -1;
+	}
+
+	if (strcmp(sym->region.filename, "/repl/line") == 0) {
+		ctx->assembled_line = true;
+	}
 }
 
 void

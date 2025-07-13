@@ -70,6 +70,9 @@ If extended debug info is available, it will show the source location and text o
 `buxn-ctags` is a program to generate [ctags](https://github.com/universal-ctags/ctags) file from a .tal file (and its includes).
 It is only tested on classic Vim and it uses byte offset to go to the exact definition location instead of line number or search pattern.
 
+`buxn-repl` is a simple REPL.
+The stack will be pretty printed.
+
 ### Android
 
 Make sure that Android SDK & NDK are installed.
@@ -106,6 +109,7 @@ Currently, only the following programs are supported:
 * buxn-rom2exe: Notably, this will create an actually portable executable.
 * buxn-romviz
 * buxn-ctags
+* buxn-repl
 
 WIP: buxn-gui using [cosmo-sokol](https://github.com/bullno1/cosmo-sokol).
 
