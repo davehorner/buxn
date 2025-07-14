@@ -88,6 +88,14 @@ build_linux() {
 		-fuse-ld=mold \
 		-Wl,--separate-debug-file \
 		${BUILD_TYPE_FLAGS} \
+		${OBJ_DIR}/src/bindgen.c.o \
+		${OBJ_DIR}/src/asm/{asm.c.o,annotation.c.o} \
+		-o ${BIN_DIR}/buxn-bindgen
+
+	$CC \
+		-fuse-ld=mold \
+		-Wl,--separate-debug-file \
+		${BUILD_TYPE_FLAGS} \
 		${OBJ_DIR}/src/rom2exe.c.o \
 		-o ${BIN_DIR}/buxn-rom2exe
 
@@ -479,6 +487,7 @@ compile_desktop() {
 	compile src/romviz.c $PROGRAM_FLAGS
 	compile src/ctags.c $PROGRAM_FLAGS
 	compile src/repl.c $PROGRAM_FLAGS
+	compile src/bindgen.c $PROGRAM_FLAGS
 
 	# Test
 	compile tests/main.c $PROGRAM_FLAGS
