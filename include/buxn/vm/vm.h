@@ -90,9 +90,30 @@ buxn_vm_load2(uint8_t* mem, uint16_t addr, uint16_t addr_mask) {
 	return hi | lo;
 }
 
+static inline uint8_t
+buxn_vm_mem_load(buxn_vm_t* vm, uint16_t addr) {
+	return vm->memory[addr];
+}
+
 static inline uint16_t
 buxn_vm_mem_load2(buxn_vm_t* vm, uint16_t addr) {
 	return buxn_vm_load2(vm->memory, addr, BUXN_MEM_ADDR_MASK);
+}
+
+static inline void
+buxn_vm_mem_store(buxn_vm_t* vm, uint16_t addr, uint8_t value) {
+	vm->memory[addr] = value;
+}
+
+static inline void
+buxn_vm_mem_store2(buxn_vm_t* vm, uint16_t addr, uint16_t value) {
+	vm->memory[(uint16_t)(addr + 0)] = (value & 0xff00) >> 8;
+	vm->memory[(uint16_t)(addr + 1)] = (value & 0x00ff) >> 0;
+}
+
+static inline uint8_t
+buxn_vm_dev_load(buxn_vm_t* vm, uint8_t addr) {
+	return vm->device[addr];
 }
 
 static inline uint16_t

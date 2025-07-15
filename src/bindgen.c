@@ -17,6 +17,24 @@ typedef struct {
 	const char* suffix;
 } format_options_t;
 
+typedef struct cmd_field_info_s cmd_field_info_t;
+typedef struct cmd_struct_info_s cmd_struct_info_t;
+
+struct cmd_field_info_s {
+	str_t name;
+	uint16_t size;
+
+	cmd_field_info_t* next;
+};
+
+struct cmd_struct_info_s {
+	str_t name;
+
+	cmd_field_info_t* first_field;
+	cmd_field_info_t* last_field;
+	cmd_struct_info_t* next;
+};
+
 typedef enum {
 	ANNO_DEVICE,
 	ANNO_ENUM,
@@ -31,6 +49,11 @@ struct buxn_asm_ctx_s {
 
 	format_options_t format_options[3];
 	uint16_t base_addr;
+	uint16_t last_addr;
+
+	cmd_struct_info_t* first_cmd;
+	cmd_struct_info_t* last_cmd;
+	str_t last_name;
 };
 
 static void
@@ -44,6 +67,12 @@ handle_annotation(
 
 static void
 finalize_section(buxn_asm_ctx_t* ctx);
+
+static void
+print_str(str_t str, int (*char_transform)(int));
+
+static void
+print_null_str(const char* str, int (*char_transform)(int));
 
 int
 main(int argc, const char* argv[]) {
@@ -62,7 +91,7 @@ main(int argc, const char* argv[]) {
 		.format_options = {
 			[ANNO_DEVICE] = { .prefix = "dev_", .suffix = "_layout_t", },
 			[ANNO_ENUM] = { .prefix = "", .suffix = "_t", },
-			[ANNO_COMMAND] = { .prefix = "cmd_", .suffix = "_layout_t", },
+			[ANNO_COMMAND] = { .prefix = "cmd_", .suffix = "_t", },
 		},
 	};
 
@@ -145,6 +174,85 @@ main(int argc, const char* argv[]) {
 	bool success = buxn_asm(&basm, argv[result.arg_index]);
 	finalize_section(&basm);
 
+	for (
+		cmd_struct_info_t* struct_info = basm.first_cmd;
+		struct_info != NULL;
+		struct_info = struct_info->next
+	) {
+		printf("\ntypedef struct {\n");
+		for (
+			cmd_field_info_t* field_info = struct_info->first_field;
+			field_info != NULL;
+			field_info = field_info->next
+		) {
+			printf(
+				"\tuint%d_t %.*s;\n",
+				field_info->size == 1 ? 8 : 16,
+				field_info->name.len, field_info->name.chars
+			);
+		}
+
+		format_options_t fmt_options = basm.format_options[ANNO_COMMAND];
+
+		printf("} %s", fmt_options.prefix);
+		print_str(struct_info->name, tolower);
+		printf("%s;\n", fmt_options.suffix);
+
+		// Reader
+		printf("\nstatic inline %s", fmt_options.prefix);
+		print_str(struct_info->name, tolower);
+		printf("%s\n", fmt_options.suffix);
+		printf("%s", fmt_options.prefix);
+		print_str(struct_info->name, tolower);
+		printf("_read(buxn_vm_t* vm, uint16_t addr) {\n");
+		printf("\treturn (%s", fmt_options.prefix);
+		print_str(struct_info->name, tolower);
+		printf("%s){\n", fmt_options.suffix);
+		for (
+			cmd_field_info_t* field_info = struct_info->first_field;
+			field_info != NULL;
+			field_info = field_info->next
+		) {
+			printf(
+				"\t\t.%.*s = buxn_vm_mem_load%s(vm, addr + ",
+				field_info->name.len, field_info->name.chars,
+				field_info->size == 1 ? "" : "2"
+			);
+
+			print_null_str(fmt_options.prefix, toupper);
+			print_str(struct_info->name, toupper);
+			printf("_");
+			print_str(field_info->name, toupper);
+			printf("),\n");
+		}
+		printf("\t};\n}\n");
+
+		// Writer
+		printf("\nstatic void\n");
+		printf("%s", fmt_options.prefix);
+		print_str(struct_info->name, tolower);
+		printf("_write(buxn_vm_t* vm, uint16_t addr, %s", fmt_options.prefix);
+		print_str(struct_info->name, tolower);
+		printf("%s value){\n", fmt_options.suffix);
+		for (
+			cmd_field_info_t* field_info = struct_info->first_field;
+			field_info != NULL;
+			field_info = field_info->next
+		) {
+			printf(
+				"\tbuxn_vm_mem_store%s(vm, addr + ",
+				field_info->size == 1 ? "" : "2"
+			);
+
+			print_null_str(fmt_options.prefix, toupper);
+			print_str(struct_info->name, toupper);
+			printf("_");
+			print_str(field_info->name, toupper);
+			printf(", value.%.*s);\n", field_info->name.len, field_info->name.chars);
+		}
+		printf("}\n");
+	}
+
 	if (!success) {
 		printf("\n#warning \"Error encountered, header might be incomplete\"\n");
 	}
@@ -200,14 +308,8 @@ buxn_asm_report(
 	const buxn_asm_report_t* report
 ) {
 	(void)ctx;
-	if (type == BUXN_ASM_REPORT_ERROR) {
-		printf(
-			"#line %d \"%s\"\n",
-			report->region->range.start.line,
-			report->region->filename
-		);
-		printf("#warning \"%s\"\n", report->message);
-	}
+	(void)type;
+	(void)report;
 }
 
 static void
@@ -264,7 +366,36 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 			&&
 			local_name.len > 0
 		) {
+			if (
+				addr != ctx->last_addr
+				&&
+				ctx->last_name.len != 0
+			) {
+				uint16_t size = addr - ctx->last_addr;
+				cmd_field_info_t* field_info = buxn_asm_alloc(
+					ctx,
+					sizeof(cmd_field_info_t),
+					_Alignof(cmd_field_info_t)
+				);
+				*field_info = (cmd_field_info_t){
+					.name = ctx->last_name,
+					.size = size,
+				};
+
+				cmd_struct_info_t* struct_info = ctx->last_cmd;
+				if (struct_info->first_field == NULL) {
+					struct_info->first_field = field_info;
+				}
+				if (struct_info->last_field != NULL) {
+					struct_info->last_field->next = field_info;
+				}
+				struct_info->last_field = field_info;
+
+				ctx->last_name.len = 0;
+			}
+
 			format_options_t fmt_options = ctx->format_options[ctx->current_anno_type];
+			printf("\t/// %s\n", sym->name);
 			printf("\t");
 			print_null_str(fmt_options.prefix, toupper);
 			print_str(scope, toupper);
@@ -280,8 +411,39 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 					break;
 				case ANNO_COMMAND:
 					printf(" = %d,\n", addr - ctx->base_addr);
+					ctx->last_name = local_name;
 					break;
 			}
+
+			ctx->last_addr = addr;
+		}
+	} else {
+		if (
+			addr != ctx->last_addr
+			&&
+			ctx->last_name.len != 0
+		) {
+			uint16_t size = addr - ctx->last_addr;
+			cmd_field_info_t* field_info = buxn_asm_alloc(
+				ctx,
+				sizeof(cmd_field_info_t),
+				_Alignof(cmd_field_info_t)
+			);
+			*field_info = (cmd_field_info_t){
+				.name = ctx->last_name,
+				.size = size,
+			};
+
+			cmd_struct_info_t* struct_info = ctx->last_cmd;
+			if (struct_info->first_field == NULL) {
+				struct_info->first_field = field_info;
+			}
+			if (struct_info->last_field != NULL) {
+				struct_info->last_field->next = field_info;
+			}
+			struct_info->last_field = field_info;
+
+			ctx->last_name.len = 0;
 		}
 	}
 }
@@ -294,7 +456,6 @@ handle_annotation(
 	const buxn_anno_t* annotation,
 	const buxn_asm_source_region_t* region
 ) {
-	(void)addr;
 	(void)region;
 
 	buxn_asm_ctx_t* ctx = anno_ctx;
@@ -306,8 +467,35 @@ handle_annotation(
 		split_label_name(sym->name, &scope, &local_name);
 		ctx->current_scope = scope;
 		ctx->base_addr = addr;
+		ctx->last_addr = addr;
 
-		printf("\ntypedef enum {\n");
+		switch (ctx->current_anno_type) {
+			case ANNO_ENUM:
+			case ANNO_DEVICE:
+				printf("\ntypedef enum {\n");
+				break;
+			case ANNO_COMMAND:
+				printf("\nenum {\n");
+				break;
+		}
+
+		if (ctx->current_anno_type == ANNO_COMMAND) {
+			cmd_struct_info_t* struct_info = buxn_asm_alloc(
+				ctx, sizeof(cmd_struct_info_t), _Alignof(cmd_struct_info_t)
+			);
+			*struct_info = (cmd_struct_info_t){
+				.name = scope,
+			};
+
+			if (ctx->first_cmd == NULL) {
+				ctx->first_cmd = struct_info;
+			}
+
+			if (ctx->last_cmd != NULL) {
+				ctx->last_cmd->next = struct_info;
+			}
+			ctx->last_cmd = struct_info;
+		}
 	}
 }
 
@@ -315,9 +503,18 @@ static void
 finalize_section(buxn_asm_ctx_t* ctx) {
 	if (ctx->current_scope.len != 0){
 		format_options_t fmt_options = ctx->format_options[ctx->current_anno_type];
-		printf("} %s", fmt_options.prefix);
-		print_str(ctx->current_scope, tolower);
-		printf("%s;\n", fmt_options.suffix);
+
+		switch (ctx->current_anno_type) {
+			case ANNO_ENUM:
+			case ANNO_DEVICE:
+				printf("} %s", fmt_options.prefix);
+				print_str(ctx->current_scope, tolower);
+				printf("%s;\n", fmt_options.suffix);
+				break;
+			case ANNO_COMMAND:
+				printf("};\n");
+				break;
+		}
 		ctx->current_scope.len = 0;
 	}
 }
