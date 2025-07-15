@@ -1702,6 +1702,13 @@ buxn_chess_make_lit_byte(
 		value.semantics |= BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_CONST;
 		value.value = buxn_chess_get_rom(ctx->chess->ctx, addr);
 		value.name = buxn_chess_name_from_symbol(ctx->chess, symbol, value.value);
+		if (value.value <= 0xff) {  // Zero-page
+			value.semantics |= BUXN_CHESS_SEM_NOMINAL;
+			value.type = (buxn_chess_str_t){
+				.chars = symbol->name,
+				.len = strlen(symbol->name),
+			};
+		}
 	} else {
 		value.value = buxn_chess_get_rom(ctx->chess->ctx, addr);
 		value.name = buxn_chess_printf(ctx->chess, "0x%02x", value.value);

@@ -324,8 +324,31 @@ BTEST(chess, nominal) {
 		)
 	);
 
-	// Nominal mismatch
+	// Zero-page address labels have nominal types
+	BTEST_EXPECT(
+		buxn_asm_str(
+			basm,
+			"|00 @Nominal &a $1 &b $1\n"
+			"|00 @Nominal2 &a $1 &b $1\n"
+			"|0100 .Nominal/b consume-nominal BRK\n"
+			"@consume-nominal ( Nominal/ -- ) POP JMP2r\n"
+		)
+	);
+
 	basm->suppress_report = true;
+
+	// Checking is done through label, not value
+	BTEST_EXPECT(
+		!buxn_asm_str(
+			basm,
+			"|00 @Nominal &a $1 &b $1\n"
+			"|00 @Nominal2 &a $1 &b $1\n"
+			"|0100 .Nominal2/b consume-nominal BRK\n"
+			"@consume-nominal ( Nominal/ -- ) POP JMP2r\n"
+		)
+	);
+
+	// Nominal mismatch
 	BTEST_EXPECT(
 		!buxn_asm_str(
 			basm,
@@ -334,5 +357,6 @@ BTEST(chess, nominal) {
 			"@produce-nominal ( -- Nominal/a ) #01 JMP2r\n"
 		)
 	);
+
 	basm->suppress_report = false;
 }
