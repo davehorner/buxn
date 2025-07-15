@@ -200,8 +200,14 @@ buxn_asm_report(
 	const buxn_asm_report_t* report
 ) {
 	(void)ctx;
-	(void)type;
-	(void)report;
+	if (type == BUXN_ASM_REPORT_ERROR) {
+		printf(
+			"#line %d \"%s\"\n",
+			report->region->range.start.line,
+			report->region->filename
+		);
+		printf("#warning \"%s\"\n", report->message);
+	}
 }
 
 static void
