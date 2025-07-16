@@ -185,11 +185,9 @@ main(int argc, const char* argv[]) {
 			field_info != NULL;
 			field_info = field_info->next
 		) {
-			printf(
-				"\tuint%d_t %.*s;\n",
-				field_info->size == 1 ? 8 : 16,
-				field_info->name.len, field_info->name.chars
-			);
+			printf("\tuint%d_t ", field_info->size == 1 ? 8 : 16);
+			print_str(field_info->name, tolower);
+			printf(";\n");
 		}
 
 		format_options_t fmt_options = basm.format_options[ANNO_COMMAND];
@@ -207,15 +205,16 @@ main(int argc, const char* argv[]) {
 		printf("_read(buxn_vm_t* vm, uint16_t addr) {\n");
 		printf("\treturn (%s", fmt_options.prefix);
 		print_str(struct_info->name, tolower);
-		printf("%s){\n", fmt_options.suffix);
+		printf("%s) {\n", fmt_options.suffix);
 		for (
 			cmd_field_info_t* field_info = struct_info->first_field;
 			field_info != NULL;
 			field_info = field_info->next
 		) {
+			printf("\t\t.");
+			print_str(field_info->name, tolower);
 			printf(
-				"\t\t.%.*s = buxn_vm_mem_load%s(vm, addr + ",
-				field_info->name.len, field_info->name.chars,
+				" = buxn_vm_mem_load%s(vm, addr + ",
 				field_info->size == 1 ? "" : "2"
 			);
 
@@ -233,7 +232,7 @@ main(int argc, const char* argv[]) {
 		print_str(struct_info->name, tolower);
 		printf("_write(buxn_vm_t* vm, uint16_t addr, %s", fmt_options.prefix);
 		print_str(struct_info->name, tolower);
-		printf("%s value){\n", fmt_options.suffix);
+		printf("%s value) {\n", fmt_options.suffix);
 		for (
 			cmd_field_info_t* field_info = struct_info->first_field;
 			field_info != NULL;
@@ -248,7 +247,9 @@ main(int argc, const char* argv[]) {
 			print_str(struct_info->name, toupper);
 			printf("_");
 			print_str(field_info->name, toupper);
-			printf(", value.%.*s);\n", field_info->name.len, field_info->name.chars);
+			printf(", value.");
+			print_str(field_info->name, tolower);
+			printf(");\n");
 		}
 		printf("}\n");
 	}
