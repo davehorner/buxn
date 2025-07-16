@@ -1,8 +1,21 @@
 #include <xincbin.h>
 
+#ifdef BUXN_CMAKE_PATH
+
+XINCBIN(acid_tal, "../../tests/acid.tal")
+XINCBIN(opctest_tal, "../../tests/opctest.tal")
+XINCBIN(door_tal, "../../tests/door.tal")
+XINCBIN(object_tal, "../../tests/object.tal")
+XINCBIN(vector_tal, "../../tests/vector.tal")
+XINCBIN(prog_brkp_tal, "../../tests/prog_brkp.tal")
+
+#else
+
 XINCBIN(acid_tal, "tests/acid.tal")
 XINCBIN(opctest_tal, "tests/opctest.tal")
 XINCBIN(door_tal, "tests/door.tal")
 XINCBIN(object_tal, "tests/object.tal")
 XINCBIN(vector_tal, "tests/vector.tal")
 XINCBIN(prog_brkp_tal, "tests/prog_brkp.tal")
+
+#endif

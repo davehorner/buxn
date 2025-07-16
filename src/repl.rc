@@ -1,3 +1,11 @@
 #include <xincbin.h>
 
+#ifdef BUXN_REPL_CMAKE_PATH
+
+XINCBIN(repl_main, "../../src/repl.tal")
+
+#else
+
 XINCBIN(repl_main, "src/repl.tal")
+
+#endif

@@ -5,7 +5,6 @@
 #include <limits.h>
 #include <assert.h>
 #include <stdio.h>
-#include <bmacro.h>
 #include <stdarg.h>
 #define BHAMT_HASH_TYPE uint32_t
 #include "hamt.h"
@@ -19,8 +18,19 @@
 
 #define BUXN_CHESS_ADDR_EQ(LHS, RHS) (LHS == RHS)
 
+#define BUXN_STRINGIFY(X) BUXN_STRINGIFY_(X)
+#define BUXN_STRINGIFY_(X) #X
+
+#if defined(__GNUC__) || defined(__clang__)
+#	define BUXN_FORMAT_ATTRIBUTE(FMT, VA) __attribute__((format(printf, FMT, VA)))
+#else
+#	define BUXN_FORMAT_ATTRIBUTE(FMT, VA)
+#endif
+
+#define BUXN_LIT_STRLEN(STR) (sizeof("" STR) - 1)
+
 #define DEFINE_OPCODE_NAME(NAME, VALUE) \
-	[VALUE] = BSTRINGIFY(NAME),
+	[VALUE] = BUXN_STRINGIFY(NAME),
 
 static const char* buxn_chess_opcode_names[256] = {
 	BUXN_OPCODE_DISPATCH(DEFINE_OPCODE_NAME)
@@ -290,7 +300,7 @@ buxn_chess_vprintf(buxn_chess_t* chess, const char* fmt, va_list args) {
 	};
 }
 
-BFORMAT_ATTRIBUTE(2, 3)
+BUXN_FORMAT_ATTRIBUTE(2, 3)
 static inline buxn_chess_str_t
 buxn_chess_printf(buxn_chess_t* chess, const char* fmt, ...) {
 	va_list args;
@@ -424,7 +434,7 @@ buxn_chess_vreport(
 	buxn_chess_end_mem_region(ctx->chess->ctx, region);
 }
 
-BFORMAT_ATTRIBUTE(2, 3)
+BUXN_FORMAT_ATTRIBUTE(2, 3)
 static void
 buxn_chess_report_exec_error(
 	buxn_chess_exec_ctx_t* ctx,
@@ -442,7 +452,7 @@ buxn_chess_report_exec_error(
 	ctx->entry->info->has_error = true;
 }
 
-BFORMAT_ATTRIBUTE(2, 3)
+BUXN_FORMAT_ATTRIBUTE(2, 3)
 static void
 buxn_chess_report_exec_warning(
 	buxn_chess_exec_ctx_t* ctx,
@@ -455,7 +465,7 @@ buxn_chess_report_exec_warning(
 	va_end(args);
 }
 
-BFORMAT_ATTRIBUTE(2, 3)
+BUXN_FORMAT_ATTRIBUTE(2, 3)
 static void
 buxn_chess_trace(
 	buxn_chess_exec_ctx_t* ctx,
@@ -499,7 +509,7 @@ buxn_chess_mark_routine_for_verification(
 		buxn_chess_raw_push(&entry->state.rst, (buxn_chess_value_t){
 			.name = {
 				.chars = "RETURN",
-				.len = BLIT_STRLEN("RETURN"),
+				.len = BUXN_LIT_STRLEN("RETURN"),
 			},
 			.semantics = BUXN_CHESS_SEM_SIZE_SHORT | BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_RETURN,
 			.region = BUXN_CHESS_INTERNAL_REGION(),
@@ -533,7 +543,7 @@ buxn_chess_value_error(buxn_chess_exec_ctx_t* ctx) {
 	return (buxn_chess_value_t){
 		.name = {
 			.chars = "ERROR",
-			.len = BLIT_STRLEN("ERROR")
+			.len = BUXN_LIT_STRLEN("ERROR")
 		},
 		.region = ctx->current_sym != NULL
 			? ctx->current_sym->region
@@ -1222,7 +1232,7 @@ buxn_chess_jump_stash(
 	buxn_chess_value_t pc = {
 		.name = {
 			.chars = "RETURN-SUB",
-			.len = BLIT_STRLEN("RETURN-SUB"),
+			.len = BUXN_LIT_STRLEN("RETURN-SUB"),
 		},
 		.semantics = BUXN_CHESS_SEM_SIZE_SHORT | BUXN_CHESS_SEM_ADDRESS | BUXN_CHESS_SEM_CONST,
 		.value = ctx->pc,
@@ -2492,7 +2502,7 @@ buxn_chess_end(buxn_chess_t* chess) {
 	if (reset->value.name.len == 0) {
 		reset->value.name = (buxn_chess_str_t){
 			.chars = "RESET",
-			.len = BLIT_STRLEN("RESET"),
+			.len = BUXN_LIT_STRLEN("RESET"),
 		};
 	}
 	if (reset->value.region.filename == NULL) {

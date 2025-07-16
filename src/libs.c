@@ -3,6 +3,8 @@
 #pragma clang diagnostic ignored "-Wextra-semi"
 #endif
 
+#define _XOPEN_SOURCE 700
+
 #define SOKOL_IMPL
 #include <sokol_app.h>
 #include <sokol_gfx.h>

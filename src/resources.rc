@@ -1,3 +1,11 @@
 #include <xincbin.h>
 
+#ifdef BUXN_CMAKE_PATH
+
+XINCBIN(logo, "../../logo.qoi")
+
+#else
+
 XINCBIN(logo, "logo.qoi")
+
+#endif
