@@ -10,6 +10,12 @@
 #include <sys/stat.h>
 #endif
 
+#ifdef _WIN32
+#	define RUNNER_EXT ".exe"
+#else
+#	define RUNNER_EXT ""
+#endif
+
 static const char*
 get_arg(const char* arg, const char* prefix) {
 	size_t len = strlen(prefix);
@@ -23,7 +29,7 @@ get_arg(const char* arg, const char* prefix) {
 static inline char*
 find_relative_path(const char* exe_path, char* file) {
 	int slash_pos;
-	for (slash_pos = strlen(exe_path) - 1; slash_pos >= 0; --slash_pos) {
+	for (slash_pos = (int)strlen(exe_path) - 1; slash_pos >= 0; --slash_pos) {
 		if (exe_path[slash_pos] == '/' || exe_path[slash_pos] == '\\') {
 			break;
 		}
@@ -65,9 +71,9 @@ main(int argc, const char* argv[]) {
 
 	char* runner_path;
 	if (strcmp(runner, "cli") == 0) {
-		runner_path = find_relative_path(exe_path, "buxn-cli");
+		runner_path = find_relative_path(exe_path, "buxn-cli" RUNNER_EXT);
 	} else if (strcmp(runner, "gui") == 0) {
-		runner_path = find_relative_path(exe_path, "buxn-gui");
+		runner_path = find_relative_path(exe_path, "buxn-gui" RUNNER_EXT);
 	} else {
 		runner_path = runner;
 	}
