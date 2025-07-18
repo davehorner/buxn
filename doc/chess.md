@@ -21,7 +21,7 @@ Beside checking stack annotation against implementation, it can also do the foll
   * Wrong termination type: `JMP2r` from a vector or `BRK` from a regular subroutine
   * Infinite self-recursion
 
-It is integrated into the [frontend](./asm-frontend) and enabled using `--chess`.
+It is integrated into the [frontend](./asm-frontend.md) and enabled using `--chess`.
 
 ## Nominal typing
 ### Introduction
