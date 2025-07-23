@@ -227,7 +227,7 @@ main(int argc, const char* argv[]) {
 		printf("\t};\n}\n");
 
 		// Writer
-		printf("\nstatic void\n");
+		printf("\nstatic inline void\n");
 		printf("%s", fmt_options.prefix);
 		print_str(struct_info->name, tolower);
 		printf("_write(buxn_vm_t* vm, uint16_t addr, %s", fmt_options.prefix);

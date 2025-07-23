@@ -84,7 +84,7 @@ buxn_device_port(uint8_t address) {
 }
 
 static inline uint16_t
-buxn_vm_load2(uint8_t* mem, uint16_t addr, uint16_t addr_mask) {
+buxn_vm_load2(const uint8_t* mem, uint16_t addr, uint16_t addr_mask) {
 	uint16_t hi = (uint16_t)mem[(addr + 0) & addr_mask] << 8;
 	uint16_t lo = (uint16_t)mem[(addr + 1) & addr_mask];
 	return hi | lo;
@@ -96,7 +96,7 @@ buxn_vm_mem_load(buxn_vm_t* vm, uint16_t addr) {
 }
 
 static inline uint16_t
-buxn_vm_mem_load2(buxn_vm_t* vm, uint16_t addr) {
+buxn_vm_mem_load2(const buxn_vm_t* vm, uint16_t addr) {
 	return buxn_vm_load2(vm->memory, addr, BUXN_MEM_ADDR_MASK);
 }
 
