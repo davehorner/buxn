@@ -212,6 +212,7 @@ buxn_dbg_serialize_symtab_body(
 					strpool->strings[i] = str;
 				}
 			} else {
+				// Scan all buckets, including the gaps
 				int strpool_len = 1 << strpool->exp;
 				for (int i = 0; i < strpool_len; ++i) {
 					const char* str = strpool->strings[i];
@@ -350,6 +351,10 @@ buxn_dbg_write_symtab(buxn_dbg_symtab_writer_t* writer, const buxn_dbg_symtab_t*
 			writer->strpool.indices[i] = str_id++;
 		}
 	}
+	// It is possible for a file to generate no symbols (only macros)
+	// So we have to readjust the number of strings
+	header.num_strings = str_id;
+	writer->strpool.num_entries = str_id;
 	header.string_pool_size = strpool_size;
 
 	bserial_status_t status;
