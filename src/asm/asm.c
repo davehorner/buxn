@@ -741,7 +741,11 @@ buxn_asm_strfind(buxn_asm_t* basm, buxn_asm_str_t str) {
 
 static buxn_asm_token_t
 buxn_asm_persist_token(buxn_asm_t* basm, const buxn_asm_token_t* token) {
-	if (token->lexeme.chars != basm->token_buf) {
+	if (
+		token->lexeme.chars != basm->token_buf
+		&&
+		token->lexeme.chars != basm->macro_expand_buf
+	) {
 		return *token;
 	}
 
@@ -952,7 +956,7 @@ buxn_asm_resolve_label_ref(
 	buxn_asm_str_t* name_out
 ) {
 	if (ref.len == 0) {
-		return buxn_asm_error(basm, token, "Invalid reference");
+		return buxn_asm_error(basm, token, "Reference cannot be empty");
 	} else if (ref.chars[0] == '&' || ref.chars[0] == '/') {
 		return buxn_asm_resolve_local_name(
 			basm, token,
@@ -1301,8 +1305,12 @@ buxn_asm_emit_label_ref(
 		}
 	} else {
 		// Regular label ref
-		if (full_name.len == 0 || buxn_asm_is_runic(full_name.chars[0])) {
-			return buxn_asm_error(basm, token, "Invalid reference");
+		if (full_name.len == 0) {
+			return buxn_asm_error(basm, token, "Reference cannot be empty");
+		}
+
+		if (buxn_asm_is_runic(full_name.chars[0])) {
+			return buxn_asm_error(basm, token, "Reference cannot be runic");
 		}
 
 		buxn_asm_symtab_node_t* symbol = buxn_asm_find_or_create_symbol(basm, token, full_name);
@@ -1367,7 +1375,7 @@ buxn_asm_resolve(buxn_asm_t* basm) {
 				jtr != NULL;
 				jtr = jtr->next
 			) {
-				buxn_asm_error(basm, &jtr->token, "Invalid reference");
+				buxn_asm_error(basm, &jtr->token, "Could not resolve reference");
 			}
 		} else if (itr->type == BUXN_ASM_SYMTAB_ENTRY_UNKNOWN) {
 			buxn_asm_error(basm, &itr->defining_token, "Internal error: Unknown symbol");
