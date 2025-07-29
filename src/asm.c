@@ -126,6 +126,7 @@ buxn_asm_put_symbol(buxn_asm_ctx_t* ctx, uint16_t addr, const buxn_asm_sym_t* sy
 		case BUXN_ASM_SYM_COMMENT:
 		case BUXN_ASM_SYM_MACRO_REF:
 		case BUXN_ASM_SYM_MARK:
+		case BUXN_ASM_SYM_INCLUDE:
 			break;
 	}
 

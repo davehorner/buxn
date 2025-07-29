@@ -158,6 +158,17 @@ typedef struct {
 	buxn_asm_symtab_node_t* last;
 } buxn_asm_symtab_t;
 
+typedef struct buxn_asm_include_node_s buxn_asm_include_node_t;
+
+struct buxn_asm_include_node_s {
+	const buxn_asm_pstr_t* key;
+	buxn_asm_include_node_t* children[BHAMT_NUM_CHILDREN];
+};
+
+typedef struct {
+	buxn_asm_include_node_t* root;
+} buxn_asm_include_set_t;
+
 typedef enum {
 	BUXN_ASM_LABEL_REF_ZERO,
 	BUXN_ASM_LABEL_REF_ABS,
@@ -197,6 +208,7 @@ typedef struct {
 	uint16_t num_lambdas;
 	uint16_t num_macros;
 	buxn_asm_strpool_t strpool;
+	buxn_asm_include_set_t includes;
 	buxn_asm_symtab_t symtab;
 	buxn_asm_str_t label_scope;
 	buxn_asm_forward_ref_t* lambdas;
@@ -2054,6 +2066,34 @@ buxn_asm_process_text(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 }
 
 static bool
+buxn_asm_include_guard(
+	buxn_asm_t* basm,
+	const buxn_asm_pstr_t* included_filename
+) {
+	buxn_asm_include_node_t** itr;
+	buxn_asm_include_node_t* node;
+	BHAMT_SEARCH(
+		basm->includes.root,
+		itr, node,
+		included_filename->hash, included_filename,
+		buxn_asm_ptr_eq
+	);
+
+	if (node != NULL) { return false; }
+
+	node = *itr = buxn_asm_alloc(
+		basm->ctx,
+		sizeof(buxn_asm_include_node_t),
+		_Alignof(buxn_asm_include_node_t)
+	);
+	(*node) = (buxn_asm_include_node_t){
+		.key = included_filename,
+	};
+
+	return true;
+}
+
+static bool
 buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 	buxn_asm_token_t token;
 	while (buxn_asm_next_token(basm, unit, &token)) {
@@ -2086,20 +2126,27 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 				const buxn_asm_pstr_t* included_filename = buxn_asm_strintern(
 					basm, buxn_asm_str_pop_front(token.lexeme)
 				);
-				++basm->preprocessor_depth;
-				bool success = buxn_asm_process_file(basm, included_filename);
-				--basm->preprocessor_depth;
+				buxn_asm_put_symbol(basm->ctx, basm->write_addr, &(buxn_asm_sym_t){
+					.type = BUXN_ASM_SYM_INCLUDE,
+					.name = included_filename->key.chars,
+					.region = token.region,
+				});
+				if (buxn_asm_include_guard(basm, included_filename)) {
+					++basm->preprocessor_depth;
+					bool success = buxn_asm_process_file(basm, included_filename);
+					--basm->preprocessor_depth;
 
-				if (!success) {
-					// Append another error to explain include chain
-					return buxn_asm_error(
-						basm,
-						&(buxn_asm_token_t){
-							.lexeme = included_filename->key,
-							.region = token.region,
-						},
-						"Error while processing include"
-					);
+					if (!success) {
+						// Append another error to explain include chain
+						return buxn_asm_error(
+							basm,
+							&(buxn_asm_token_t){
+								.lexeme = included_filename->key,
+								.region = token.region,
+							},
+							"Error while processing include"
+						);
+					}
 				}
 			} break;
 			case '%':
