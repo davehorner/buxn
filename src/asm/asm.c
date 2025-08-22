@@ -647,13 +647,7 @@ buxn_asm_next_token_in_macro(
 			}
 			expand_buf[len] = '\0';
 
-			bool is_long_string =
-				expand_buf[0] == '"'
-				&&
-				len > 1
-				&&
-				expand_buf[1] == ' ';
-			int limit = is_long_string
+			int limit = expand_buf[0] == '"'
 				? BUXN_ASM_MAX_LONG_STRING_LEN
 				: BUXN_ASM_MAX_TOKEN_LEN;
 			if (len > limit) {
