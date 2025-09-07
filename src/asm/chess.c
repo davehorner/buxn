@@ -141,8 +141,6 @@ typedef struct {
 
 	buxn_chess_stack_t* wsp;
 	buxn_chess_stack_t* rsp;
-	buxn_chess_stack_t init_wst;
-	buxn_chess_stack_t init_rst;
 
 	buxn_chess_value_node_t* values;
 
@@ -1933,8 +1931,6 @@ buxn_chess_execute(buxn_chess_t* chess, buxn_chess_entry_t* entry) {
 		.pc = entry->address,
 		.start_sym = chess->symbols[entry->address],
 	};
-	buxn_chess_copy_stack(&ctx.init_wst, &ctx.entry->state.wst);
-	buxn_chess_copy_stack(&ctx.init_rst, &ctx.entry->state.rst);
 
 	buxn_chess_begin_trace(chess->ctx, entry->trace_id, entry->parent_trace_id);
 	buxn_chess_trace(
