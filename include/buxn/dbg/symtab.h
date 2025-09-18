@@ -30,7 +30,7 @@ typedef struct {
 	buxn_asm_source_region_t region;
 } buxn_dbg_sym_t;
 
-typedef struct {
+typedef struct buxn_dbg_symtab_s {
 	uint32_t num_symbols;
 	buxn_dbg_sym_t* symbols;
 } buxn_dbg_symtab_t;
