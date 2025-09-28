@@ -1503,7 +1503,7 @@ buxn_asm_create_macro(
 		}
 	}
 	if (!found_open_brace) {
-		return buxn_asm_error(basm, &token, "Macro must be followed by '{'");
+		return buxn_asm_error(basm, start, "Macro must be followed by '{'");
 	}
 
 	symbol->type = BUXN_ASM_SYMTAB_ENTRY_MACRO;
