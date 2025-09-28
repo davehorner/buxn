@@ -2637,6 +2637,8 @@ buxn_chess_handle_symbol(
 			*in_sym = *sym;
 		}
 
+		// Anonymous backward ref needs to have something to be displayed
+		if (in_sym->name == NULL) { in_sym->name = "@"; }
 		chess->symbols[addr] = in_sym;
 	} else if (sym->type == BUXN_ASM_SYM_MACRO) {
 		chess->has_current_symbol = false;
