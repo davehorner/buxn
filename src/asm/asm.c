@@ -190,6 +190,18 @@ struct buxn_asm_forward_ref_s {
 	buxn_asm_label_ref_size_t size;
 };
 
+typedef struct buxn_asm_deferred_include_s buxn_asm_deferred_include_t;
+struct buxn_asm_deferred_include_s {
+	const buxn_asm_pstr_t* included_filename;
+	buxn_asm_token_t triggering_token;
+	buxn_asm_deferred_include_t* next;
+};
+
+typedef struct {
+	buxn_asm_deferred_include_t* first;
+	buxn_asm_deferred_include_t* last;
+} buxn_asm_deferred_include_list;
+
 typedef struct {
 	buxn_asm_ctx_t* ctx;
 	uint16_t write_addr;
@@ -214,6 +226,7 @@ typedef struct {
 	buxn_asm_forward_ref_t* lambdas;
 	buxn_asm_at_label_t* at_labels;
 	buxn_asm_forward_ref_t* ref_pool;
+	buxn_asm_deferred_include_list deferred_includes;
 } buxn_asm_t;
 
 static bool
@@ -1348,7 +1361,28 @@ buxn_asm_emit_jsi(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 }
 
 static bool
+buxn_asm_process_include(
+	buxn_asm_t* basm,
+	const buxn_asm_pstr_t* included_filename,
+	buxn_asm_token_t triggering_token
+);
+
+static bool
 buxn_asm_resolve(buxn_asm_t* basm) {
+	for (
+		buxn_asm_deferred_include_t* deferred_include = basm->deferred_includes.first;
+		deferred_include != NULL;
+		deferred_include = deferred_include->next
+	) {
+		if (!buxn_asm_process_include(
+			basm,
+			deferred_include->included_filename,
+			deferred_include->triggering_token
+		)) {
+			return false;
+		}
+	}
+
 	for (buxn_asm_forward_ref_t* itr = basm->lambdas; itr != NULL; itr = itr->next) {
 		buxn_asm_error_ex(
 			basm,
@@ -2060,9 +2094,10 @@ buxn_asm_process_text(buxn_asm_t* basm, const buxn_asm_token_t* token) {
 }
 
 static bool
-buxn_asm_include_guard(
+buxn_asm_process_include(
 	buxn_asm_t* basm,
-	const buxn_asm_pstr_t* included_filename
+	const buxn_asm_pstr_t* included_filename,
+	buxn_asm_token_t triggering_token
 ) {
 	buxn_asm_include_node_t** itr;
 	buxn_asm_include_node_t* node;
@@ -2073,16 +2108,34 @@ buxn_asm_include_guard(
 		buxn_asm_ptr_eq
 	);
 
-	if (node != NULL) { return false; }
+	// Already included
+	if (node != NULL) { return true; }
 
+	// Record this include
 	node = *itr = buxn_asm_alloc(
 		basm->ctx,
 		sizeof(buxn_asm_include_node_t),
 		_Alignof(buxn_asm_include_node_t)
 	);
-	(*node) = (buxn_asm_include_node_t){
+	*node = (buxn_asm_include_node_t){
 		.key = included_filename,
 	};
+
+	++basm->preprocessor_depth;
+	bool success = buxn_asm_process_file(basm, included_filename);
+	--basm->preprocessor_depth;
+
+	if (!success) {
+		// Append another error to explain include chain
+		return buxn_asm_error(
+			basm,
+			&(buxn_asm_token_t){
+				.lexeme = included_filename->key,
+				.region = triggering_token.region,
+			},
+			"Error while processing include"
+		);
+	}
 
 	return true;
 }
@@ -2117,29 +2170,49 @@ buxn_asm_process_unit(buxn_asm_t* basm, buxn_asm_unit_t* unit) {
 					return buxn_asm_error(basm, &token, "Max preprocessor depth depth reached");
 				}
 
-				const buxn_asm_pstr_t* included_filename = buxn_asm_strintern(
-					basm, buxn_asm_str_pop_front(token.lexeme)
-				);
+				buxn_asm_str_t filename = buxn_asm_str_pop_front(token.lexeme);
+				bool is_deferred = filename.len >= 1 && filename.chars[0] == '~';
+				if (is_deferred) {
+					filename = buxn_asm_str_pop_front(filename);
+				}
+
+				const buxn_asm_pstr_t* included_filename = buxn_asm_strintern(basm, filename);
 				buxn_asm_put_symbol(basm->ctx, basm->write_addr, &(buxn_asm_sym_t){
 					.type = BUXN_ASM_SYM_INCLUDE,
 					.name = included_filename->key.chars,
 					.region = token.region,
 				});
-				if (buxn_asm_include_guard(basm, included_filename)) {
-					++basm->preprocessor_depth;
-					bool success = buxn_asm_process_file(basm, included_filename);
-					--basm->preprocessor_depth;
 
-					if (!success) {
-						// Append another error to explain include chain
-						return buxn_asm_error(
-							basm,
-							&(buxn_asm_token_t){
-								.lexeme = included_filename->key,
-								.region = token.region,
-							},
-							"Error while processing include"
+				if (is_deferred) {
+					buxn_asm_include_node_t* node;
+					BHAMT_GET(
+						basm->includes.root,
+						node,
+						included_filename->hash, included_filename,
+						buxn_asm_ptr_eq
+					);
+					if (node == NULL) {
+						buxn_asm_deferred_include_t* deferred_include = buxn_asm_alloc(
+							basm->ctx,
+							sizeof(buxn_asm_deferred_include_t),
+							_Alignof(buxn_asm_deferred_include_t)
 						);
+						*deferred_include = (buxn_asm_deferred_include_t){
+							.included_filename = included_filename,
+							.triggering_token = buxn_asm_persist_token(basm, &token),
+						};
+
+						if (basm->deferred_includes.first == NULL) {
+							basm->deferred_includes.first = deferred_include;
+						}
+						if (basm->deferred_includes.last != NULL) {
+							basm->deferred_includes.last->next = deferred_include;
+						}
+						basm->deferred_includes.last = deferred_include;
+					}
+				} else {
+					if (!buxn_asm_process_include(basm, included_filename, token)) {
+						return false;
 					}
 				}
 			} break;
