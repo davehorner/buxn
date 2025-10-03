@@ -121,5 +121,6 @@ jobs:
           cd msvc
           msbuild buxn.sln /property:Configuration=RelWithDebInfo /property:Platform=x64
       - name: Test
+        shell: cmd
         run: |
           .\bin\RelWithDebInfo\buxn-tests.exe
