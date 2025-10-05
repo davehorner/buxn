@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <string.h>
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <unistd.h>
 #include <poll.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@ static struct {
 	bool has_size_limit;
 	uint64_t rom_size;
 	int open_error;
+	float scale;
 	sapp_icon_desc icon;
 
 	buxn_dbg_integration_t dbg;
@@ -75,6 +77,8 @@ standalone_init(args_t* args) {
 			} else if (strcmp(value, "fatal") == 0) {
 				platform_linux.log_level = BLOG_LEVEL_FATAL;
 			}
+		} else if ((value = get_arg(arg, "-scale=")) != NULL) {
+			platform_linux.scale = strtod(value, NULL);
 		} else if (strcmp(arg, "--") == 0) {
 			++i;
 			break;
@@ -228,7 +232,26 @@ void
 platform_resize_window(uint16_t width, uint16_t height) {
 	Display* display = (Display*)sapp_x11_get_display();
 	Window window = (Window)sapp_x11_get_window();
+
+	if (platform_linux.scale != 0) {
+		width *= platform_linux.scale;
+		height *= platform_linux.scale;
+	}
+
 	XResizeWindow(display, window, width, height);
+
+	// Explicit scale disables resizing
+	if (platform_linux.scale != 0) {
+		XSizeHints hints;
+		hints.flags = PMinSize | PMaxSize;
+		hints.min_width = hints.max_width = width;
+		hints.min_height = hints.max_height = height;
+		XSetWMNormalHints(
+			(Display*)sapp_x11_get_display(),
+			(Window)sapp_x11_get_window(),
+			&hints
+		);
+	}
 }
 
 int
