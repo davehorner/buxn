@@ -98,3 +98,21 @@ However, it is simpler to just pick and choose only the relevant parts.
 Both [buxn-ls](https://github.com/bullno1/buxn-ls) and [buxn-dbg](https://github.com/bullno1/buxn-dbg) take this approach.
 In general, there is only a single header (.h) and a single source (.c) file for each component.
 Check the [detailed documentation](doc/README.md) for more info.
+
+### Docker
+
+A Dockerfile file is provided to get you started using buxn via docker.
+
+Build the image.
+
+```
+docker build -t buxn .
+```
+
+Run the things.
+```
+docker run --rm -it `
+  -v "C:\path\to\your\sources:/src" `
+  -w /src `
+  buxn /app/bin/Release/linux/buxn-asm src/main.tal -o build/out.rom
+```
